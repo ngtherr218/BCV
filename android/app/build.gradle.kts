@@ -9,6 +9,13 @@ val localDevProperties = Properties().apply {
     if (file.isFile) file.inputStream().use(::load)
 }
 
+val deployedApiUrl = "https://bcv-admin-test.onrender.com/"
+
+fun previewCredential(apiUrl: String, key: String): String {
+    val credentialApi = localDevProperties.getProperty("bcvPreviewLoginApiBaseUrl") ?: "http://127.0.0.1:5081/"
+    return if (apiUrl.trimEnd('/') == credentialApi.trimEnd('/')) localDevProperties.getProperty(key).orEmpty() else ""
+}
+
 fun quotedBuildValue(value: String): String = "\"" + value
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
@@ -37,7 +44,7 @@ android {
         debug {
             manifestPlaceholders["usesCleartextTraffic"] = "true"
             val apiUrl = providers.gradleProperty("bcvApiBaseUrl")
-                .orElse(localDevProperties.getProperty("bcvApiBaseUrl") ?: "http://10.0.2.2:5081/")
+                .orElse(localDevProperties.getProperty("bcvApiBaseUrl") ?: deployedApiUrl)
                 .get()
             buildConfigField("String", "API_BASE_URL", "\"$apiUrl\"")
             val goongMaptilesKey = providers.gradleProperty("bcvGoongMaptilesKey")
@@ -50,21 +57,23 @@ android {
             buildConfigField("String", "GOONG_API_KEY", "\"$goongApiKey\"")
             // Local test account from dev.properties, so the login form only needs "Đăng nhập".
             buildConfigField("String", "PREVIEW_LOGIN_EMAIL",
-                quotedBuildValue(localDevProperties.getProperty("bcvPreviewLoginEmail").orEmpty()))
+                quotedBuildValue(previewCredential(apiUrl, "bcvPreviewLoginEmail")))
             buildConfigField("String", "PREVIEW_LOGIN_PASSWORD",
-                quotedBuildValue(localDevProperties.getProperty("bcvPreviewLoginPassword").orEmpty()))
+                quotedBuildValue(previewCredential(apiUrl, "bcvPreviewLoginPassword")))
         }
         create("preview") {
             initWith(getByName("debug"))
             isDebuggable = false
             signingConfig = signingConfigs.getByName("debug")
+            val apiUrl = providers.gradleProperty("bcvApiBaseUrl")
+                .orElse(localDevProperties.getProperty("bcvApiBaseUrl") ?: deployedApiUrl).get()
             buildConfigField("String", "PREVIEW_LOGIN_EMAIL",
-                quotedBuildValue(localDevProperties.getProperty("bcvPreviewLoginEmail").orEmpty()))
+                quotedBuildValue(previewCredential(apiUrl, "bcvPreviewLoginEmail")))
             buildConfigField("String", "PREVIEW_LOGIN_PASSWORD",
-                quotedBuildValue(localDevProperties.getProperty("bcvPreviewLoginPassword").orEmpty()))
+                quotedBuildValue(previewCredential(apiUrl, "bcvPreviewLoginPassword")))
         }
         release {
-            val apiUrl = providers.gradleProperty("bcvApiBaseUrl").orElse("https://api.example.invalid/").get()
+            val apiUrl = providers.gradleProperty("bcvApiBaseUrl").orElse(deployedApiUrl).get()
             buildConfigField("String", "API_BASE_URL", "\"$apiUrl\"")
             val goongMaptilesKey = providers.gradleProperty("bcvGoongMaptilesKey").orElse("").get()
             buildConfigField("String", "GOONG_MAPTILES_KEY", "\"$goongMaptilesKey\"")
