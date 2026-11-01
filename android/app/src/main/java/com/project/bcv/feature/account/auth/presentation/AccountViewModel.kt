@@ -23,7 +23,7 @@ data class AccountUiState(
     val needsVirtualLocation: Boolean = false,
     val errors: FieldErrors = FieldErrors(),
     val requestError: String? = null,
-    /** A saved session is being checked; the form stays hidden so it does not flash. */
+    /** A saved session is being checked; the Activity shows a visible loading panel. */
     val restoring: Boolean = false
 )
 
@@ -31,10 +31,11 @@ class AccountViewModel(private val repository: AccountRepository) : ViewModel() 
     private val executor = Executors.newSingleThreadExecutor()
     private val mutableState = MutableLiveData(AccountUiState())
     val state: LiveData<AccountUiState> = mutableState
+    private var restoreStarted = false
 
     fun changeMode() {
         val current = mutableState.value ?: return
-        if (current.loading) return
+        if (current.loading || current.restoring) return
         mutableState.value = AccountUiState(
             mode = if (current.mode == AccountMode.REGISTER) AccountMode.LOGIN else AccountMode.REGISTER
         )
@@ -42,7 +43,7 @@ class AccountViewModel(private val repository: AccountRepository) : ViewModel() 
 
     fun onFieldEdited(field: AccountField) {
         val current = mutableState.value ?: return
-        if (current.loading) return
+        if (current.loading || current.restoring) return
         val errors = when (field) {
             AccountField.EMAIL -> current.errors.copy(email = null)
             AccountField.PASSWORD -> current.errors.copy(password = null, confirmPassword = null)
@@ -60,7 +61,9 @@ class AccountViewModel(private val repository: AccountRepository) : ViewModel() 
      */
     fun restoreSession() {
         val current = mutableState.value ?: return
-        if (current.restoring || current.loading) return
+        if (restoreStarted || current.restoring || current.loading || current.completed ||
+            current.needsInterestSelection || current.needsActivityLevel || current.needsVirtualLocation) return
+        restoreStarted = true
         mutableState.value = current.copy(restoring = true)
         executor.execute {
             val next = try {
@@ -73,12 +76,12 @@ class AccountViewModel(private val repository: AccountRepository) : ViewModel() 
                     needsActivityLevel = session.needsActivityLevel,
                     needsVirtualLocation = session.needsVirtualLocation
                 )
-            } catch (_: ApiFailure) {
-                current
+            } catch (error: ApiFailure) {
+                current.copy(requestError = error.message)
             } catch (_: IOException) {
                 current.copy(completed = true)
             } catch (_: Exception) {
-                current
+                current.copy(requestError = "Chưa khôi phục được phiên đăng nhập. Vui lòng đăng nhập lại.")
             }
             mutableState.postValue(next.copy(restoring = false))
         }
@@ -86,7 +89,7 @@ class AccountViewModel(private val repository: AccountRepository) : ViewModel() 
 
     fun submit(rawEmail: String, password: String, confirmPassword: String) {
         val current = mutableState.value ?: return
-        if (current.loading || current.registrationSuccess || current.completed ||
+        if (current.loading || current.restoring || current.registrationSuccess || current.completed ||
             current.needsInterestSelection || current.needsActivityLevel || current.needsVirtualLocation) return
         val email = rawEmail.trim().lowercase()
         val errors = AccountFormValidator.validate(current.mode, email, password, confirmPassword)
