@@ -12,7 +12,10 @@ object ExploreModule {
         JsonApiClient(context, BuildConfig.API_BASE_URL), SessionPreferences(context)
     )
 
-    fun stepSource(context: Context) = HealthConnectStepSource(context)
+    @Volatile private var sharedStepSource: HealthConnectStepSource? = null
+    fun stepSource(context: Context): HealthConnectStepSource = sharedStepSource ?: synchronized(this) {
+        sharedStepSource ?: HealthConnectStepSource(context.applicationContext).also { sharedStepSource = it }
+    }
 
     fun addressLookup() = StartingPointModule.addressLookup()
 }

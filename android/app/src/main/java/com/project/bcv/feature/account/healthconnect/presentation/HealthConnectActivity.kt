@@ -163,7 +163,7 @@ class HealthConnectActivity : AppCompatActivity() {
             "BƯỚC CHÂN THÀNH HÀNH TRÌNH", "Biến bước chân", "thành hành trình.",
             "Cho phép đọc số bước từ Health Connect và đồng bộ để cập nhật tiến độ hành trình.",
             "Số bước chân", "Số bước cùng thời gian ghi nhận.", "Bước này chỉ xin quyền đọc Health Connect",
-            "Nếu để sau, các chức năng cần bước chân sẽ chưa sử dụng được.",
+            "Nếu để sau, app có thể dùng cảm biến sau khi bạn cho phép Hoạt động thể chất.",
             "Cho phép đọc bước chân", "Bạn sẽ xác nhận quyền trên màn hình hệ thống.",
             R.drawable.ic_directions_walk, R.drawable.ic_health_link
         )
@@ -198,8 +198,8 @@ class HealthConnectActivity : AppCompatActivity() {
         HealthConnectStage.DENIED -> ScreenCopy(
             "BẠN CÓ THỂ QUYẾT ĐỊNH SAU", "Chưa có quyền", "đọc bước chân.",
             "Không sao, bạn có thể kết nối lại bất cứ khi nào sẵn sàng.",
-            "Tính năng cần bước chân", "Chưa thể đọc hoặc đồng bộ bước mới.", "",
-            "Ứng dụng chưa truy cập dữ liệu bước chân.", "Thử cấp lại", "Bạn có thể kết nối lại khi sẵn sàng.",
+            "Đếm bước bằng điện thoại", "Có thể dùng cảm biến với quyền Hoạt động thể chất.", "",
+            "Chưa truy cập dữ liệu Health Connect.", "Thử cấp lại", "Bạn có thể kết nối lại khi sẵn sàng.",
             R.drawable.ic_health_block, R.drawable.ic_health_block,
             accentColor = 0xFFB18443.toInt(), iconColor = 0xFFB18443.toInt(),
             orbitColor = 0xFFFBF1E2.toInt(), orbitStrokeColor = 0xFFF1DDBE.toInt(),
@@ -219,8 +219,8 @@ class HealthConnectActivity : AppCompatActivity() {
         HealthConnectStage.UNSUPPORTED -> ScreenCopy(
             "THIẾT BỊ KHÔNG HỖ TRỢ", "Thiết bị này", "chưa được hỗ trợ.",
             "Chưa thể sử dụng Health Connect trên thiết bị hiện tại.",
-            "Chưa đồng bộ dữ liệu bước chân", "Các tính năng phụ thuộc bước chân sẽ bị giới hạn.", "",
-            "", "Tiếp tục không đồng bộ", "Không lấy yêu cầu cấp quyền trên thiết bị không hỗ trợ.",
+            "Đếm bước bằng điện thoại", "App có thể dùng cảm biến sau khi được cấp quyền Hoạt động thể chất.", "",
+            "", "Tiếp tục", "Khả năng đếm bước phụ thuộc cảm biến của thiết bị.",
             R.drawable.ic_health_block, R.drawable.ic_health_block,
             accentColor = 0xFF718994.toInt(), iconColor = 0xFF718994.toInt(),
             orbitColor = 0xFFEFF3F5.toInt(), orbitStrokeColor = 0xFFDCE5E9.toInt(),

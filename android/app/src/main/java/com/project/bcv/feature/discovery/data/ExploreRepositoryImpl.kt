@@ -4,6 +4,7 @@ import com.project.bcv.core.network.ApiFailure
 import com.project.bcv.core.network.JsonApiClient
 import com.project.bcv.feature.account.auth.data.local.SessionPreferences
 import com.project.bcv.feature.discovery.domain.ExploreJourney
+import com.project.bcv.feature.discovery.domain.JourneyCardReward
 import com.project.bcv.feature.discovery.domain.ExploreLocation
 import com.project.bcv.feature.discovery.domain.ExploreMapPlace
 import com.project.bcv.feature.discovery.domain.ExplorePlaceDetail
@@ -74,7 +75,10 @@ class ExploreRepositoryImpl(
                 it.getString("status"), it.getLong("startedAtEpochSeconds"),
                 if (it.has("startLatitude") && !it.isNull("startLatitude"))
                     Coordinates(it.getDouble("startLatitude"), it.getDouble("startLongitude")) else null,
-                it.optLong("destinationPlaceId").takeIf { id -> id > 0 })
+                it.optLong("destinationPlaceId").takeIf { id -> id > 0 },
+                it.optJSONObject("awardedCard")?.let { card ->
+                    JourneyCardReward(card.getLong("cardId"), card.getString("name"))
+                })
         }
         val places = optJSONArray("places")?.let { array ->
             (0 until array.length()).map { index ->

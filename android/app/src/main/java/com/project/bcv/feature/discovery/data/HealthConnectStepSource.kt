@@ -1,6 +1,9 @@
 package com.project.bcv.feature.discovery.data
 
 import android.content.Context
+import android.os.SystemClock
+import com.project.bcv.BuildConfig
+import com.project.bcv.core.network.BackendScope
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.StepsRecord
@@ -8,95 +11,160 @@ import androidx.health.connect.client.records.metadata.DataOrigin
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import com.project.bcv.feature.discovery.domain.StepSource
+import com.project.bcv.feature.discovery.domain.StepProvider
+import com.project.bcv.feature.discovery.domain.StepReconciliation
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeout
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
-/**
- * Health Connect is the main step source: it already combines every app that records steps
- * (Google Fit, a watch, Health Connect's own phone tracking...) without counting overlaps twice.
- *
- * Only when no app records steps there does a journey fall back to Google Play services' Recording
- * API ([RecordingStepCounter]), and only once the user has allowed physical-activity access. Those
- * steps are never written to Health Connect, so the total is the recorded steps plus this app's own
- * Health Connect records (the "+2.000 bước thử" samples) — no step is read back and counted again.
- * A journey that started on the Recording API keeps it to the end, so its total never drops when the
- * source changes.
- */
+/** One journey source, a background hardware shadow, and a persisted monotonic reconciliation. */
 class HealthConnectStepSource(context: Context) : StepSource {
-    private val appContext = context.applicationContext
+    private val app = context.applicationContext
     private val readPermission = HealthPermission.getReadPermission(StepsRecord::class)
-    private val recording = RecordingStepCounter(appContext)
-    private val ownOrigin = DataOrigin(appContext.packageName)
-    private var otherSourceCheckedAt = 0L
-    private var otherSource = false
+    private val recording = RecordingStepCounter(app)
+    private val sensor = DeviceStepCounter.get(app)
+    private val store = JourneyStepStateStore(app)
+    private val mutex = Mutex()
+    private var activeJourney = 0L
+    private var destination = ""
 
-    override suspend fun hasPermission(): Boolean =
-        canReadHealthConnect() || (RECORDING_FALLBACK && recording.isUsable)
+    // The service owns the listener. Closing a screen must not stop an active journey.
+    override fun release() = Unit
 
-    override suspend fun needsActivityPermission(): Boolean = RECORDING_FALLBACK &&
-        recording.isAvailable && !recording.hasPermission() && !hasOtherStepSource()
+    override suspend fun hasPermission(): Boolean = when (store.load(activeJourney)?.provider) {
+        StepProvider.SENSOR -> sensor.isUsable
+        StepProvider.RECORDING -> recording.isUsable || sensor.isUsable
+        else -> canReadHealthConnect() || recording.isUsable || sensor.isUsable
+    }
 
-    override suspend fun capture(journeyId: Long) {
-        if (!RECORDING_FALLBACK) return
-        if (usesRecording(journeyId)) {
-            if (!recording.isTracking(journeyId)) recording.start(journeyId)
-        } else {
-            recording.stop()
+    // A hardware shadow is needed even with healthy Health Connect to detect a stalled writer.
+    override suspend fun needsActivityPermission(): Boolean =
+        (sensor.isAvailable || recording.isAvailable) && !sensor.hasPermission()
+
+    override suspend fun capture(journeyId: Long, startedAtEpochSeconds: Long, destinationName: String) = mutex.withLock {
+        activeJourney = journeyId
+        destination = destinationName
+        if (journeyId <= 0) {
+            JourneyStepService.stop(app)
+            recoverProvider { recording.stop() }
+            return@withLock
+        }
+        val state = stateFor(journeyId)
+        if (sensor.isUsable) JourneyStepService.start(app, journeyId, destination)
+        if (state.provider == StepProvider.RECORDING && !recording.isTracking(journeyId)) {
+            recoverProvider { recording.start(journeyId) }
         }
     }
 
-    override suspend fun totalStepsSince(journeyId: Long, startedAtEpochSeconds: Long): Long {
-        val startedAt = Instant.ofEpochSecond(startedAtEpochSeconds)
-        return if (usesRecording(journeyId)) {
-            if (!recording.isTracking(journeyId)) recording.start(journeyId)
-            recording.stepsSince(startedAt) + healthConnectSteps(startedAt, onlyThisApp = true)
+    override suspend fun totalStepsSince(journeyId: Long, startedAtEpochSeconds: Long): Long = mutex.withLock {
+        activeJourney = journeyId
+        var state = stateFor(journeyId)
+        val trackerReady = sensor.isUsable && JourneyStepService.start(app, journeyId, destination)
+        val shadow = if (sensor.isUsable && sensor.isTracking(journeyId)) sensor.total() else null
+        if (state.provider == StepProvider.SENSOR) {
+            check(trackerReady) { "Chưa bật được đếm bước nền. Mở ứng dụng và kiểm tra quyền Hoạt động thể chất." }
+            state = state.observe(null, shadow, SystemClock.elapsedRealtime())
         } else {
-            healthConnectSteps(startedAt, onlyThisApp = false)
+            val primary = recoverProvider {
+                val start = Instant.ofEpochSecond(startedAtEpochSeconds)
+                when (state.provider) {
+                    StepProvider.HEALTH_CONNECT -> {
+                        check(canReadHealthConnect()) { "Health Connect không khả dụng hoặc chưa có quyền đọc." }
+                        healthSteps(start, onlyThisApp = false)
+                    }
+                    StepProvider.RECORDING -> {
+                        check(recording.isUsable) { "Recording API không khả dụng." }
+                        if (!recording.isTracking(journeyId)) recording.start(journeyId)
+                        val real = recording.stepsSince(start)
+                        // Only explicit BCV demo entries can be added to Recording, never another real source.
+                        real + (recoverProvider { healthSteps(start, onlyThisApp = true) } ?: 0L)
+                    }
+                    StepProvider.SENSOR -> error("Sensor source handled above")
+                }
+            }
+            // Sample the shadow AFTER the provider reply, so a slow read cannot overlap credited steps.
+            val shadowAfterRead = if (sensor.isUsable && sensor.isTracking(journeyId)) sensor.total() else null
+            if (primary == null && shadowAfterRead == null) {
+                error("Chưa đọc được nguồn bước chân. Tiến độ đã lưu vẫn được giữ nguyên.")
+            }
+            state = state.observe(primary, shadowAfterRead, SystemClock.elapsedRealtime(), failed = primary == null)
         }
+        store.save(journeyId, state)
+        state.total
     }
 
-    private suspend fun usesRecording(journeyId: Long): Boolean = RECORDING_FALLBACK &&
-        (recording.isTracking(journeyId) || (recording.isUsable && !hasOtherStepSource()))
-
-    private suspend fun canReadHealthConnect(): Boolean =
-        HealthConnectClient.getSdkStatus(appContext) == HealthConnectClient.SDK_AVAILABLE &&
-            runCatching {
-                HealthConnectClient.getOrCreate(appContext).permissionController.getGrantedPermissions()
-            }.getOrDefault(emptySet()).contains(readPermission)
-
-    /** Whether any app other than BCV recorded steps in Health Connect in the last 30 days (cached briefly). */
-    private suspend fun hasOtherStepSource(): Boolean {
-        val now = System.currentTimeMillis()
-        if (now - otherSourceCheckedAt < SOURCE_CACHE_MS) return otherSource
-        otherSource = canReadHealthConnect() && runCatching {
-            val end = Instant.now()
-            HealthConnectClient.getOrCreate(appContext).aggregate(AggregateRequest(setOf(StepsRecord.COUNT_TOTAL),
-                TimeRangeFilter.between(end.minus(30, ChronoUnit.DAYS), end)))
-                .dataOrigins.any { it.packageName != appContext.packageName }
-        }.getOrDefault(false)
-        otherSourceCheckedAt = now
-        return otherSource
-    }
-
-    private suspend fun healthConnectSteps(startedAt: Instant, onlyThisApp: Boolean): Long {
-        val now = Instant.now()
-        if (!startedAt.isBefore(now) || !canReadHealthConnect()) return 0
-        val request = if (onlyThisApp) {
-            AggregateRequest(setOf(StepsRecord.COUNT_TOTAL), TimeRangeFilter.between(startedAt, now),
-                dataOriginFilter = setOf(ownOrigin))
-        } else {
-            AggregateRequest(setOf(StepsRecord.COUNT_TOTAL), TimeRangeFilter.between(startedAt, now))
+    private suspend fun stateFor(journeyId: Long): StepReconciliation {
+        store.load(journeyId)?.let { return it }
+        val legacy = app.getSharedPreferences(BackendScope.preferenceFile("bcv_step_fallback", BuildConfig.API_BASE_URL), Context.MODE_PRIVATE)
+        val saved = if (legacy.getLong("last_journey", -1) == journeyId) legacy.getLong("last_total", 0) else 0L
+        val shadow = if (sensor.isTracking(journeyId)) sensor.total() else 0L
+        val provider = when {
+            legacy.getLong("sensor_journey", -1) == journeyId -> StepProvider.SENSOR
+            recording.isTracking(journeyId) -> StepProvider.RECORDING
+            hasRecentHealthWriter() -> StepProvider.HEALTH_CONNECT
+            recording.isUsable -> StepProvider.RECORDING
+            sensor.isUsable -> StepProvider.SENSOR
+            else -> StepProvider.HEALTH_CONNECT
         }
-        return HealthConnectClient.getOrCreate(appContext).aggregate(request)[StepsRecord.COUNT_TOTAL] ?: 0L
+        val carry = if (provider == StepProvider.SENSOR && legacy.getLong("sensor_journey", -1) == journeyId)
+            maxOf(saved, legacy.getLong("sensor_offset", 0) + shadow) else saved
+        return StepReconciliation(provider, total = carry, sensorAnchor = shadow,
+            lastPrimaryAdvanceAt = SystemClock.elapsedRealtime()).also { store.save(journeyId, it) }
     }
 
-    private companion object {
-        /**
-         * true: count walking with the Recording API when no app records steps in Health Connect.
-         * false: Health Connect only (nothing is recorded, physical-activity access never asked),
-         * e.g. to test Health Connect on its own.
-         */
-        const val RECORDING_FALLBACK = true
-        const val SOURCE_CACHE_MS = 60_000L
+    private suspend fun canReadHealthConnect(): Boolean = recoverProvider {
+        HealthConnectClient.getSdkStatus(app) == HealthConnectClient.SDK_AVAILABLE &&
+            HealthConnectClient.getOrCreate(app).permissionController.getGrantedPermissions().contains(readPermission)
+    } ?: false
+
+    private suspend fun hasRecentHealthWriter(): Boolean = canReadHealthConnect() && (recoverProvider {
+        val end = Instant.now()
+        HealthConnectClient.getOrCreate(app).aggregate(AggregateRequest(setOf(StepsRecord.COUNT_TOTAL),
+            TimeRangeFilter.between(end.minus(1, ChronoUnit.DAYS), end)))
+            .dataOrigins.any { it.packageName != app.packageName }
+    } ?: false)
+
+    private suspend fun healthSteps(start: Instant, onlyThisApp: Boolean): Long {
+        if (!canReadHealthConnect()) {
+            if (onlyThisApp) return 0
+            error("Chưa có quyền đọc Health Connect.")
+        }
+        val end = Instant.now()
+        if (!start.isBefore(end)) return 0
+        val request = AggregateRequest(setOf(StepsRecord.COUNT_TOTAL), TimeRangeFilter.between(start, end),
+            dataOriginFilter = if (onlyThisApp) setOf(DataOrigin(app.packageName)) else emptySet())
+        return HealthConnectClient.getOrCreate(app).aggregate(request)[StepsRecord.COUNT_TOTAL] ?: 0
+    }
+
+    private suspend fun <T> recoverProvider(block: suspend () -> T): T? = try {
+        withTimeout(5_000L) { block() }
+    } catch (error: Exception) {
+        if (error is CancellationException && error !is TimeoutCancellationException) throw error
+        null
+    }
+}
+
+/** Kept separate from raw sensor state, so service callbacks cannot overwrite a source checkpoint. */
+private class JourneyStepStateStore(context: Context) {
+    private val preferences = context.getSharedPreferences(BackendScope.preferenceFile("bcv_journey_step_state", BuildConfig.API_BASE_URL), Context.MODE_PRIVATE)
+    fun load(journeyId: Long): StepReconciliation? {
+        if (journeyId <= 0 || preferences.getLong("journey", -1) != journeyId) return null
+        val provider = preferences.getString("provider", null)?.let {
+            runCatching { StepProvider.valueOf(it) }.getOrNull()
+        } ?: return null
+        return StepReconciliation(provider, preferences.getLong("total", 0),
+            preferences.getLong("primary", -1).takeIf { it >= 0 },
+            preferences.getLong("sensor_anchor", -1).takeIf { it >= 0 },
+            preferences.getLong("last_advance", 0))
+    }
+    fun save(journeyId: Long, state: StepReconciliation) {
+        preferences.edit().putLong("journey", journeyId).putString("provider", state.provider.name)
+            .putLong("total", state.total).putLong("primary", state.primaryRaw ?: -1)
+            .putLong("sensor_anchor", state.sensorAnchor ?: -1)
+            .putLong("last_advance", state.lastPrimaryAdvanceAt).apply()
     }
 }
