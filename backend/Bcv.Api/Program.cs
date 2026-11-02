@@ -81,6 +81,8 @@ else
 }
 
 var app = builder.Build();
+app.UseDefaultFiles();
+app.UseStaticFiles();
 // Explicit CLI operation; the public registration endpoint never grants ADMIN permissions.
 if (Array.IndexOf(args, "--create-admin") is var adminIndex && adminIndex >= 0)
 {
