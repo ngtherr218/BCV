@@ -9,7 +9,7 @@ val localDevProperties = Properties().apply {
     if (file.isFile) file.inputStream().use(::load)
 }
 
-val deployedApiUrl = "https://bcv-admin-test.onrender.com/"
+val deployedApiUrl = "https://bcv-admin.onrender.com/"
 
 fun previewCredential(apiUrl: String, key: String): String {
     val credentialApi = localDevProperties.getProperty("bcvPreviewLoginApiBaseUrl") ?: "http://127.0.0.1:5081/"
