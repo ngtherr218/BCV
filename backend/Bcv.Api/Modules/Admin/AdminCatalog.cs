@@ -22,6 +22,6 @@ public static class AdminCatalog
         ["cards"] = new("card", "card_id", ["name", "description"], [Text("name", 150, true), Number("place_id", NpgsqlDbType.Bigint, true, 1), Text("image_key", 8000000), Text("description", 20000), Status()]),
         ["collections"] = new("collection", "collection_id", ["name", "description"], [Text("name", 150, true), Text("description", 20000), Status()]),
         ["quests"] = new("quest", "quest_id", ["name"], [Text("name", 200, true), Choice("quest_type", "DAILY", "WEEKLY"), Choice("condition_type", "STEP_COUNT", "DISCOVER_PLACE", "COMPLETE_JOURNEY"), Number("target_value", NpgsqlDbType.Integer, true, 1), Choice("cycle_type", "DAILY", "WEEKLY"), Number("reward_item_id", NpgsqlDbType.Bigint, false, 1), Number("reward_quantity", NpgsqlDbType.Integer, false, 1), Status()]),
-        ["items"] = new("item", "item_id", ["name", "description"], [Text("name", 150, true), Text("description", 20000), Number("effect_value", NpgsqlDbType.Numeric, false, 1, 100), Number("effective_range", NpgsqlDbType.Integer, false, 1), Number("usage_limit", NpgsqlDbType.Integer, false, 0), Status()], false)
+        ["items"] = new("item", "item_id", ["name", "description"], [Text("name", 150, true), Choice("item_type", "SPEED_SHOES", "FLIGHT_TICKET"), Text("description", 20000), Number("effect_value", NpgsqlDbType.Numeric, false, 1, 100), Number("effective_range", NpgsqlDbType.Integer, false, 1), Number("usage_limit", NpgsqlDbType.Integer, false, 0), Status()])
     };
 }

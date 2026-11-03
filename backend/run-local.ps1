@@ -23,6 +23,18 @@ $plain = Get-Secret 'BCV_DB_PASSWORD' 'PostgreSQL BCV password'
 $env:ConnectionStrings__Bcv = New-BcvConnectionString $config $plain
 $plain = $null
 
+# Reverse geocoding stays on the backend; reuse the local Android REST key for development.
+$originalGoongKey = $env:Goong__ApiKey
+$goongKey = Get-BcvEnvironment 'Goong__ApiKey'
+if (!$goongKey) { $goongKey = Get-BcvEnvironment 'BCV_GOONG_API_KEY' }
+$goongDevFile = Join-Path $PSScriptRoot '../android/dev.properties'
+if (!$goongKey -and (Test-Path -LiteralPath $goongDevFile)) {
+    $goongMatch = [regex]::Match([IO.File]::ReadAllText($goongDevFile), '(?m)^bcvGoongApiKey=(.*)$')
+    if ($goongMatch.Success) { $goongKey = $goongMatch.Groups[1].Value.Trim() }
+}
+if ($goongKey) { $env:Goong__ApiKey = $goongKey }
+$goongKey = $null
+
 # Password reset codes go out through Gmail SMTP. Leave the App Password empty (press Enter)
 # and the API logs the code instead.
 #
@@ -73,6 +85,8 @@ try {
     & $dotnet (Join-Path $PSScriptRoot 'Bcv.Api\bin\Debug\net10.0\Bcv.Api.dll') --urls $config.ApiUrls
 }
 finally {
+    if ($null -eq $originalGoongKey) { Remove-Item Env:Goong__ApiKey -ErrorAction SilentlyContinue }
+    else { $env:Goong__ApiKey = $originalGoongKey }
     Remove-Item Env:ConnectionStrings__Bcv -ErrorAction SilentlyContinue
     'Host', 'Port', 'EnableSsl', 'User', 'From', 'Password' | ForEach-Object {
         Remove-Item "Env:Smtp__$_" -ErrorAction SilentlyContinue

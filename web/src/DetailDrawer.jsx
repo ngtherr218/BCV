@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Pencil, X, Trash2 } from 'lucide-react';
-import { api, date, number } from './api';
+import { api, date, loginDate, number } from './api';
 import { catalog, valueLabels } from './catalog';
 import { Badge, ErrorBox, Loading } from './components';
 import { useAnimatedDismiss } from './motion';
@@ -28,7 +28,7 @@ export default function DetailDrawer({ resource, recordId, close, edit, openRela
     <div className="drawer-body">{loading?<Loading/>:error?<ErrorBox message={error} retry={()=>setRetry(value=>value+1)}/>:data&&<div className="detail-content" key={`${resource}-${recordId}`}>
       {['places','cards'].includes(resource)&&<section className="detail-section detail-media"><h3>Hình ảnh <span>{images.length}</span></h3>{images.length?<div className="detail-gallery">{images.map((image,index)=><figure key={image}><img src={image} alt={`${data.name} · ảnh ${index+1}`} loading={index===0?'eager':'lazy'} onError={event=>{event.currentTarget.hidden=true;event.currentTarget.nextElementSibling.hidden=false;}}/><span hidden className="detail-image-error">Không tải được ảnh</span><figcaption>Ảnh {index+1}</figcaption></figure>)}</div>:<p className="detail-empty">Chưa có hình ảnh.</p>}</section>}
       <div className="detail-summary"><span className="metric-icon mint"><config.icon size={24}/></span><div><h3>{data.name||data.full_name||`#${recordId}`}</h3><span>{config.title} · Mã #{recordId}</span></div>{data.status&&<Badge value={data.status}/>}</div>
-      {resource==='users'&&<><dl className="detail-grid"><div><dt>Họ tên</dt><dd>{data.full_name}</dd></div><div><dt>Email</dt><dd>{data.email}</dd></div><div><dt>Vai trò</dt><dd>{valueLabels[data.role]||data.role}</dd></div><div><dt>Ngày tham gia</dt><dd>{date(data.created_at)}</dd></div></dl><div className="mini-metrics">{metrics.users.map(([key,label])=><div key={key}><strong>{number(data[key])}</strong><span>{label}</span></div>)}</div></>}
+      {resource==='users'&&<><dl className="detail-grid"><div><dt>Họ tên</dt><dd>{data.full_name}</dd></div><div><dt>Email</dt><dd>{data.email}</dd></div><div><dt>Vai trò</dt><dd>{valueLabels[data.role]||data.role}</dd></div><div><dt>Ngày tham gia</dt><dd>{date(data.created_at)}</dd></div><div><dt>Đăng nhập cuối (giờ Việt Nam)</dt><dd>{loginDate(data.last_login_at)}</dd></div></dl><div className="mini-metrics">{metrics.users.map(([key,label])=><div key={key}><strong>{number(data[key])}</strong><span>{label}</span></div>)}</div></>}
       {resource==='items'&&<dl className="detail-grid"><div><dt>Loại vật phẩm</dt><dd>{valueLabels[data.item_type]||data.item_type}</dd></div></dl>}
       <dl className="detail-grid">{fields.map(field=><div className={field.wide?'wide':''} key={field.key}><dt>{field.label}</dt><dd className={field.type==='textarea'?'detail-prose':''}>{value(field)}</dd></div>)}</dl>
       {resource==='regions'&&<section className="detail-section"><h3>Địa danh thuộc khu vực <span>{number(regionPlaces.length)}</span></h3>{regionPlaces.length?<div className="detail-relations">{regionPlaces.map(place=><div key={place.id}>{reference('places',place.id)}<Badge value={place.status}/></div>)}</div>:<p className="detail-empty">Khu vực chưa có địa danh.</p>}</section>}

@@ -25,6 +25,12 @@ export async function api(path, options = {}) {
   } finally { clearTimeout(timeout); }
 }
 export const number = value => new Intl.NumberFormat('vi-VN').format(value || 0);
+export function loginDate(value) {
+  if (!value) return 'Chưa ghi nhận';
+  const timestamp = new Date(value);
+  if (!Number.isFinite(timestamp.getTime())) return 'Chưa ghi nhận';
+  return new Intl.DateTimeFormat('vi-VN', { dateStyle:'medium', timeStyle:'medium', timeZone:'Asia/Ho_Chi_Minh' }).format(timestamp);
+}
 export const date = value => value ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value.endsWith?.('Z') ? value : `${value}Z`)) : '—';
 export function downloadCSV(rows, columns, file) {
   const escape = value => { let text = String(value ?? ''); if (/^[=+@\-\t\r]/.test(text)) text = "'" + text; return `"${text.replaceAll('"', '""')}"`; };

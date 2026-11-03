@@ -13,18 +13,19 @@ public sealed class ItemUseRepository(NpgsqlDataSource db)
     private sealed record OwnedItem(long ItemId, string Name, bool Active, int Quantity, decimal? EffectValue, int? Range);
 
     private static async Task<OwnedItem> LoadItemAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction,
-        long userId, string type, bool forUpdate, CancellationToken ct)
+        long userId, string type, bool forUpdate, CancellationToken ct, long? itemId = null)
     {
         await using var command = new NpgsqlCommand($"""
             SELECT i.item_id, i.name, i.status = 'ACTIVE', COALESCE(ui.quantity, 0), i.effect_value, i.effective_range
             FROM public.item i
             LEFT JOIN public.user_item ui ON ui.item_id = i.item_id AND ui.user_id = $1
-            WHERE i.item_type = $2
+            WHERE i.item_type = $2 AND ($3::bigint IS NULL OR i.item_id = $3)
             ORDER BY i.item_id LIMIT 1
             {(forUpdate ? "FOR UPDATE OF i" : "")}
             """, connection, transaction);
         command.Parameters.Add(new NpgsqlParameter<long> { TypedValue = userId, NpgsqlDbType = NpgsqlDbType.Bigint });
         command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = type, NpgsqlDbType = NpgsqlDbType.Varchar });
+        command.Parameters.Add(new NpgsqlParameter { Value = (object?)itemId ?? DBNull.Value, NpgsqlDbType = NpgsqlDbType.Bigint });
         await using var reader = await command.ExecuteReaderAsync(ct);
         if (!await reader.ReadAsync(ct)) throw new ItemUseException("ITEM_NOT_FOUND", "Không tìm thấy vật phẩm.");
         return new OwnedItem(reader.GetInt64(0), reader.GetString(1), reader.GetBoolean(2), reader.GetInt32(3),
@@ -45,16 +46,16 @@ public sealed class ItemUseRepository(NpgsqlDataSource db)
             throw new ItemUseException("NOT_OWNED", "Bạn không còn vật phẩm này.");
     }
 
-    public async Task<SpeedShoesStatus> ShoesAsync(long userId, CancellationToken ct)
+    public async Task<SpeedShoesStatus> ShoesAsync(long userId, CancellationToken ct, long? itemId = null)
     {
         await using var connection = await db.OpenConnectionAsync(ct);
-        return await ShoesAsync(connection, null, userId, ct);
+        return await ShoesAsync(connection, null, userId, ct, itemId);
     }
 
     private static async Task<SpeedShoesStatus> ShoesAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction,
-        long userId, CancellationToken ct)
+        long userId, CancellationToken ct, long? itemId = null)
     {
-        var item = await LoadItemAsync(connection, transaction, userId, SpeedShoes.Type, false, ct);
+        var item = await LoadItemAsync(connection, transaction, userId, SpeedShoes.Type, false, ct, itemId);
         SpeedShoesJourney? journey = null;
         await using (var command = new NpgsqlCommand("""
             SELECT j.journey_id, p.name, j.recorded_steps, j.required_steps
@@ -84,17 +85,17 @@ public sealed class ItemUseRepository(NpgsqlDataSource db)
             item.EffectValue ?? 1m, item.Range ?? 0, journey, effect);
     }
 
-    public async Task<SpeedShoesStatus> UseShoesAsync(long userId, CancellationToken ct)
+    public async Task<SpeedShoesStatus> UseShoesAsync(long userId, CancellationToken ct, long? itemId = null)
     {
         await using var connection = await db.OpenConnectionAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
-        var item = await LoadItemAsync(connection, transaction, userId, SpeedShoes.Type, true, ct);
+        var item = await LoadItemAsync(connection, transaction, userId, SpeedShoes.Type, true, ct, itemId);
         if (!item.Active) throw new ItemUseException("ITEM_INACTIVE", "Vật phẩm đang tạm ngưng hoạt động.");
         if (item.Quantity <= 0) throw new ItemUseException("NOT_OWNED", "Bạn chưa sở hữu giày tăng tốc.");
         if (item.EffectValue is not > 1m || item.Range is not > 0)
             throw new ItemUseException("ITEM_MISCONFIGURED", "Vật phẩm chưa được cấu hình hiệu ứng.");
 
-        var status = await ShoesAsync(connection, transaction, userId, ct);
+        var status = await ShoesAsync(connection, transaction, userId, ct, itemId);
         if (status.Journey is null)
             throw new ItemUseException("NO_ACTIVE_JOURNEY", "Cần có hành trình đang thực hiện để dùng giày.");
         if (status.Effect is { RemainingSteps: > 0 })
@@ -117,15 +118,15 @@ public sealed class ItemUseRepository(NpgsqlDataSource db)
             if (await command.ExecuteNonQueryAsync(ct) == 0)
                 throw new ItemUseException("EFFECT_ACTIVE", "Hiệu ứng tăng tốc trước vẫn đang áp dụng.");
         }
-        var result = await ShoesAsync(connection, transaction, userId, ct);
+        var result = await ShoesAsync(connection, transaction, userId, ct, itemId);
         await transaction.CommitAsync(ct);
         return result;
     }
 
-    public async Task<FlightTicketStatus> FlightAsync(long userId, CancellationToken ct)
+    public async Task<FlightTicketStatus> FlightAsync(long userId, CancellationToken ct, long? itemId = null)
     {
         await using var connection = await db.OpenConnectionAsync(ct);
-        var item = await LoadItemAsync(connection, null, userId, FlightType, false, ct);
+        var item = await LoadItemAsync(connection, null, userId, FlightType, false, ct, itemId);
         bool hasJourney;
         await using (var command = new NpgsqlCommand("""
             SELECT EXISTS (SELECT 1 FROM public.journey WHERE user_id = $1 AND status = 'IN_PROGRESS')
@@ -185,11 +186,11 @@ public sealed class ItemUseRepository(NpgsqlDataSource db)
     }
 
     /// <summary>Moves the virtual location to the place and unlocks it (discovery, card, quest progress).</summary>
-    public async Task<FlightResult> UseFlightAsync(long userId, long placeId, CancellationToken ct)
+    public async Task<FlightResult> UseFlightAsync(long userId, long placeId, CancellationToken ct, long? itemId = null)
     {
         await using var connection = await db.OpenConnectionAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
-        var item = await LoadItemAsync(connection, transaction, userId, FlightType, true, ct);
+        var item = await LoadItemAsync(connection, transaction, userId, FlightType, true, ct, itemId);
         if (!item.Active) throw new ItemUseException("ITEM_INACTIVE", "Vật phẩm đang tạm ngưng hoạt động.");
         if (item.Quantity <= 0) throw new ItemUseException("NOT_OWNED", "Bạn chưa sở hữu vé máy bay.");
         await using (var command = new NpgsqlCommand("""

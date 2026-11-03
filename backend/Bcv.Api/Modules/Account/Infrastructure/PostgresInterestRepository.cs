@@ -9,15 +9,15 @@ public sealed class PostgresInterestRepository(NpgsqlDataSource db) : IInterestR
     public async Task<InterestSnapshot> LoadAsync(long userId, CancellationToken ct)
     {
         var options = new List<PlaceTypeOption>();
-        await using (var command = db.CreateCommand("SELECT place_type_id, name FROM public.place_type ORDER BY place_type_id"))
+        await using (var command = db.CreateCommand("SELECT interest_group_id, name FROM public.interest_group ORDER BY interest_group_id"))
         await using (var reader = await command.ExecuteReaderAsync(ct))
             while (await reader.ReadAsync(ct)) options.Add(new(reader.GetInt64(0), reader.GetString(1)));
 
         var selected = new List<long>();
         await using (var command = db.CreateCommand("""
-            SELECT uppt.place_type_id FROM public.user_preference up
-            JOIN public.user_preference_place_type uppt ON uppt.user_preference_id = up.user_preference_id
-            WHERE up.user_id = $1 ORDER BY uppt.place_type_id
+            SELECT uppt.interest_group_id FROM public.user_preference up
+            JOIN public.user_preference_interest uppt ON uppt.user_preference_id = up.user_preference_id
+            WHERE up.user_id = $1 ORDER BY uppt.interest_group_id
             """))
         {
             command.Parameters.Add(new NpgsqlParameter<long> { TypedValue = userId, NpgsqlDbType = NpgsqlDbType.Bigint });
@@ -32,7 +32,7 @@ public sealed class PostgresInterestRepository(NpgsqlDataSource db) : IInterestR
         await using var connection = await db.OpenConnectionAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
         var ids = placeTypeIds.ToArray();
-        await using (var check = new NpgsqlCommand("SELECT count(*) FROM public.place_type WHERE place_type_id = ANY($1)", connection, transaction))
+        await using (var check = new NpgsqlCommand("SELECT count(*) FROM public.interest_group WHERE interest_group_id = ANY($1)", connection, transaction))
         {
             check.Parameters.Add(new NpgsqlParameter<long[]> { TypedValue = ids, NpgsqlDbType = NpgsqlDbType.Array | NpgsqlDbType.Bigint });
             var count = (long)(await check.ExecuteScalarAsync(ct) ?? 0L);
@@ -51,13 +51,13 @@ public sealed class PostgresInterestRepository(NpgsqlDataSource db) : IInterestR
             upsert.Parameters.Add(new NpgsqlParameter<long> { TypedValue = userId, NpgsqlDbType = NpgsqlDbType.Bigint });
             preferenceId = (long)(await upsert.ExecuteScalarAsync(ct) ?? throw new InvalidOperationException("Missing preference id"));
         }
-        await using (var clear = new NpgsqlCommand("DELETE FROM public.user_preference_place_type WHERE user_preference_id = $1", connection, transaction))
+        await using (var clear = new NpgsqlCommand("DELETE FROM public.user_preference_interest WHERE user_preference_id = $1", connection, transaction))
         {
             clear.Parameters.Add(new NpgsqlParameter<long> { TypedValue = preferenceId, NpgsqlDbType = NpgsqlDbType.Bigint });
             await clear.ExecuteNonQueryAsync(ct);
         }
         await using (var insert = new NpgsqlCommand("""
-            INSERT INTO public.user_preference_place_type (user_preference_id, place_type_id)
+            INSERT INTO public.user_preference_interest (user_preference_id, interest_group_id)
             SELECT $1, unnest($2::bigint[])
             """, connection, transaction))
         {

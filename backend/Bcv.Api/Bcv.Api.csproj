@@ -6,5 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Npgsql" Version="10.0.0" />
+    <EmbeddedResource Include="Modules/Discovery/Domain/recommendation-centroids.json" />
+    <EmbeddedResource Include="../../db/021_versioned_recommendations.sql" LogicalName="Bcv.RecommendationMigration.sql" />
   </ItemGroup>
 </Project>

@@ -49,6 +49,34 @@
                 android:orientation="vertical"
                 android:visibility="gone">
 
+            <LinearLayout
+                android:id="@+id/newCardsPanel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:padding="16dp"
+                android:background="@drawable/collection_card_new_bg"
+                android:orientation="vertical"
+                android:visibility="gone">
+                <TextView
+                    android:id="@+id/newCardsTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="20sp"
+                    android:textColor="@color/forest"
+                    android:textStyle="bold" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Thẻ vừa nhận từ hành trình. Chạm vào thẻ để xem."
+                    android:textColor="@color/teal"
+                    android:layout_marginTop="6dp" />
+                <LinearLayout
+                    android:id="@+id/newCardList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+            </LinearLayout>
             <!-- Total cards owned -->
             <LinearLayout
                 android:id="@+id/summaryCard"

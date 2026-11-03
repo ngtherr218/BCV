@@ -13,6 +13,12 @@ public static class StatsNotifyEndpoints
             ILoggerFactory logs, CancellationToken ct) => Run(request, sessions, logs, user => stats.StatsAsync(user, ct)));
         app.MapGet("/api/notifications", (HttpRequest request, ISessionStore sessions, NotificationRepository notifications,
             ILoggerFactory logs, CancellationToken ct) => Run(request, sessions, logs, user => notifications.NotificationsAsync(user, ct)));
+        app.MapPost("/api/notifications/read-all", (HttpRequest request, ISessionStore sessions,
+            NotificationRepository notifications, ILoggerFactory logs, CancellationToken ct) =>
+            Run(request, sessions, logs, user => notifications.MarkAllReadAsync(user, ct)));
+        app.MapPost("/api/notifications/delete-all", (HttpRequest request,
+            ISessionStore sessions, NotificationRepository notifications, ILoggerFactory logs, CancellationToken ct) =>
+            Run(request, sessions, logs, user => notifications.DeleteAllAsync(user, ct)));
         app.MapPost("/api/notifications/{notificationId:long}/read", (long notificationId, HttpRequest request,
             ISessionStore sessions, NotificationRepository notifications, ILoggerFactory logs, CancellationToken ct) =>
             Run(request, sessions, logs, user => notifications.MarkReadAsync(user, notificationId, ct)));

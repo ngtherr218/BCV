@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Data;
 using Npgsql;
 using NpgsqlTypes;
 using Bcv.Api.Modules.Discovery.Application;
@@ -11,6 +13,7 @@ public sealed class PostgresRecommendationRepository(NpgsqlDataSource db) : IRec
     public async Task<RecommendationInput?> LoadAsync(long userId, CancellationToken ct)
     {
         await using var connection = await db.OpenConnectionAsync(ct);
+        await using var transaction = await connection.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
 
         string regionName;
         decimal latitude, longitude;
@@ -28,31 +31,10 @@ public sealed class PostgresRecommendationRepository(NpgsqlDataSource db) : IRec
             longitude = reader.GetDecimal(2);
         }
 
-        string? activityLevel = null;
-        var preferences = new List<PreferenceGroup>();
-        await using (var command = new NpgsqlCommand("""
-            SELECT up.activity_level, pt.place_type_id, pt.name
-            FROM public.user_preference up
-            LEFT JOIN public.user_preference_place_type upt ON upt.user_preference_id = up.user_preference_id
-            LEFT JOIN public.place_type pt ON pt.place_type_id = upt.place_type_id
-            WHERE up.user_id = $1
-            ORDER BY pt.place_type_id
-            """, connection))
-        {
-            command.Parameters.Add(UserId(userId));
-            await using var reader = await command.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct))
-            {
-                activityLevel = reader.GetString(0);
-                if (!reader.IsDBNull(1) && RecommendationScoring.PlaceTypeFeatures.TryGetValue(reader.GetInt64(1), out var codes))
-                    preferences.Add(new PreferenceGroup(reader.GetString(2), codes));
-            }
-        }
-
         // Only an activated configuration may affect user-facing recommendations.
         RecommendationConfig? config = null;
         await using (var command = new NpgsqlCommand("""
-            SELECT recommendation_config_id, version, distance_limit
+            SELECT recommendation_config_id, version, distance_limit, settings::text
             FROM public.recommendation_config
             WHERE status = 'ACTIVE'
             ORDER BY updated_at DESC, recommendation_config_id DESC
@@ -62,9 +44,32 @@ public sealed class PostgresRecommendationRepository(NpgsqlDataSource db) : IRec
         {
             if (await reader.ReadAsync(ct))
                 config = new RecommendationConfig(reader.GetInt64(0), reader.GetString(1), reader.GetDecimal(2),
-                    new Dictionary<string, decimal>());
+                    new Dictionary<string, decimal>(), JsonSerializer.Deserialize<RecommendationSettings>(reader.GetString(3), new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         }
         if (config is null) throw new ExploreException("NO_RECOMMENDATION_CONFIG", "Chưa có cấu hình gợi ý.");
+
+        if (config.Settings is null || !config.Settings.IsValid()) throw new ExploreException("INVALID_RECOMMENDATION_CONFIG", "Cấu hình gợi ý chưa hợp lệ.");
+
+        string? activityLevel = null;
+        var preferences = new List<PreferenceGroup>();
+        await using (var command = new NpgsqlCommand("""
+            SELECT up.activity_level, pt.interest_group_id, pt.name
+            FROM public.user_preference up
+            LEFT JOIN public.user_preference_interest upt ON upt.user_preference_id = up.user_preference_id
+            LEFT JOIN public.interest_group pt ON pt.interest_group_id = upt.interest_group_id
+            WHERE up.user_id = $1
+            ORDER BY pt.interest_group_id
+            """, connection))
+        {
+            command.Parameters.Add(UserId(userId));
+            await using var reader = await command.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                activityLevel = reader.GetString(0);
+                if (!reader.IsDBNull(1) && config.Settings!.InterestFeatures.TryGetValue(reader.GetInt64(1), out var codes))
+                    preferences.Add(new PreferenceGroup(reader.GetString(2), codes.ToHashSet()));
+            }
+        }
 
         var weights = new Dictionary<string, decimal>();
         await using (var command = new NpgsqlCommand("""
@@ -87,13 +92,14 @@ public sealed class PostgresRecommendationRepository(NpgsqlDataSource db) : IRec
                    ARRAY(SELECT c.code FROM public.place_feature_value fv
                          JOIN public.recommendation_criterion c ON c.criterion_id = fv.criterion_id
                          WHERE fv.place_feature_id = pf.place_feature_id AND fv.feature_value = 1),
-                   pf.cluster_number, p.rating, p.rating_count,
+                   pf.cluster_number, snapshot.rating, snapshot.rating_count,
                    ({GeoSql.VirtualLocationToPlaceMeters})::numeric,
                    EXISTS (SELECT 1 FROM public.user_discovered_place d
                            WHERE d.user_id = $1 AND d.place_id = p.place_id)
             FROM public.place p
             JOIN public.region r ON r.region_id = p.region_id
             JOIN public.place_feature pf ON pf.place_id = p.place_id AND pf.recommendation_config_id = $2
+            JOIN public.recommendation_rating_snapshot snapshot ON snapshot.place_id=p.place_id AND snapshot.recommendation_config_id=pf.recommendation_config_id
             JOIN public.virtual_location v ON v.user_id = $1
             WHERE p.status = 'ACTIVE' AND r.status = 'ACTIVE'
             """, connection))

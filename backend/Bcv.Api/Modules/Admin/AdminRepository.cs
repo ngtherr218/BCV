@@ -32,15 +32,18 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
         // Only remove owned media/membership rows. Other references preserve business history.
         var ownedSql = key switch
         {
-            "places" => "DELETE FROM place_image WHERE place_id=$1",
+            "places" => "DELETE FROM place_feature_value WHERE place_feature_id IN (SELECT place_feature_id FROM place_feature WHERE place_id=$1); DELETE FROM place_feature WHERE place_id=$1; DELETE FROM place_image WHERE place_id=$1",
             "collections" => "DELETE FROM collection_card WHERE collection_id=$1",
             _ => null
         };
         if (ownedSql is not null)
         {
-            await using var owned = new NpgsqlCommand(ownedSql, conn, tx);
-            owned.Parameters.AddWithValue(id);
-            await owned.ExecuteNonQueryAsync(ct);
+            foreach (var statement in ownedSql.Split(';', StringSplitOptions.RemoveEmptyEntries))
+            {
+                await using var owned = new NpgsqlCommand(statement, conn, tx);
+                owned.Parameters.AddWithValue(id);
+                await owned.ExecuteNonQueryAsync(ct);
+            }
         }
         try
         {
@@ -68,7 +71,7 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
         var json = "to_jsonb(t)";
         if (key == "users") json = "to_jsonb(t)-'password_hash'";
         if (key == "places") json += " || jsonb_build_object('region_name',(SELECT name FROM region WHERE region_id=t.region_id),'type_name',(SELECT name FROM place_type WHERE place_type_id=t.place_type_id),'image_count',(SELECT count(*) FROM place_image WHERE place_id=t.place_id),'image_key',(SELECT image_key FROM place_image WHERE place_id=t.place_id ORDER BY place_image_id LIMIT 1))";
-        if (key == "cards") json += " || jsonb_build_object('place_name',(SELECT name FROM place WHERE place_id=t.place_id),'collected_count',(SELECT count(*) FROM user_card WHERE card_id=t.card_id))";
+        if (key == "cards") json += " || jsonb_build_object('place_name',(SELECT name FROM place WHERE place_id=t.place_id),'collected_count',(SELECT count(*) FROM (SELECT user_id FROM public.user_card WHERE card_id=t.card_id UNION SELECT user_id FROM public.user_discovered_place WHERE place_id=t.place_id) owners))";
         if (key == "collections") json += " || jsonb_build_object('card_count',(SELECT count(*) FROM collection_card WHERE collection_id=t.collection_id))";
         if (key == "quests") json += " || jsonb_build_object('reward_name',(SELECT name FROM item WHERE item_id=t.reward_item_id),'completed_count',(SELECT count(*) FROM quest_progress WHERE quest_id=t.quest_id AND completion_status))";
         if (key == "regions") json += " || jsonb_build_object('place_count',(SELECT count(*) FROM place WHERE region_id=t.region_id))";
@@ -87,9 +90,9 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
         var r = Resource(key);
         var extra = key switch
         {
-            "places" => " || jsonb_build_object('images',COALESCE((SELECT jsonb_agg(image_key ORDER BY place_image_id) FROM place_image WHERE place_id=t.place_id),'[]'::jsonb))",
+            "places" => " || jsonb_build_object('images',COALESCE((SELECT jsonb_agg(image_key ORDER BY place_image_id) FROM place_image WHERE place_id=t.place_id),'[]'::jsonb),'feature_codes',COALESCE((SELECT jsonb_agg(c.code ORDER BY c.criterion_id) FROM place_feature pf JOIN place_feature_value fv ON fv.place_feature_id=pf.place_feature_id JOIN recommendation_criterion c ON c.criterion_id=fv.criterion_id WHERE pf.place_id=t.place_id AND fv.feature_value=1 AND pf.recommendation_config_id=(SELECT recommendation_config_id FROM recommendation_config ORDER BY (status='ACTIVE') DESC,updated_at DESC,recommendation_config_id DESC LIMIT 1)),'[]'::jsonb))",
             "collections" => " || jsonb_build_object('card_ids',COALESCE((SELECT jsonb_agg(card_id) FROM collection_card WHERE collection_id=t.collection_id),'[]'::jsonb))",
-            "users" => " || jsonb_build_object('journey_count',(SELECT count(*) FROM journey WHERE user_id=t.user_id),'discovered_count',(SELECT count(*) FROM user_discovered_place WHERE user_id=t.user_id),'card_count',(SELECT count(*) FROM user_card WHERE user_id=t.user_id),'total_steps',(SELECT COALESCE(sum(step_count),0) FROM step_data WHERE user_id=t.user_id))",
+            "users" => " || jsonb_build_object('journey_count',(SELECT count(*) FROM journey WHERE user_id=t.user_id),'discovered_count',(SELECT count(*) FROM user_discovered_place WHERE user_id=t.user_id),'card_count',(SELECT count(*) FROM public.card c WHERE c.status='ACTIVE' AND (EXISTS(SELECT 1 FROM public.user_card uc WHERE uc.user_id=t.user_id AND uc.card_id=c.card_id) OR EXISTS(SELECT 1 FROM public.user_discovered_place d WHERE d.user_id=t.user_id AND d.place_id=c.place_id))),'total_steps',(SELECT COALESCE(sum(step_count),0) FROM step_data WHERE user_id=t.user_id))",
             _ => ""
         };
         var row = key == "users" ? "(to_jsonb(t)-'password_hash')" : "to_jsonb(t)";
@@ -170,7 +173,9 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
         }
         if (key == "items")
         {
-            var type = (string)(await Scalar("SELECT item_type FROM item WHERE item_id=$1", id!.Value))!;
+            var type = (string)values["item_type"]!;
+            if (id is not null && !Equals(await Scalar("SELECT item_type FROM item WHERE item_id=$1", id.Value), type))
+                throw new AdminValidation("Không thể đổi loại vật phẩm đã tạo. Hãy tạo vật phẩm mới.");
             if (type == "SPEED_SHOES" && (values["effect_value"] is not decimal effect || effect <= 1 || values["effective_range"] is not int range || range < 1))
                 throw new AdminValidation("Giày tăng tốc cần hệ số lớn hơn 1 và số bước hiệu lực lớn hơn 0.");
             if (type == "FLIGHT_TICKET") { values["effect_value"] = null; values["effective_range"] = null; }
@@ -203,6 +208,7 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
             if (images.Any(s => s.Length > 8000000 || !IsImage(s))) throw new AdminValidation("Danh sách có URL ảnh không hợp lệ; sử dụng HTTPS.");
             await Scalar("DELETE FROM place_image WHERE place_id=$1", savedId);
             foreach (var image in images) await Scalar("INSERT INTO place_image(place_id,image_key) VALUES($1,$2) RETURNING place_image_id", savedId, image);
+            await AdminPlaceFeatures.Save(conn, tx, savedId, body, ct);
         }
         if (key == "collections")
         {
@@ -228,6 +234,7 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
             SELECT jsonb_build_object(
               'regions',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',region_id,'name',name,'status',status) ORDER BY region_id ASC) FROM region),'[]'),
               'types',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',place_type_id,'name',name) ORDER BY name) FROM place_type),'[]'),
+              'features',COALESCE((SELECT jsonb_agg(jsonb_build_object('code',code,'name',name,'description',description) ORDER BY criterion_id) FROM recommendation_criterion WHERE code LIKE 'kind\_\_%' ESCAPE '\' OR code LIKE 'landform\_\_%' ESCAPE '\' OR code LIKE 'ecosystem\_\_%' ESCAPE '\' OR code LIKE 'theme\_\_%' ESCAPE '\'),'[]'),
               'places',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',place_id,'name',name,'latitude',latitude,'longitude',longitude,'status',status,'region_id',region_id,'image_key',(SELECT image_key FROM place_image i WHERE i.place_id=p.place_id ORDER BY place_image_id LIMIT 1)) ORDER BY name) FROM place p),'[]'),
               'cards',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',card_id,'name',name,'status',status) ORDER BY name) FROM card),'[]'),
               'items',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',item_id,'name',name,'status',status) ORDER BY name) FROM item),'[]')

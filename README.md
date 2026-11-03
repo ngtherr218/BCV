@@ -49,7 +49,11 @@ App và web **không** kết nối thẳng vào database; mọi dữ liệu đi 
 | Cloudflare R2 | Lưu ảnh tải lên; không có thì lưu trong database | Không |
 | Gmail SMTP | Gửi mã đặt lại mật khẩu; không có thì mã in ra log | Không |
 
+Web quản trị dùng bản đồ Goong hiện hành. Trong biểu mẫu địa danh, chọn khu vực rồi bấm ô vĩ độ/kinh độ để mở bản đồ tại vùng các địa danh thuộc khu vực đó; đổi khu vực chỉ chuyển khung nhìn, không tự thay tọa độ. Xem [cách chọn tọa độ và lưu ý khu vực trước sáp nhập](web/README.md#chọn-tọa-độ-và-đặc-trưng-địa-danh).
+
 ## Cài đặt
+
+Để nhóm truy cập qua Internet, xem [hướng dẫn triển khai web và backend lên hosting](DEPLOY.md). Bộ Docker dùng chung một tên miền cho web và API; database PostgreSQL/PostGIS được cấu hình riêng.
 
 Các lệnh dưới đây chạy bằng **PowerShell** tại thư mục gốc của kho mã, trên Windows. macOS/Linux dùng PowerShell 7 (`pwsh`) cho các script `.ps1`.
 
@@ -100,7 +104,7 @@ Mở http://127.0.0.1:5173 và đăng nhập bằng tài khoản vừa tạo. N�
 Tạo `android/dev.properties` (Git bỏ qua file này):
 
 ```properties
-bcvApiBaseUrl=http://<IP-Wi-Fi-của-máy-tính>:5081/
+bcvApiBaseUrl=https://bcv-admin-test.onrender.com/
 bcvGoongMaptilesKey=<Goong Maptiles Key>
 bcvGoongApiKey=<Goong REST API Key>
 ```
@@ -112,7 +116,7 @@ cd android
 .\gradlew.bat installDebug
 ```
 
-Hoặc mở thư mục `android/` bằng Android Studio và bấm **Run**. Mặc định app dùng API deploy `https://bcv-admin-test.onrender.com/`, không cần backend local hay cáp USB. Để thử backend local, cấu hình rõ `bcvApiBaseUrl=http://10.0.2.2:5081/` cho emulator hoặc IP Wi-Fi của máy tính cho điện thoại thật. Chi tiết: [android/README.md](android/README.md).
+Hoặc mở thư mục `android/` bằng Android Studio và bấm **Run**. Mặc định app dùng API deploy `https://bcv-admin.onrender.com/`, không cần backend local hay cáp USB. Để thử backend local, cấu hình rõ `bcvApiBaseUrl=http://10.0.2.2:5081/` cho emulator hoặc IP Wi-Fi của máy tính cho điện thoại thật. Chi tiết: [android/README.md](android/README.md).
 
 ### 6. (Tùy chọn) Kiểm thử mô hình gợi ý
 
@@ -137,13 +141,13 @@ Khi trình diễn, nút icon người đi bộ có dấu "+" cạnh chữ **Khá
 
 ### Web quản trị
 
-Quản lý người dùng, khu vực, địa danh (kèm bản đồ chọn tọa độ), loại địa danh, thẻ, bộ sưu tập, nhiệm vụ và vật phẩm. Nội dung ở trạng thái `DRAFT` chỉ hiện trong quản trị; chuyển sang `ACTIVE` thì app mới thấy. Xem [web/README.md](web/README.md).
+Quản lý người dùng, khu vực, địa danh (kèm bản đồ chọn tọa độ ngay trong form, chọn đặc trưng theo loại và tự phân cụm khi lưu), loại địa danh, thẻ, bộ sưu tập, nhiệm vụ và vật phẩm. Đổi loại địa danh sẽ thay toàn bộ ô tích; chọn lại mục mặc định sẽ bỏ hết tích. Nội dung ở trạng thái `DRAFT` chỉ hiện trong quản trị; chuyển sang `ACTIVE` thì app mới thấy. Xem [web/README.md](web/README.md).
 
 ### Quy tắc nghiệp vụ chính
 
 | Quy tắc | Giá trị | Nơi mô tả |
 | --- | --- | --- |
-| Quy đổi khoảng cách thành bước | S = max(1, ⌈1000 · D · κ / L⌉), κ = 1, L = 0,75 m | [backend/README.md](backend/README.md#quy-đổi-khoảng-cách-thành-số-bước) |
+| Quy đổi khoảng cách thành bước | S = max(1, ⌈1000 · D · κ / L⌉), κ = 0,1, L = 0,75 m | [backend/README.md](backend/README.md#quy-đổi-khoảng-cách-thành-số-bước) |
 | Điểm gợi ý | S = 0,35P + 0,15C + 0,3A + 0,1R + 0,1N, trả tối đa 3 địa danh | [backend/README.md](backend/README.md#gợi-ý-điểm-đến) |
 | Loại địa danh | 12 loại chuẩn, mỗi loại ánh xạ sang nhóm đặc trưng của mô hình | [db/README.md](db/README.md#loại-địa-danh) |
 | Phạm vi điểm xuất phát | Địa danh `ACTIVE` gần nhất trong bán kính 75 km | [android/README.md](android/README.md#luồng-sử-dụng) |

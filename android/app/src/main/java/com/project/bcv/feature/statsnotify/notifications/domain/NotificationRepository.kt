@@ -10,4 +10,6 @@ data class NotificationPage(val unread: Int, val items: List<AppNotification>)
 interface NotificationRepository {
     fun notifications(): NotificationPage
     fun markRead(id: Long): NotificationPage
+    fun markAllRead(): NotificationPage
+    fun deleteAll(): NotificationPage
 }

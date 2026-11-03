@@ -9,7 +9,7 @@ val localDevProperties = Properties().apply {
     if (file.isFile) file.inputStream().use(::load)
 }
 
-val deployedApiUrl = "https://bcv-admin-test.onrender.com/"
+val deployedApiUrl = "https://bcv-admin.onrender.com/"
 
 fun previewCredential(apiUrl: String, key: String): String {
     val credentialApi = localDevProperties.getProperty("bcvPreviewLoginApiBaseUrl") ?: "http://127.0.0.1:5081/"
@@ -21,6 +21,7 @@ fun quotedBuildValue(value: String): String = "\"" + value
     .replace("\"", "\\\"")
     .replace("\n", "\\n")
     .replace("\r", "\\r") + "\""
+
 
 android {
     namespace = "com.project.bcv"
@@ -38,10 +39,12 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "PREVIEW_LOGIN_EMAIL", "\"\"")
         buildConfigField("String", "PREVIEW_LOGIN_PASSWORD", "\"\"")
+        buildConfigField("boolean", "STEP_TEST_ENABLED", "false")
     }
 
     buildTypes {
         debug {
+            buildConfigField("boolean", "STEP_TEST_ENABLED", "true")
             manifestPlaceholders["usesCleartextTraffic"] = "true"
             val apiUrl = providers.gradleProperty("bcvApiBaseUrl")
                 .orElse(localDevProperties.getProperty("bcvApiBaseUrl") ?: deployedApiUrl)

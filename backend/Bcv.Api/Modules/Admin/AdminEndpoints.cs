@@ -14,7 +14,7 @@ public static class AdminEndpoints
         {
             try
             {
-                var session = await accounts.Login(body, ct);
+                var session = await accounts.Login(body, ct, requireAdmin: true);
                 if (session.User.Role != "ADMIN")
                 {
                     sessions.Revoke(session.Token);
@@ -22,7 +22,7 @@ public static class AdminEndpoints
                 }
                 return Results.Ok(session);
             }
-            catch (AccountException ex) { return Results.Json(new { code = ex.Code, message = ex.Message }, statusCode: 401); }
+            catch (AccountException ex) { return Results.Json(new { code = ex.Code, message = ex.Message }, statusCode: ex.Code == "FORBIDDEN" ? 403 : 401); }
             catch (NpgsqlException) { return Results.Json(new { code = "DATABASE_UNAVAILABLE", message = "Chưa kết nối được cơ sở dữ liệu. Kiểm tra cấu hình backend." }, statusCode: 503); }
         });
 
@@ -60,9 +60,20 @@ public static class AdminEndpoints
             }
         });
 
+        // These internal/offline routes inherit the ACTIVE ADMIN filter above.
+        group.MapGet("/recommendations/dataset", (RecommendationAdmin service, CancellationToken ct) => service.Export(ct));
+        group.MapPost("/recommendations/models", (ModelImport body, RecommendationAdmin service, CancellationToken ct) => service.Import(body, ct));
+        group.MapPost("/recommendations/models/{id:long}/activate", (long id, RecommendationAdmin service, CancellationToken ct) => service.Activate(id, ct));
         group.MapGet("/me", (HttpRequest request, ISessionStore sessions) => Results.Ok(CurrentUser.Get(request, sessions)));
         group.MapGet("/dashboard", (int? days, AdminRepository repo, CancellationToken ct) => repo.Dashboard(days ?? 30, ct));
         group.MapGet("/lookups", (AdminRepository repo, CancellationToken ct) => repo.Lookups(ct));
+        group.MapGet("/map/region", async (double latitude, double longitude, GoongGeocoder geocoder, CancellationToken ct) =>
+        {
+            try { return Results.Ok(await geocoder.Reverse(latitude, longitude, ct)); }
+            catch (HttpRequestException) { return Results.Json(new { message = "Không kết nối được Goong để xác định khu vực. Bạn có thể chọn khu vực trong biểu mẫu." }, statusCode: 503); }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            { return Results.Json(new { message = "Goong phản hồi quá lâu. Bạn có thể chọn khu vực trong biểu mẫu." }, statusCode: 503); }
+        });
         group.MapGet("/data/{resource}", (string resource, string? q, string? status, long? regionId, long? typeId, int? page, int? pageSize, AdminRepository repo, CancellationToken ct) =>
             repo.List(resource, q, status, regionId, typeId, page ?? 1, pageSize ?? 12, ct));
         group.MapGet("/data/{resource}/{id:long}", async (string resource, long id, AdminRepository repo, CancellationToken ct) =>

@@ -39,6 +39,15 @@ class NotificationsActivity : AppCompatActivity() {
         binding.topBar.backButton.setOnClickListener { finish() }
         model = ViewModelProvider(this, viewModelFactory { NotificationsViewModel(StatsNotifyModule.notifications(this)) })[
             NotificationsViewModel::class.java]
+        binding.markAllReadButton.setOnClickListener { model.markAllRead() }
+        binding.deleteAllButton.setOnClickListener {
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                .setTitle("Xóa tất cả thông báo?")
+                .setMessage("Tất cả thông báo hiện tại sẽ được ẩn khỏi danh sách. Thông báo mới vẫn xuất hiện bình thường.")
+                .setNegativeButton("Hủy", null)
+                .setPositiveButton("Xóa tất cả") { _, _ -> model.deleteAll() }
+                .show()
+        }
         binding.state.stateRetry.setOnClickListener { model.load() }
         model.state.observe(this) { state ->
             if (state != Remote.Loading) Skeleton.hide(binding.skeleton.root)
@@ -60,8 +69,10 @@ class NotificationsActivity : AppCompatActivity() {
         shown = page
         state.showContent(content)
         unreadChip.text = if (page.unread > 0) "${page.unread} chưa đọc" else "Đã đọc hết"
-        hint.text = if (page.items.isEmpty()) "Chưa có thông báo. Hoàn thành hành trình hoặc nhiệm vụ để nhận tin mới."
+        hint.text = if (page.items.isEmpty()) "Không có thông báo đang hiển thị. Thông báo mới sẽ xuất hiện tại đây."
             else "Mở một thông báo để chuyển sang đã đọc."
+        markAllReadButton.isEnabled = page.unread > 0
+        deleteAllButton.isEnabled = page.items.isNotEmpty()
         notificationList.removeAllViews()
         page.items.forEach { notificationList.addView(row(it).root) }
         if (first) ScreenMotion.reveal(content)

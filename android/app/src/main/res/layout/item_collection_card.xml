@@ -38,6 +38,19 @@
             android:textStyle="bold" />
 
         <TextView
+            android:id="@+id/collectionNewBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="4dp"
+            android:background="@drawable/notification_badge_bg"
+            android:textColor="@android:color/white"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <TextView
             android:id="@+id/collectionOwned"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

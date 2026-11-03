@@ -100,7 +100,7 @@ Khi chưa cấu hình R2, ảnh được lưu thẳng trong cột ảnh của da
 
 ## Quy đổi khoảng cách thành số bước
 
-Theo mục 3.5.1.2 của tài liệu: **S = max(1, ⌈1000 · D · κ / L⌉)**, với D là khoảng cách (km) từ vị trí ảo tới điểm đến, L = 0,75 m/bước, **κ = 1**. Ví dụ 10 km cần 13.334 bước, 50 km cần 66.667 bước.
+Theo mục 3.5.1.2 của tài liệu: **S = max(1, ⌈1000 · D · κ / L⌉)**, với D là khoảng cách (km) từ vị trí ảo tới điểm đến, L = 0,75 m/bước, **κ = 0,15**. Ví dụ 10 km cần 2.000 bước, 50 km cần 10.000 bước.
 
 κ là hệ số tỉ lệ (0 < κ ≤ 1). κ = 1 giữ nguyên quãng đường thật; κ nhỏ hơn thu nhỏ hành trình (tài liệu ví dụ κ = 0,01). Mã: `Modules/StepLocation/Domain/StepConversion.cs`. Số bước được lưu khi tạo hành trình, nên đổi κ chỉ áp dụng cho hành trình mới.
 
@@ -110,7 +110,7 @@ Theo mục 3.5.1.2 của tài liệu: **S = max(1, ⌈1000 · D · κ / L⌉)**,
 
 1. **Ứng viên:** địa danh `ACTIVE`, chưa khám phá, cách vị trí ảo trong `distance_limit` của cấu hình gợi ý (500 km).
 2. **Điểm thành phần:**
-   - **P** (sở thích): tỷ lệ loại địa danh người dùng chọn mà địa danh khớp. 12 loại được ánh xạ theo ID sang nhóm đặc trưng của mô hình; khớp khi có ít nhất một đặc trưng trong nhóm ([bảng ánh xạ](../db/README.md#loại-địa-danh)).
+   - **P** (sở thích): tỷ lệ nhóm sở thích người dùng chọn mà địa danh khớp. Sáu nhóm ID 201–206 độc lập với 12 loại địa danh; mapping nằm trong `recommendation_config.settings.interestFeatures`. Khớp khi có ít nhất một đặc trưng trong nhóm.
    - **C** (cụm): trung bình P của các địa danh cùng cụm K-Means (`place_feature.cluster_number`).
    - **A** (vận động): `min(1, T / số bước cần đi)`, với T = 3.000 / 6.000 / 10.000 cho mức Ít / Trung bình / Năng động.
    - **R** (đánh giá): `rating / 5`.
@@ -124,7 +124,11 @@ Chỉ cấu hình `ACTIVE` được sử dụng. Nếu chưa có cấu hình ho�
 
 Chạy `db/016_preserve_missing_rating_counts.sql` trước khi dùng bản API này. Rating/count thiếu là NULL; count = 0 là số liệu thật, không đồng nghĩa thiếu. Kết quả kèm `criteria`, `usedCriteria`, `missingCriteria`, `effectiveWeights`, `reasons` và `configVersion` để truy vết. Trọng số bằng 0 không được ghi là đã dùng. App hiển thị tối đa hai lý do, với nội dung đầy đủ cho trình đọc màn hình. Cụm và đặc trưng đã lưu trong database, nên API không cần gọi dịch vụ Python trong [`recommendation/`](../recommendation/).
 
-Kiểm tra 18 tình huống về thay đổi sở thích/mức vận động, lọc ứng viên, loại trùng, dữ liệu thiếu, số 0 thật, trọng số, lý do và hợp đồng 35 đặc trưng. Chạy từ thư mục gốc với .NET SDK 10, không cần database hoặc thư viện kiểm thử bổ sung:
+Backend tự chạy migration nhúng `021_versioned_recommendations.sql` khi khởi động nếu chưa có schema mới, bằng kết nối DB đã cấu hình. Transaction và advisory lock bảo vệ khi hai service khởi động cùng lúc; migration lỗi sẽ chặn khởi động bản mới. Có thể chạy SQL thủ công trước. API vẫn giữ tên trường `placeTypes`/`placeTypeIds`, nhưng giá trị là ID nhóm 201–206. Người dùng cũ cần chọn lại nhóm; lựa chọn cũ được bảo toàn. Ngưỡng A lấy từ settings; R/N lấy từ snapshot. Nhập mô hình hoặc sửa địa danh trên web tạo phiên bản mới, giữ snapshot cũ để quay lui. `configuration` trong kết quả ghi metadata để truy vết.
+
+API quản trị bổ sung: `GET /api/admin/recommendations/dataset`, `POST /api/admin/recommendations/models` (tạo DRAFT) và `POST /api/admin/recommendations/models/{id}/activate`. Tất cả yêu cầu tài khoản ADMIN đang hoạt động. Xem [quy trình mô hình](../recommendation/README.md#đánh-giá-người-dùng-và-trao-đổi-mô-hình) và [mẫu chấm](../recommendation/evaluation/README.md).
+
+Kiểm tra 20 tình huống về thay đổi sở thích/mức vận động, lọc ứng viên, loại trùng, dữ liệu thiếu, số 0 thật, trọng số, lý do và hợp đồng 35 đặc trưng. Chạy từ thư mục gốc với .NET SDK 10, không cần database hoặc thư viện kiểm thử bổ sung:
 
 ```powershell
 dotnet run --project backend/Bcv.RecommendationChecks --artifacts-path .runtime.local/ai-checks -p:UseAppHost=false
@@ -162,3 +166,25 @@ Xem [Đóng góp](../README.md#đóng-góp) ở README gốc.
 ## Giấy phép
 
 UNLICENSED © 2026 Nhóm ĐAHK1262703. Xem [Giấy phép](../README.md#giấy-phép) ở README gốc.
+
+## Lưu đặc trưng địa danh từ web quản trị
+
+`GET /api/admin/lookups` trả thêm `features`; chi tiết địa danh trả `feature_codes`. Khi tạo/sửa địa danh, gửi `feature_codes` là danh sách mã đặc trưng được chọn. Mã phải thuộc bộ 35 đặc trưng của mô hình và danh sách không được rỗng. Nếu cập nhật mà không gửi trường này, giữ đặc trưng hiện có của cấu hình được chọn.
+
+Backend chọn cấu hình ACTIVE trước, nếu chưa có thì dùng bản mới nhất để lưu nội dung quản trị; chỉ hỗ trợ cấu hình 15 cụm. Lưu địa danh, vector 35 giá trị và cụm trong một giao dịch; dữ liệu không hợp lệ làm hoàn tác toàn bộ. Xóa địa danh sẽ xóa các hàng đặc trưng sở hữu trong cùng giao dịch, nhưng vẫn tôn trọng ràng buộc lịch sử khác.
+
+`PlaceFeatureClassifier` dùng tài nguyên nhúng `recommendation-centroids.json`, chuẩn hóa bốn nhóm đặc trưng và tìm tâm cụm gần nhất; không huấn luyện lại khi chỉnh sửa địa danh. Script `recommendation/export_centroids.py` tái tạo tâm từ snapshot nhãn và xác minh 315 dòng nguồn trước khi xuất.
+
+Kiểm tra phân cụm, không cần database:
+
+```powershell
+dotnet run --project backend/Bcv.Checks/Bcv.Checks.csproj --artifacts-path backend/checks-build-out -p:UseAppHost=false
+```
+
+Để kiểm thử tạo/sửa/đọc lại, 35 giá trị, rollback và xóa dữ liệu thử, đặt biến môi trường tiến trình `BCV_CHECK_CONNECTION` bằng chuỗi kết nối cục bộ trước khi chạy. Không ghi chuỗi kết nối vào repo. Bộ kiểm tra tạo bản ghi tạm và tự xóa sau khi chạy.
+
+### Tự xác định khu vực từ ghim bản đồ quản trị
+
+`GET /api/admin/map/region?latitude=21.0272&longitude=105.8355` yêu cầu phiên quản trị và trả về tỉnh hiện tại, tỉnh trước sáp nhập (nếu có) và địa chỉ từ Goong Geocode V2. Web đối chiếu tên với khu vực trong database trước khi điền biểu mẫu tạo địa danh; tọa độ giữ nguyên điểm người dùng chọn.
+
+Cấu hình Goong REST API Key bằng `Goong__ApiKey`. Script `run-local.ps1` cũng hỗ trợ `BCV_GOONG_API_KEY` và khóa `bcvGoongApiKey` trong `android/dev.properties` cho môi trường phát triển. Không dùng Maptiles Key thay cho REST key. REST key không được trả về trình duyệt. Khi thiếu khóa, lỗi dịch vụ hoặc không có khu vực tương ứng, người dùng vẫn có thể điền khu vực thủ công trong biểu mẫu.

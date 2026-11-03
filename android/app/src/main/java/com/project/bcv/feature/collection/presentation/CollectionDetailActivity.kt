@@ -103,7 +103,8 @@ class CollectionDetailActivity : AppCompatActivity() {
         collectionDescription.text = detail.description.orEmpty()
         collectionDescription.visibility = if (detail.description.isNullOrBlank()) View.GONE else View.VISIBLE
 
-        ownedText.text = "${detail.ownedCards} / ${detail.totalCards} thẻ"
+        ownedText.text = "${detail.ownedCards} / ${detail.totalCards} thẻ" +
+            detail.cards.count { it.isNew }.let { if (it > 0) " · $it thẻ mới" else "" }
         val percent = if (detail.totalCards == 0) 0.0 else detail.ownedCards * 100.0 / detail.totalCards
         percentText.text = String.format(Locale.forLanguageTag("vi-VN"), "%.1f", percent).removeSuffix(",0") + "%"
         ownedProgress.max = detail.totalCards.coerceAtLeast(1)
@@ -112,7 +113,7 @@ class CollectionDetailActivity : AppCompatActivity() {
 
         cardGrid.removeAllViews()
         val density = resources.displayMetrics.density
-        detail.cards.chunked(2).forEachIndexed { rowIndex, pair ->
+        detail.cards.sortedByDescending { it.isNew }.chunked(2).forEachIndexed { rowIndex, pair ->
             val row = LinearLayout(this@CollectionDetailActivity).apply { orientation = LinearLayout.HORIZONTAL }
             pair.forEachIndexed { index, card ->
                 val item = cardTile(card, detail)
@@ -131,9 +132,10 @@ class CollectionDetailActivity : AppCompatActivity() {
     private fun cardTile(card: CollectionCard, detail: CollectionDetail): ItemCollectionPlaceCardBinding {
         val item = ItemCollectionPlaceCardBinding.inflate(layoutInflater, binding.cardGrid, false)
         val muted = 0xFF8A8F86.toInt()
+        item.newCardBadge.visibility = if (card.isNew) View.VISIBLE else View.GONE
         item.cardName.text = card.name
         item.cardName.setTextColor(if (card.owned) ContextCompat.getColor(this, R.color.forest) else muted)
-        item.cardState.text = if (card.owned) "Đã sở hữu" else "Chưa sở hữu"
+        item.cardState.text = if (card.isNew) "MỚI · Chưa xem" else if (card.owned) "Đã sở hữu" else "Chưa sở hữu"
         item.cardState.setTextColor(if (card.owned) ContextCompat.getColor(this, R.color.teal) else muted)
         item.cardState.setCompoundDrawablesRelativeWithIntrinsicBounds(
             if (card.owned) R.drawable.ic_check_circle else R.drawable.ic_lock, 0, 0, 0)
@@ -144,7 +146,7 @@ class CollectionDetailActivity : AppCompatActivity() {
         }
         item.cardState.compoundDrawableTintList = ColorStateList.valueOf(
             if (card.owned) ContextCompat.getColor(this, R.color.teal) else muted)
-        item.root.setBackgroundResource(if (card.owned) R.drawable.journey_card_bg else R.drawable.collection_card_locked_bg)
+        item.root.setBackgroundResource(if (card.isNew) R.drawable.collection_card_new_bg else if (card.owned) R.drawable.journey_card_bg else R.drawable.collection_card_locked_bg)
         item.root.contentDescription = "${card.name}, ${item.cardState.text}"
         item.cardLock.visibility = if (card.owned) View.GONE else View.VISIBLE
         (item.cardImage.parent as View).setBackgroundResource(
@@ -155,6 +157,8 @@ class CollectionDetailActivity : AppCompatActivity() {
         }
         item.root.setOnClickListener {
             startActivity(Intent(this, CardDetailActivity::class.java)
+                .putExtra(CardDetailActivity.EXTRA_CARD_ID, card.id)
+                .putExtra(CardDetailActivity.EXTRA_IS_NEW, card.isNew)
                 .putExtra(CardDetailActivity.EXTRA_CARD_NAME, card.name)
                 .putExtra(CardDetailActivity.EXTRA_PLACE_ID, card.placeId)
                 .putExtra(CardDetailActivity.EXTRA_IMAGE_URL, card.imageUrl)

@@ -3,6 +3,7 @@ using NpgsqlTypes;
 using Bcv.Api.Modules.Discovery.Application;
 using Bcv.Api.Modules.Shared.Infrastructure;
 using Bcv.Api.Modules.StepLocation.Domain;
+using Bcv.Api.Modules.QuestItem.Infrastructure;
 
 namespace Bcv.Api.Modules.Discovery.Infrastructure;
 
@@ -23,11 +24,13 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
         string? introduction, highlights;
         bool discovered;
         decimal distanceKm;
+        decimal? rating;
+        int? ratingCount;
         await using (var command = new NpgsqlCommand($"""
             SELECT p.place_id, p.name, pt.name,
                    EXISTS (SELECT 1 FROM public.user_discovered_place d
                            WHERE d.user_id = $1 AND d.place_id = p.place_id),
-                   ({GeoSql.VirtualLocationToPlaceMeters} / 1000.0)::numeric, p.introduction, p.highlights, r.name
+                   ({GeoSql.VirtualLocationToPlaceMeters} / 1000.0)::numeric, p.introduction, p.highlights, r.name, p.rating, p.rating_count
             FROM public.place p
             JOIN public.place_type pt ON pt.place_type_id = p.place_type_id
             JOIN public.region r ON r.region_id = p.region_id
@@ -45,9 +48,11 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
             placeType = reader.GetString(2);
             discovered = reader.GetBoolean(3);
             distanceKm = reader.GetDecimal(4);
-            introduction = discovered && !reader.IsDBNull(5) ? reader.GetString(5) : null;
+            introduction = !reader.IsDBNull(5) ? reader.GetString(5) : null;
             highlights = discovered && !reader.IsDBNull(6) ? reader.GetString(6) : null;
             regionName = reader.GetString(7);
+            rating = reader.IsDBNull(8) ? null : reader.GetDecimal(8);
+            ratingCount = reader.IsDBNull(9) ? null : reader.GetInt32(9);
         }
 
         var images = new List<string>();
@@ -64,7 +69,7 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
         // The first photo stays visible (blurred) while locked; the gallery opens with the place.
         return new ExplorePlaceDetail(id, name, placeType, images.FirstOrDefault(), discovered, distanceKm,
             distanceKm <= 0 ? 0 : StepConversion.RequiredSteps(distanceKm), introduction, highlights, regionName,
-            discovered ? images : []);
+            discovered ? images : [], rating, ratingCount);
     }
 
     private static async Task<ExploreSnapshot> LoadSnapshotAsync(NpgsqlConnection connection,
@@ -92,9 +97,12 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
                    j.required_steps, j.recorded_steps, j.status,
                    EXTRACT(EPOCH FROM j.started_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::bigint,
                    j.start_latitude, j.start_longitude, j.destination_place_id,
-                   c.card_id AS awarded_card_id, c.name AS awarded_card_name
+                   COALESCE((SELECT s.step_count FROM public.step_data s
+                     WHERE s.user_id = j.user_id AND s.source_data_id = 'health-connect:journey:' || j.journey_id::text), 0),
+                   start_place.name, c.card_id AS awarded_card_id, c.name AS awarded_card_name
             FROM public.journey j
             JOIN public.place p ON p.place_id = j.destination_place_id
+            LEFT JOIN public.place start_place ON start_place.place_id = j.start_place_id
             LEFT JOIN public.card c ON c.place_id = p.place_id AND c.status = 'ACTIVE'
                 AND j.status = 'COMPLETED'
                 AND (EXISTS (SELECT 1 FROM public.user_card uc WHERE uc.user_id = j.user_id AND uc.card_id = c.card_id)
@@ -111,8 +119,21 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
                 journey = new ExploreJourney(reader.GetInt64(0), reader.GetString(1),
                     reader.GetDecimal(2), reader.GetDecimal(3), reader.GetInt32(4),
                     reader.GetInt32(5), reader.GetString(6), reader.GetInt64(7),
-                    reader.GetDecimal(8), reader.GetDecimal(9), reader.GetInt64(10),
-                    reader.IsDBNull(11) ? null : new ExploreCardReward(reader.GetInt64(11), reader.GetString(12)));
+                    reader.GetDecimal(8), reader.GetDecimal(9), reader.GetInt64(10), reader.GetInt32(11),
+                    StartPlaceName: reader.IsDBNull(12) ? null : reader.GetString(12),
+                    AwardedCard: reader.IsDBNull(13) ? null : new ExploreCardReward(reader.GetInt64(13), reader.GetString(14)));
+        }
+        if (journey is { Status: "IN_PROGRESS" })
+        {
+            var boosts = await SpeedShoesStore.LoadBoostsAsync(connection, null, userId, journey.JourneyId, ct);
+            var latest = boosts.MaxBy(b => b.From);
+            if (latest is not null)
+            {
+                var remaining = Math.Max(0, latest.Range - Math.Max(0, journey.SourceSteps - latest.From));
+                if (remaining > 0)
+                    journey = journey with { ActiveItem = new ExploreItemEffect("SPEED_SHOES", "Giày tăng tốc",
+                        latest.Multiplier, latest.Range, remaining) };
+            }
         }
         var places = new List<ExploreMapPlace>();
         await using (var command = new NpgsqlCommand("""

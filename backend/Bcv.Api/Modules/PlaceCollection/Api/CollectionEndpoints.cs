@@ -9,6 +9,23 @@ public static class CollectionEndpoints
 {
     public static void MapCollectionEndpoints(this WebApplication app)
     {
+        app.MapPost("/api/cards/{cardId:long}/seen", async (long cardId, HttpRequest request,
+            ISessionStore sessions, CollectionRepository repository, ILoggerFactory logs, CancellationToken ct) =>
+        {
+            var user = CurrentUser.Get(request, sessions);
+            if (user is null) return Results.Unauthorized();
+            request.HttpContext.Response.Headers.CacheControl = "no-store";
+            try
+            {
+                await repository.MarkSeenAsync(user.UserId, cardId, ct);
+                return Results.Ok(new { success = true });
+            }
+            catch (Exception ex)
+            {
+                logs.CreateLogger("Collection").LogError(ex, "Mark card seen failed");
+                return Results.Json(new ApiError("SERVER_ERROR", "Chưa lưu được trạng thái thẻ."), statusCode: 500);
+            }
+        });
         app.MapGet("/api/collections", async (HttpRequest request, ISessionStore sessions,
             CollectionRepository repository, ILoggerFactory logs, CancellationToken ct) =>
         {

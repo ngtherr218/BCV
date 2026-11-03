@@ -61,12 +61,34 @@ public sealed class PostgresAccountRepository(NpgsqlDataSource db) : IAccountRep
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task RecordLoginAsync(long userId, CancellationToken cancellationToken)
+    {
+        await using var command = db.CreateCommand("UPDATE public.app_user SET last_login_at = clock_timestamp() WHERE user_id = $1");
+        command.Parameters.AddWithValue(userId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<OnboardingStatus> GetOnboardingStatusAsync(long userId, CancellationToken cancellationToken)
+    {
+        await using var command = db.CreateCommand("""
+            SELECT EXISTS (SELECT 1 FROM public.user_preference up
+                JOIN public.user_preference_place_type pt ON pt.user_preference_id = up.user_preference_id
+                WHERE up.user_id = $1),
+                EXISTS (SELECT 1 FROM public.user_preference WHERE user_id = $1 AND activity_level IN ('LOW','MEDIUM','HIGH')),
+                EXISTS (SELECT 1 FROM public.virtual_location WHERE user_id = $1)
+            """);
+        command.Parameters.AddWithValue(userId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        await reader.ReadAsync(cancellationToken);
+        return new OnboardingStatus(reader.GetBoolean(0), reader.GetBoolean(1), reader.GetBoolean(2));
+    }
+
     public async Task<bool> HasSelectedPlaceTypesAsync(long userId, CancellationToken cancellationToken)
     {
         await using var command = db.CreateCommand("""
             SELECT EXISTS (
                 SELECT 1 FROM public.user_preference up
-                JOIN public.user_preference_place_type uppt ON uppt.user_preference_id = up.user_preference_id
+                JOIN public.user_preference_interest uppt ON uppt.user_preference_id = up.user_preference_id
                 WHERE up.user_id = $1
             )
             """);

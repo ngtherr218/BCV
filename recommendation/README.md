@@ -78,7 +78,22 @@ Các kết quả có thể xem và tạo lại bằng các lệnh trên:
 
 Tham số `--data-dir` và `--output` chọn dữ liệu/đầu ra khác. `verify --model-output <đường-dẫn-model.joblib>` lưu thêm artifact sau khi mọi kiểm chứng đạt; không ghi đè artifact đã rà soát trong `service/data`. Mỗi lần phục vụ vẫn chỉ nạp mô hình có sẵn.
 
-Sở thích hiện tại của app là 12 loại chuẩn ID 101–112, được ánh xạ ở Backend và kiểm tra khớp từ vựng 35 cột. Bản thiết kế mô tả sáu nhóm sở thích; lần triển khai này giữ nguyên 12 loại của app. Khi thống nhất lại danh mục với báo cáo phải cập nhật ánh xạ và dữ liệu sở thích đồng bộ.
+Sau migration `021_versioned_recommendations.sql`, sở thích là sáu nhóm ID 201–206 theo thiết kế: Di sản, Thiên nhiên, Ẩm thực, Biển đảo, Lịch sử, Kiến trúc. Danh mục này độc lập với 12 loại địa danh. Người dùng chọn lại 1–6 nhóm; lựa chọn cũ vẫn được giữ trong bảng cũ, không tự suy diễn sang nhóm mới. Mapping đặc trưng, ngưỡng vận động, mã dữ liệu và SHA-256 mô hình được lưu theo phiên bản cấu hình, cùng snapshot điểm/số lượt đánh giá.
+
+## Đánh giá người dùng và trao đổi mô hình
+
+Xem [mẫu chấm và quy trình đánh giá](evaluation/README.md). Chưa có dữ liệu chấm thực tế, vì vậy chưa công bố Precision@3/NDCG@3. Công cụ dùng chung hàm xếp hạng backend để so sánh P, P+C, đầy đủ, bỏ C và trọng số ban đầu trong tài liệu.
+
+Backend cung cấp API quản trị để xuất dữ liệu, nhập phiên bản DRAFT và kích hoạt riêng. Từ thư mục `recommendation`, sau khi xuất `evaluation/dataset.json` theo hướng dẫn:
+
+```powershell
+python -m service.exchange prepare --input evaluation/dataset.json --output evaluation/model.json --version reviewed-k15-v2
+python -m service.exchange import --url https://bcv-admin.onrender.com --input evaluation/model.json
+# Thay 123 bằng configId thực tế do lệnh import trả về, chỉ kích hoạt sau khi rà soát.
+python -m service.exchange activate --url https://bcv-admin.onrender.com --config-id 123
+```
+
+`prepare` đóng gói nhãn và 35 đặc trưng từ bộ dữ liệu đã kiểm chứng, không tự huấn luyện lại. API không nhận hoặc thực thi file joblib. Nhập mới không thay phiên bản đang hoạt động; kích hoạt kiểm tra độ phủ dữ liệu và thực hiện trong transaction. Có thể kích hoạt lại cấu hình trước để quay lui. Cần triển khai backend mới và migration 021 trước khi dùng các lệnh này trên server.
 
 Tài liệu phương pháp: [K-Means và sample_weight](https://scikit-learn.org/stable/modules/generated/sklearn.cluster.KMeans.html), [Silhouette](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.silhouette_score.html), [Adjusted Rand Index](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.adjusted_rand_score.html).
 

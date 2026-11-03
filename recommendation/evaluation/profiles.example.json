@@ -1,0 +1,11 @@
+[
+  {
+    "caseId": "example-hanoi-01",
+    "participantId": "example-only",
+    "interestIds": [201, 205, 206],
+    "activityLevel": "MEDIUM",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "discoveredPlaceIds": []
+  }
+]

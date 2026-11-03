@@ -44,6 +44,27 @@ class CardDetailActivity : AppCompatActivity() {
 
         binding.backButton.setOnClickListener { finish() }
         show(name, owned, imageUrl)
+        if (owned && intent.getBooleanExtra(EXTRA_IS_NEW, false)) {
+            binding.headline.text = "Thẻ địa danh mới của bạn!"
+            binding.ownedChip.text = "MỚI · Vừa nhận"
+            binding.cardFrame.scaleX = .88f
+            binding.cardFrame.scaleY = .88f
+            binding.cardFrame.animate().scaleX(1f).scaleY(1f).setDuration(500)
+                .setInterpolator(android.view.animation.OvershootInterpolator()).start()
+            val cardId = intent.getLongExtra(EXTRA_CARD_ID, 0L)
+            if (cardId > 0) lifecycleScope.launch {
+                try {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        com.project.bcv.core.di.CollectionModule.repository(this@CardDetailActivity).markSeen(cardId)
+                    }
+                } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+                catch (_: Exception) {
+                    com.google.android.material.snackbar.Snackbar.make(binding.root,
+                        "Chưa lưu được trạng thái đã xem. Thẻ sẽ vẫn được đánh dấu mới.",
+                        com.google.android.material.snackbar.Snackbar.LENGTH_LONG).show()
+                }
+            }
+        }
         binding.placeButton.setOnClickListener {
             startActivity(Intent(this, PlaceDetailActivity::class.java)
                 .putExtra(PlaceDetailActivity.EXTRA_PLACE_ID, placeId)
@@ -86,6 +107,8 @@ class CardDetailActivity : AppCompatActivity() {
     }
 
     companion object {
+        const val EXTRA_CARD_ID = "card_id"
+        const val EXTRA_IS_NEW = "card_is_new"
         const val EXTRA_CARD_NAME = "card_name"
         const val EXTRA_PLACE_ID = "place_id"
         const val EXTRA_IMAGE_URL = "image_url"

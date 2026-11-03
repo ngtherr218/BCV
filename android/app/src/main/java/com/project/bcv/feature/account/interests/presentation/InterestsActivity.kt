@@ -86,9 +86,9 @@ class InterestsActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    /** Five rows of two placeholders: the ten place types, laid out like the grid built in showPlaceTypes. */
+    /** Three rows of two placeholders for the six preference groups. */
     private fun buildSkeleton() {
-        repeat(5) {
+        repeat(3) {
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             repeat(2) { index ->
                 val card = layoutInflater.inflate(R.layout.item_place_type_skeleton, row, false)
@@ -171,7 +171,7 @@ class InterestsActivity : AppCompatActivity() {
                 card.findViewById<TextView>(R.id.placeTypeName).text = placeType.name
                 card.setOnClickListener {
                     if (!model.toggle(placeType.id)) {
-                        Snackbar.make(binding.root, "Chỉ được chọn tối đa 3 nhóm địa danh.", Snackbar.LENGTH_SHORT).show()
+                        Snackbar.make(binding.root, "Chỉ được chọn tối đa 6 nhóm sở thích.", Snackbar.LENGTH_SHORT).show()
                     }
                 }
                 row.addView(card, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
