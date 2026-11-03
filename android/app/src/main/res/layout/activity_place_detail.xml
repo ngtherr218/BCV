@@ -110,7 +110,7 @@
                     app:tint="#849580" />
                 <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                     android:layout_marginStart="14dp" android:lineSpacingExtra="4dp"
-                    android:text="Ảnh gốc và nội dung đang được khóa.\nHoàn thành hành trình đến đây\nđể khám phá địa danh."
+                    android:text="Ảnh gốc đang được khóa.\nHoàn thành hành trình đến đây\nđể khám phá địa danh."
                     android:textColor="#71867B" android:textSize="14sp" />
             </LinearLayout>
 

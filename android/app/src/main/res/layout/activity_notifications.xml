@@ -67,6 +67,20 @@
                 android:textColor="#7C9086"
                 android:textSize="12sp" />
 
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/markAllReadButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Đánh dấu đã đọc tất cả" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/deleteAllButton"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:text="Xóa tất cả thông báo"
+                android:textColor="#C8463D" />
+
             <LinearLayout
                 android:id="@+id/notificationList"
                 android:layout_width="match_parent"

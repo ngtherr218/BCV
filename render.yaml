@@ -1,0 +1,20 @@
+# A single service serves both the built web and /api on the same HTTPS domain.
+# Provision/import the external PostgreSQL + PostGIS database before deploying.
+services:
+  - type: web
+    name: bcv-admin-test
+    runtime: docker
+    branch: Web
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeployTrigger: "off"
+    envVars:
+      - key: ConnectionStrings__Bcv
+        sync: false
+      - key: Goong__ApiKey
+        sync: false
+      - key: VITE_GOONG_MAPTILES_KEY
+        sync: false

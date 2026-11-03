@@ -134,14 +134,29 @@ class CollectionActivity : AppCompatActivity() {
 
     private fun showOverview(overview: CollectionOverview) = with(binding) {
         if (overview == shownOverview && loadedContent.visibility == View.VISIBLE) return@with
+        com.project.bcv.core.ui.CollectionNavBadge.show(binding.bottomNavigation, overview.newCards)
+        newCardsPanel.visibility = if (overview.newItems.isEmpty()) View.GONE else View.VISIBLE
+        newCardsTitle.text = "${overview.newCards} thẻ mới đang chờ bạn"
+        newCardList.removeAllViews()
+        overview.newItems.forEach { reward ->
+            val button = com.google.android.material.button.MaterialButton(this@CollectionActivity).apply {
+                text = "${reward.card.name}\n${reward.collectionName} · Xem thẻ →"
+                isAllCaps = false
+                gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
+                setOnClickListener { startActivity(CardIntents.detail(this@CollectionActivity, reward)) }
+            }
+            newCardList.addView(button)
+        }
         shownOverview = overview
         Skeleton.hide(loadingSkeleton.root)
         loadedContent.visibility = View.VISIBLE
         ownedCount.text = overview.ownedCards.toString()
-        ownedTotal.text = "/ ${overview.totalCards} thẻ đã sở hữu"
-        summaryCard.contentDescription = "Đã sở hữu ${overview.ownedCards} trên ${overview.totalCards} thẻ"
+        ownedTotal.text = "/ ${overview.totalCards} thẻ đã sở hữu" +
+            if (overview.newCards > 0) " · ${overview.newCards} thẻ mới" else ""
+        summaryCard.contentDescription = "Đã sở hữu ${overview.ownedCards} trên ${overview.totalCards} thẻ, ${overview.newCards} thẻ mới chưa xem"
         layoutSummaryBar()
-        collectionCount.text = "${overview.collections.size} bộ"
+        collectionCount.text = "${overview.collections.size} bộ" +
+            if (overview.newCards > 0) " · ${overview.newCards} thẻ mới" else ""
 
         collectionList.removeAllViews()
         overview.collections.forEachIndexed { index, collection ->
@@ -168,14 +183,17 @@ class CollectionActivity : AppCompatActivity() {
     private fun collectionCard(collection: CollectionSummary, accent: Int): ItemCollectionCardBinding {
         val item = ItemCollectionCardBinding.inflate(layoutInflater, binding.collectionList, false)
         item.collectionName.text = collection.name
+        item.collectionNewBadge.text = "${collection.newCards} thẻ mới"
+        item.collectionNewBadge.visibility = if (collection.newCards > 0) View.VISIBLE else View.GONE
         item.collectionOwned.text = "${collection.ownedCards} / ${collection.totalCards} thẻ đã sở hữu"
         item.collectionProgress.max = collection.totalCards.coerceAtLeast(1)
         item.collectionProgress.progress = collection.ownedCards
         item.collectionProgress.setIndicatorColor(accent)
         item.collectionAction.setTextColor(accent)
+        item.collectionAction.text = if (collection.newCards > 0) "${collection.newCards} thẻ mới · Xem ngay" else "Xem bộ sưu tập"
         item.collectionArrow.imageTintList = ColorStateList.valueOf(accent)
         item.root.contentDescription = "${collection.name}, đã sở hữu ${collection.ownedCards} trên " +
-            "${collection.totalCards} thẻ. Xem bộ sưu tập"
+            "${collection.totalCards} thẻ, ${collection.newCards} thẻ mới chưa xem. Xem bộ sưu tập"
         item.root.setOnClickListener {
             startActivity(Intent(this, CollectionDetailActivity::class.java)
                 .putExtra(CollectionDetailActivity.EXTRA_COLLECTION_ID, collection.id)

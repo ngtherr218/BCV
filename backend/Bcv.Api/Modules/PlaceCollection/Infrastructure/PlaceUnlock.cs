@@ -33,6 +33,13 @@ public static class PlaceUnlock
             """, connection, transaction);
         card.Parameters.Add(new NpgsqlParameter<long> { TypedValue = userId, NpgsqlDbType = NpgsqlDbType.Bigint });
         card.Parameters.Add(new NpgsqlParameter<long> { TypedValue = placeId, NpgsqlDbType = NpgsqlDbType.Bigint });
-        await card.ExecuteNonQueryAsync(ct);
+        if (await card.ExecuteNonQueryAsync(ct) > 0)
+        {
+            await using var name = new NpgsqlCommand("SELECT name FROM public.place WHERE place_id = $1", connection, transaction);
+            name.Parameters.Add(new NpgsqlParameter<long> { TypedValue = placeId, NpgsqlDbType = NpgsqlDbType.Bigint });
+            var placeName = (string?)await name.ExecuteScalarAsync(ct) ?? "địa danh";
+            await Bcv.Api.Modules.StatsNotify.Infrastructure.Notifications.AddAsync(connection, transaction, userId,
+                "CARD_RECEIVED", "Đã nhận thẻ mới", $"Thẻ {placeName} đã được thêm vào bộ sưu tập của bạn.", ct);
+        }
     }
 }

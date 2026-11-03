@@ -22,6 +22,7 @@ import com.project.bcv.BuildConfig
 import com.project.bcv.R
 import com.project.bcv.core.map.GoongDirectionsClient
 import com.project.bcv.core.map.RoadRoute
+import com.project.bcv.core.map.MapZoomControls
 import com.project.bcv.feature.discovery.domain.ExploreMapPlace
 import com.project.bcv.feature.discovery.domain.ExploreJourney
 import com.project.bcv.feature.discovery.domain.ExploreSnapshot
@@ -104,6 +105,7 @@ class GoongExploreMap(
         }
         mapView.getMapAsync { readyMap ->
             map = readyMap
+            readyMap.uiSettings.setAllGesturesEnabled(true)
             readyMap.uiSettings.isCompassEnabled = false
             readyMap.uiSettings.isRotateGesturesEnabled = false
             readyMap.addOnMapClickListener { coordinate ->
@@ -134,6 +136,9 @@ class GoongExploreMap(
             // Markers are anchored by their measured size, which is only known after layout.
             marker.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> positionMarkers() }
         }
+        MapZoomControls.attach(host, topDp = 74,
+            zoomIn = { map?.animateCamera(CameraUpdateFactory.zoomIn()) },
+            zoomOut = { map?.animateCamera(CameraUpdateFactory.zoomOut()) })
     }
 
     fun show(value: ExploreSnapshot) {

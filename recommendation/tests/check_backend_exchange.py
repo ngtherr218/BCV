@@ -7,7 +7,8 @@ from pathlib import Path
 from urllib.error import HTTPError
 from service.exchange import request, prepare
 
-base = 'http://127.0.0.1:5183'
+base = os.environ.get('BCV_AI_TEST_API', 'http://127.0.0.1:5183')
+assert base in ('http://127.0.0.1:5183', 'http://127.0.0.1:5184'), 'Disposable local API only'
 password = os.environ['BCV_AI_TEST_ADMIN_PASSWORD']
 admin = request(base, '/api/admin/login', body={'email': 'ai-test@bcv.local', 'password': password})['token']
 
@@ -34,9 +35,9 @@ try:
     expect_status(403, lambda: request(base, '/api/admin/recommendations/dataset', user))
     # PUT endpoints use explicit method below because exchange defaults to POST.
     from urllib.request import Request, urlopen
-    def put(path, body):
+    def put(path, body, token=None):
         req = Request(base + path, data=json.dumps(body).encode(), method='PUT',
-                      headers={'Content-Type': 'application/json', 'Authorization': 'Bearer '+user})
+                      headers={'Content-Type': 'application/json', 'Authorization': 'Bearer '+(token or user)})
         with urlopen(req) as response:
             return json.loads(response.read())
     interests = request(base, '/api/interests', user)
@@ -49,6 +50,18 @@ try:
     assert len(recommendations['places']) == 3
     assert all(p['reasons'] for p in recommendations['places'])
     assert recommendations['configuration']['mappingVersion'] == 'six-interests-v1'
+    place_id = dataset['places'][0]['placeId']
+    original = request(base, f'/api/admin/data/places/{place_id}', admin)
+    edited = copy.deepcopy(original)
+    edited['rating_count'] = (original.get('rating_count') or 0) + 1
+    put(f'/api/admin/data/places/{place_id}', edited, admin)
+    revision = request(base, '/api/admin/recommendations/dataset', admin)
+    assert revision['config']['recommendation_config_id'] != old_id
+    assert next(p for p in revision['places'] if p['placeId'] == place_id)['ratingCount'] == edited['rating_count']
+    request(base, f'/api/admin/recommendations/models/{old_id}/activate', admin, {})
+    assert request(base, '/api/admin/recommendations/dataset', admin)['places'] == dataset['places']
+    put(f'/api/admin/data/places/{place_id}', original, admin)
+    request(base, f'/api/admin/recommendations/models/{old_id}/activate', admin, {})
     manifest = prepare(dataset, 'integration-'+suffix, Path('reports/canonical-places.csv'), Path('service/data/model.joblib'))
     bad = copy.deepcopy(manifest)
     bad['places'][0]['features'].pop(next(iter(bad['places'][0]['features'])))

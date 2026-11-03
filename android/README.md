@@ -58,9 +58,13 @@ Hoặc mở thư mục `android/` bằng Android Studio rồi bấm **Run**. M�
 
 ## Sử dụng
 
+Khi giày tăng tốc đang có hiệu lực, màn **Khám phá** và **Hành trình** hiển thị thẻ **Đang dùng Giày tăng tốc**, hệ số nhân và số bước thực tế còn được tăng tốc. Thanh hiệu lực giảm sau mỗi lần đồng bộ; thẻ ẩn khi hết hiệu lực hoặc hoàn thành hành trình. Chạm vào thẻ để mở chi tiết giày. Vé máy bay có tác dụng tức thời nên không có hiệu ứng duy trì.
+
+Trên màn đăng nhập, chọn **Ghi nhớ tài khoản và mật khẩu** để tự điền lại ở lần sau. App chỉ lưu sau khi đăng nhập thành công, mã hóa bằng AES-GCM với khóa trong Android Keystore. Bỏ tích sẽ xóa thông tin đã nhớ trên thiết bị; đăng xuất vẫn giữ thông tin nếu đã chọn ghi nhớ. Tính năng này không thay đổi thời hạn phiên đăng nhập.
+
 Mở app, đăng ký hoặc đăng nhập. Phiên được giữ 30 ngày và tự gia hạn, nên lần sau mở app sẽ vào thẳng màn đang dở (thiết lập hoặc Khám phá); chỉ khi phiên bị từ chối (đăng xuất, đổi mật khẩu, bị khóa) mới phải đăng nhập lại.
 
-Khi trình diễn trên thiết bị không có bước thật, bấm nút icon người đi bộ có dấu "+" cạnh chữ **Khám phá** để ghi 2.000 bước mẫu vào Health Connect, rồi bấm **Đồng bộ** (hoặc chờ tự đồng bộ).
+Trong bản debug, bấm icon người đi bộ cạnh chữ **Khám phá** để mở **Test bước chân**. Nhập số bước mỗi lần và khoảng chờ, rồi chọn gửi một lần hoặc mô phỏng định kỳ. Bước được gửi trực tiếp đến backend và làm thay đổi dữ liệu tài khoản đang đăng nhập; nên dùng tài khoản test.
 
 ## Luồng sử dụng
 
@@ -137,6 +141,11 @@ Test giao diện và tích hợp nằm trong `app/src/androidTest/`, chạy trê
 ## Xử lý sự cố
 
 **App báo "Chưa thể kết nối":**
+
+- Với backend online, mở `https://bcv-admin-test.onrender.com/health` và kiểm tra `{"status":"ok"}`. Render Free có thể cần khoảng một phút để thức dậy; app cho phép chờ phản hồi tối đa 90 giây và không tự gửi lại thao tác ghi dữ liệu. Link `bcv-sv-test.onrender.com` cũ đã tạm dừng.
+- Kiểm tra `android/dev.properties` không ghi đè URL mới bằng địa chỉ local. URL được đóng vào APK lúc build; phải build và cài lại sau khi đổi URL. Nếu phiên cũ không còn hợp lệ khi chuyển server, đăng nhập lại bằng tài khoản hiện có.
+
+Nếu chủ động chạy backend local:
 
 1. Trên điện thoại, mở trình duyệt vào `http://<IP-máy-tính>:5081/health`. Kết quả đúng là `{"status":"ok"}`.
 2. Nếu bị timeout, Windows Firewall đang chặn. Mở PowerShell bằng quyền Administrator và mở cổng 5081 cho mạng nội bộ (thay dải IP cho đúng):

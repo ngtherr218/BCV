@@ -24,10 +24,6 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.StepsRecord
-import androidx.health.connect.client.records.metadata.DataOrigin
-import androidx.health.connect.client.records.metadata.Metadata
-import androidx.health.connect.client.request.ReadRecordsRequest
-import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import com.google.android.material.snackbar.Snackbar
 import com.project.bcv.R
@@ -49,14 +45,14 @@ import com.project.bcv.feature.journey.presentation.JourneyActivity
 import com.project.bcv.feature.collection.presentation.CollectionActivity
 import com.project.bcv.feature.questitem.quest.presentation.QuestActivity
 import java.util.Locale
-import java.time.Instant
-import java.time.ZoneId
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 class ExploreActivity : AppCompatActivity() {
     private lateinit var binding: ActivityExploreBinding
     private lateinit var model: ExploreViewModel
+    private lateinit var journeyRewards: com.project.bcv.feature.collection.presentation.JourneyRewardController
+    private lateinit var notificationBell: com.project.bcv.feature.statsnotify.notifications.presentation.NotificationBell
     private lateinit var goongMap: GoongExploreMap
     private val handler = Handler(Looper.getMainLooper())
     private var sheetCollapsed = false
@@ -68,6 +64,7 @@ class ExploreActivity : AppCompatActivity() {
     private var shownStepsJourneyId: Long? = null
     /** Set while Hành trình is open, so coming back slides this tab in from the left. */
     private var returningFromTab = false
+    private var resumedOnce = false
     /** Set when Hành trình's map card was tapped: frame the journey (or virtual location) on return. */
     private var focusMapOnReturn = false
     private val journeyLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -75,14 +72,6 @@ class ExploreActivity : AppCompatActivity() {
     }
     private var shownSteps = 0
     private var stepsAnimator: ValueAnimator? = null
-    private var demoWriteInFlight = false
-    private val demoStepsPermission = HealthPermission.getWritePermission(StepsRecord::class)
-    private val demoPermissionLauncher = registerForActivityResult(
-        PermissionController.createRequestPermissionResultContract()
-    ) { granted ->
-        if (demoStepsPermission in granted) writeDemoSteps()
-        else Snackbar.make(binding.root, "Cần cho phép ghi bước chân để dùng dữ liệu thử.", Snackbar.LENGTH_LONG).show()
-    }
     private val readStepsPermission = HealthPermission.getReadPermission(StepsRecord::class)
     private var stepsPermissionAsked = false
     private var activityPermissionAsked = false
@@ -165,16 +154,28 @@ class ExploreActivity : AppCompatActivity() {
         scheduleMapTimeout()
 
         model = ViewModelProvider(this, ExploreViewModelFactory(
-            ExploreModule.repository(this), ExploreModule.stepSource(this), ExploreModule.addressLookup()
+            ExploreModule.repository(this), ExploreModule.stepSource(this), ExploreModule.addressLookup(), com.project.bcv.feature.discovery.data.StepTestPreferences(this)
         ))[ExploreViewModel::class.java]
-        model.state.observe(this, ::render)
+        notificationBell = com.project.bcv.feature.statsnotify.notifications.presentation.NotificationBell(
+            this, binding.notificationsButton, binding.notificationBadge)
+        journeyRewards = com.project.bcv.feature.collection.presentation.JourneyRewardController(this) {
+            com.project.bcv.core.ui.CollectionNavBadge.refresh(binding.bottomNavigation)
+        }
+        model.state.observe(this) { state ->
+            render(state)
+            if (state.stage == ExploreStage.COMPLETED) {
+                state.snapshot?.journey?.let(journeyRewards::completed)
+                notificationBell.refresh()
+                com.project.bcv.core.ui.CollectionNavBadge.refresh(binding.bottomNavigation)
+            }
+        }
         model.address.observe(this) { model.state.value?.let(::renderLocationName) }
         binding.recenterButton.setOnClickListener { goongMap.recenter() }
         binding.primaryButton.setOnClickListener { primaryAction() }
         binding.secondaryButton.setOnClickListener { secondaryAction() }
-        binding.demoStepsButton.setOnClickListener { addDemoSteps() }
+        binding.demoStepsButton.setOnClickListener { StepTestDialog.show(this, model) }
         // Icon only now: long-press shows what it does.
-        TooltipCompat.setTooltipText(binding.demoStepsButton, "+2.000 bước thử")
+        TooltipCompat.setTooltipText(binding.demoStepsButton, "Test bước chân")
         binding.tertiaryButton.setOnClickListener { openRecommendations() }
         binding.notificationsButton.setOnClickListener { startActivity(Intent(this, NotificationsActivity::class.java)) }
         binding.profileButton.setOnClickListener { startActivity(Intent(this, ProfileActivity::class.java)) }
@@ -255,6 +256,9 @@ class ExploreActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         goongMap.onResume()
+        // A directly opened item screen can equip shoes without switching tabs.
+        if (resumedOnce && !returningFromTab) model.load()
+        resumedOnce = true
         // Refreshed on every return so a photo changed in Hồ sơ shows here at once.
         loadProfileAvatar()
         if (::model.isInitialized) {
@@ -275,7 +279,7 @@ class ExploreActivity : AppCompatActivity() {
             binding.root.post { goongMap.recenter() }
         }
     }
-    override fun onPause() { handler.removeCallbacks(autoSync); goongMap.onPause(); super.onPause() }
+    override fun onPause() { model.stopStepSimulation(); handler.removeCallbacks(autoSync); goongMap.onPause(); super.onPause() }
     override fun onStop() { goongMap.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); goongMap.onLowMemory() }
     override fun onSaveInstanceState(outState: Bundle) {
@@ -419,86 +423,12 @@ class ExploreActivity : AppCompatActivity() {
             ?: fallback ?: "Chưa có vị trí ảo"
     }
 
-    private fun addDemoSteps() {
-        if (demoWriteInFlight) return
-        val state = model.state.value ?: return
-        if (state.snapshot?.journey?.status != "IN_PROGRESS") {
-            Snackbar.make(binding.root, "Chọn một địa danh trên bản đồ rồi tạo hành trình trước.", Snackbar.LENGTH_LONG).show()
-            return
-        }
-        if (state.stage == ExploreStage.PERMISSION_REQUIRED) {
-            Snackbar.make(binding.root, "Cần cho phép đọc bước chân trước khi thử.", Snackbar.LENGTH_LONG).show()
-            startActivity(Intent(this, HealthConnectActivity::class.java))
-            return
-        }
-        lifecycleScope.launch {
-            try {
-                if (HealthConnectClient.getSdkStatus(this@ExploreActivity) != HealthConnectClient.SDK_AVAILABLE) {
-                    Snackbar.make(binding.root, "Thiết bị chưa có Health Connect.", Snackbar.LENGTH_LONG).show()
-                    return@launch
-                }
-                val granted = HealthConnectClient.getOrCreate(this@ExploreActivity)
-                    .permissionController.getGrantedPermissions()
-                if (demoStepsPermission in granted) writeDemoSteps()
-                else demoPermissionLauncher.launch(setOf(demoStepsPermission))
-            } catch (_: Exception) {
-                Snackbar.make(binding.root, "Chưa mở được Health Connect.", Snackbar.LENGTH_LONG).show()
-            }
-        }
-    }
-
-    private fun writeDemoSteps() {
-        if (demoWriteInFlight) return
-        val journey = model.state.value?.snapshot?.journey ?: return
-        if (journey.status != "IN_PROGRESS") return
-        demoWriteInFlight = true
-        binding.demoStepsButton.isEnabled = false
-        binding.demoStepsButton.alpha = 0.4f
-        lifecycleScope.launch {
-            try {
-                val client = HealthConnectClient.getOrCreate(this@ExploreActivity)
-                val journeyStart = Instant.ofEpochSecond(journey.startedAtEpochSeconds)
-                val end = Instant.now()
-                // Health Connect does not count overlapping step records twice, so a sample overlapping an
-                // earlier one only added part of its 2,000 steps (or none). Each sample starts where this
-                // app's last one for the journey ended, so every tap adds the full 2,000.
-                val lastSampleEnd = client.readRecords(ReadRecordsRequest(StepsRecord::class,
-                    TimeRangeFilter.between(journeyStart, end),
-                    dataOriginFilter = setOf(DataOrigin(packageName))))
-                    .records.maxOfOrNull { it.endTime }
-                val start = listOfNotNull(journeyStart, end.minusSeconds(30), lastSampleEnd).max()
-                if (!start.isBefore(end)) {
-                    Snackbar.make(binding.root, "Chờ vài giây rồi thử lại.", Snackbar.LENGTH_SHORT).show()
-                    return@launch
-                }
-                val zone = ZoneId.systemDefault().rules
-                client.insertRecords(listOf(
-                    StepsRecord(
-                        count = 2_000,
-                        startTime = start,
-                        endTime = end,
-                        startZoneOffset = zone.getOffset(start),
-                        endZoneOffset = zone.getOffset(end),
-                        metadata = Metadata.manualEntry()
-                    )
-                ))
-                Snackbar.make(binding.root, "Đã thêm 2.000 bước thử. Bấm Đồng bộ để cập nhật.", Snackbar.LENGTH_LONG).show()
-            } catch (_: Exception) {
-                Snackbar.make(binding.root, "Chưa ghi được bước thử vào Health Connect.", Snackbar.LENGTH_LONG).show()
-            } finally {
-                demoWriteInFlight = false
-                binding.demoStepsButton.isEnabled = true
-                binding.demoStepsButton.alpha = 1f
-            }
-        }
-    }
-
     private fun render(state: ExploreUiState) = with(binding) {
         if (state.snapshot?.journey?.status == "IN_PROGRESS") {
             requestActivityPermissionIfNeeded()
             requestTrackingNotificationPermission()
         }
-        com.project.bcv.core.ui.JourneyCompletionDialog.showIfNeeded(this@ExploreActivity, state.snapshot?.journey)
+        activeItemBanner.show(state.snapshot?.journey)
         state.snapshot?.let { snapshot ->
             if (snapshot != lastSnapshot) {
                 goongMap.show(snapshot)
@@ -514,6 +444,7 @@ class ExploreActivity : AppCompatActivity() {
         val copy = if (mapFailed) mapErrorCopy else copyFor(state)
         statusTitle.text = copy.noticeTitle
         statusDetail.text = copy.noticeDetail
+        statusDetail.visibility = if (copy.noticeDetail.isBlank()) View.GONE else View.VISIBLE
         statusCard.backgroundTintList = ColorStateList.valueOf(copy.noticeBackground)
         statusTitle.setTextColor(copy.noticeColor)
         statusDetail.setTextColor(copy.noticeColor)
@@ -532,6 +463,8 @@ class ExploreActivity : AppCompatActivity() {
         val showProgress = journey != null && !mapFailed && state.stage !in setOf(
             ExploreStage.LOADING, ExploreStage.LOAD_FAILED)
         progressSection.visibility = if (showProgress) View.VISIBLE else View.GONE
+        startLocation.visibility = if (journey != null) View.VISIBLE else View.GONE
+        startLocation.text = journey?.let { "Xuất phát: ${it.startLabel}" }.orEmpty()
         // With progress shown the sheet follows the journey design: no description or footer line.
         sheetDescription.visibility = if (showProgress) View.GONE else View.VISIBLE
         sheetFooter.visibility = sheetDescription.visibility
@@ -549,9 +482,9 @@ class ExploreActivity : AppCompatActivity() {
         tertiaryButton.visibility = if (showProgress && journey?.status == "IN_PROGRESS" &&
             state.stage != ExploreStage.PERMISSION_REQUIRED) View.VISIBLE else View.GONE
         tertiaryButton.isEnabled = state.stage != ExploreStage.SYNCING
-        demoStepsButton.visibility = View.VISIBLE
-        demoStepsButton.isEnabled = !demoWriteInFlight
-        demoStepsButton.alpha = if (demoWriteInFlight) 0.4f else 1f
+        demoStepsButton.visibility = if (com.project.bcv.BuildConfig.STEP_TEST_ENABLED) View.VISIBLE else View.GONE
+        demoStepsButton.isEnabled = true
+        demoStepsButton.alpha = 1f
         if (renderedStage != state.stage) {
             if (renderedStage != null) {
                 ScreenMotion.reveal(statusCard)
@@ -608,7 +541,7 @@ class ExploreActivity : AppCompatActivity() {
                 "Cho phép đếm bước", secondary = "Xem hành trình đã lưu",
                 footer = "Giữ nguyên tiến độ đã được xác nhận.",
                 noticeBackground = 0xFFFFF0D9.toInt(), noticeColor = 0xFFAD7A32.toInt())
-            ExploreStage.COMPLETED -> ScreenCopy("Hành trình hoàn thành", "Vị trí ảo cập nhật sau xác nhận Backend.",
+            ExploreStage.COMPLETED -> ScreenCopy("Hành trình hoàn thành", "",
                 journey?.destinationName.orEmpty(), "Bạn đã đến điểm đích của hành trình.",
                 "Khám phá tiếp", footer = "Tiến độ hoàn thành được lưu trong hành trình.")
         }

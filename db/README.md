@@ -46,6 +46,9 @@ try {
         '015_tune_recommendation_weights.sql',
         '016_preserve_missing_rating_counts.sql',
         '017_complete_place_cards.sql',
+        '018_user_last_login.sql',
+        '019_card_seen.sql',
+        '020_notification_hidden.sql',
         '021_versioned_recommendations.sql'
     )) {
         & $psql -X -w -v ON_ERROR_STOP=1 -h $config.DbHost -p $config.DbPort -U $config.DbUser -d $config.DbName -f (Join-Path db $file)
@@ -152,7 +155,7 @@ COMMIT;
 - **Nhiệm vụ:** 11 nhiệm vụ ngày/tuần với điều kiện `STEP_COUNT`, `DISCOVER_PLACE`, `COMPLETE_JOURNEY`.
 - **Thẻ và bộ sưu tập:** sau `017` có 311 thẻ cho 311 địa danh, thuộc 12 bộ sưu tập; 270 thẻ chưa có ảnh. Migration giữ nguyên 135 thẻ cũ, thêm 176 thẻ và gán vào 5 bộ mới: Hành trình Bắc Trung Bộ (28), Duyên hải Nam Trung Bộ (35), Khám phá Tây Nguyên (23), Dấu chân Đông Nam Bộ (28), Sắc màu miền Tây (62). Một số thẻ mẫu cũ thuộc nhiều bộ nên tổng số thẻ theo từng bộ có thể lớn hơn 311. Thẻ mới dùng ảnh địa danh nếu có; không tự tạo ảnh thay thế. Thẻ mới được kích hoạt khi địa danh và khu vực đều ACTIVE; các bộ mới ở trạng thái ACTIVE. Chạy lại không thêm bản trùng.
 - **Ảnh:** 61 ảnh địa danh là URL trực tiếp từ Wikimedia Commons.
-- **Hành trình mẫu** tính số bước theo κ = 1 như Backend.
+- **Hành trình mẫu cũ** giữ số bước đã lưu. Backend hiện dùng κ = 0,15 cho hành trình mới.
 - Trường dữ liệu gốc không có cột tương ứng (URL nguồn, mã băm, metadata mô hình) không được nhập; `rating_count` bị thiếu đặt `0`, `rating` để `NULL`.
 
 ## Máy phát triển hiện tại
@@ -195,3 +198,7 @@ Xem [Đóng góp](../README.md#đóng-góp) ở README gốc. Migration mới: �
 ## Giấy phép
 
 UNLICENSED © 2026 Nhóm ĐAHK1262703 cho schema và script. Ảnh địa danh giữ giấy phép riêng theo từng tệp (xem [Ghi công](#ghi-công)).
+
+## Thời gian đăng nhập cuối
+
+`018_user_last_login.sql` thêm cột `app_user.last_login_at` kiểu TIMESTAMPTZ, cho phép NULL. Backend tự bảo đảm cột này tồn tại khi khởi động, nên bản triển khai hiện có được nâng cấp tự động. Không backfill thời gian cũ. Chỉ đăng nhập thành công bằng tài khoản/mật khẩu cập nhật cột này; khôi phục phiên và đăng nhập bị từ chối không cập nhật. Web hiển thị theo giờ Việt Nam (GMT+7).

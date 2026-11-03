@@ -11,7 +11,7 @@ public sealed class NotificationRepository(NpgsqlDataSource db)
         await using var connection = await db.OpenConnectionAsync(ct);
         await using var command = new NpgsqlCommand("""
             SELECT notification_id, notification_type, title, content, read_status, created_at
-            FROM public.notification WHERE user_id = $1
+            FROM public.notification WHERE user_id = $1 AND hidden_at IS NULL
             ORDER BY created_at DESC, notification_id DESC
             LIMIT 100
             """, connection);
@@ -21,7 +21,35 @@ public sealed class NotificationRepository(NpgsqlDataSource db)
         while (await reader.ReadAsync(ct))
             items.Add(new NotificationView(reader.GetInt64(0), reader.GetString(1), reader.GetString(2),
                 reader.GetString(3), reader.GetBoolean(4), reader.GetDateTime(5)));
-        return new NotificationList(items.Count(n => !n.Read), items);
+        await reader.DisposeAsync();
+        await using var unread = new NpgsqlCommand(
+            "SELECT COUNT(*) FROM public.notification WHERE user_id = $1 AND hidden_at IS NULL AND read_status = FALSE", connection);
+        unread.Parameters.Add(new NpgsqlParameter<long> { TypedValue = userId, NpgsqlDbType = NpgsqlDbType.Bigint });
+        return new NotificationList(Convert.ToInt32(await unread.ExecuteScalarAsync(ct)), items);
+    }
+
+    public async Task<NotificationList> MarkAllReadAsync(long userId, CancellationToken ct)
+    {
+        await using (var connection = await db.OpenConnectionAsync(ct))
+        await using (var command = new NpgsqlCommand(
+            "UPDATE public.notification SET read_status = TRUE WHERE user_id = $1 AND read_status = FALSE", connection))
+        {
+            command.Parameters.Add(new NpgsqlParameter<long> { TypedValue = userId, NpgsqlDbType = NpgsqlDbType.Bigint });
+            await command.ExecuteNonQueryAsync(ct);
+        }
+        return await NotificationsAsync(userId, ct);
+    }
+
+    public async Task<NotificationList> DeleteAllAsync(long userId, CancellationToken ct)
+    {
+        await using (var connection = await db.OpenConnectionAsync(ct))
+        await using (var command = new NpgsqlCommand(
+            "UPDATE public.notification SET hidden_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND hidden_at IS NULL", connection))
+        {
+            command.Parameters.Add(new NpgsqlParameter<long> { TypedValue = userId, NpgsqlDbType = NpgsqlDbType.Bigint });
+            await command.ExecuteNonQueryAsync(ct);
+        }
+        return await NotificationsAsync(userId, ct);
     }
 
     public async Task<NotificationList> MarkReadAsync(long userId, long notificationId, CancellationToken ct)

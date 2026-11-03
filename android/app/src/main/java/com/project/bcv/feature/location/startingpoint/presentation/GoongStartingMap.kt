@@ -28,6 +28,7 @@ class GoongStartingMap(activity: Activity, savedState: Bundle?) {
     private var map: MapLibreMap? = null
     private var target: Coordinates? = null
     private var targetZoom = DEFAULT_ZOOM
+    private var zoomControls: View? = null
 
     init {
         MapLibre.getInstance(activity)
@@ -37,7 +38,8 @@ class GoongStartingMap(activity: Activity, savedState: Bundle?) {
         }
         mapView.getMapAsync { readyMap ->
             map = readyMap
-            readyMap.uiSettings.setAllGesturesEnabled(false)
+            readyMap.uiSettings.setAllGesturesEnabled(true)
+            readyMap.uiSettings.isRotateGesturesEnabled = false
             readyMap.uiSettings.isCompassEnabled = false
             readyMap.addOnCameraMoveListener { positionMarker() }
             readyMap.addOnCameraIdleListener { positionMarker() }
@@ -53,12 +55,16 @@ class GoongStartingMap(activity: Activity, savedState: Bundle?) {
 
     fun show(host: FrameLayout, coordinates: Coordinates?, zoom: Double = DEFAULT_ZOOM) {
         if (mapView.parent !== host) {
+            (zoomControls?.parent as? ViewGroup)?.removeView(zoomControls)
             (mapView.parent as? ViewGroup)?.removeView(mapView)
             (marker.parent as? ViewGroup)?.removeView(marker)
             host.addView(mapView, 0, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
             ))
             host.addView(marker, 1, FrameLayout.LayoutParams(markerSize, markerSize))
+            zoomControls = com.project.bcv.core.map.MapZoomControls.attach(host,
+                zoomIn = { map?.animateCamera(CameraUpdateFactory.zoomIn()) },
+                zoomOut = { map?.animateCamera(CameraUpdateFactory.zoomOut()) })
         }
         if (coordinates != null && (coordinates != target || zoom != targetZoom)) {
             val animated = target != null

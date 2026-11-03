@@ -51,11 +51,29 @@
         style="@style/NavTab"
         android:contentDescription="Bộ sưu tập">
 
+        <FrameLayout
+            android:layout_width="56dp"
+            android:layout_height="32dp">
         <ImageView
+            android:layout_gravity="center"
             android:id="@+id/tabCollectionIcon"
             style="@style/NavTabIcon"
             android:src="@drawable/ic_nav_collection"
             app:tint="#7D8A82" />
+            <TextView
+                android:id="@+id/collectionBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="18dp"
+                android:layout_gravity="top|end"
+                android:minWidth="18dp"
+                android:paddingHorizontal="3dp"
+                android:gravity="center"
+                android:background="@drawable/notification_badge_bg"
+                android:textColor="@android:color/white"
+                android:textSize="10sp"
+                android:importantForAccessibility="no"
+                android:visibility="gone" />
+        </FrameLayout>
 
         <TextView
             android:id="@+id/tabCollectionLabel"

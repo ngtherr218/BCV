@@ -213,8 +213,18 @@ public sealed class PostgresJourneyRepository(NpgsqlDataSource db) : IJourneyRep
                 {
                     name.Parameters.Add(new NpgsqlParameter<long> { TypedValue = destinationPlaceId, NpgsqlDbType = NpgsqlDbType.Bigint });
                     var placeName = (string?)await name.ExecuteScalarAsync(ct) ?? "điểm đến";
+                    await using var ownedCard = new NpgsqlCommand("""
+                        SELECT EXISTS (SELECT 1 FROM public.user_card uc
+                            JOIN public.card c ON c.card_id = uc.card_id
+                            WHERE uc.user_id = $1 AND c.place_id = $2)
+                        """, connection, transaction);
+                    ownedCard.Parameters.Add(new NpgsqlParameter<long> { TypedValue = userId, NpgsqlDbType = NpgsqlDbType.Bigint });
+                    ownedCard.Parameters.Add(new NpgsqlParameter<long> { TypedValue = destinationPlaceId, NpgsqlDbType = NpgsqlDbType.Bigint });
+                    var hasCard = (bool)(await ownedCard.ExecuteScalarAsync(ct))!;
+                    var celebration = $"Bạn đã hoàn thành hành trình và khám phá địa điểm {placeName}!";
+                    if (hasCard) celebration += $"\n\nThẻ địa danh {placeName} đã có trong bộ sưu tập của bạn.";
                     await Notifications.AddAsync(connection, transaction, userId, Notifications.JourneyCompleted,
-                        "Hành trình hoàn thành", $"Bạn đã đến {placeName}.", ct);
+                        "Hành trình hoàn thành", celebration, ct);
                 }
 
                 await QuestProgress.RecordAsync(connection, transaction, userId, QuestProgress.CompleteJourney, 1, ct);

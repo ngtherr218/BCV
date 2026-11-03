@@ -12,7 +12,7 @@ object InventoryModule {
         JsonApiClient(context, BuildConfig.API_BASE_URL), SessionPreferences(context)
     )
 
-    fun items(context: Context) = ItemUseRepositoryImpl(
-        JsonApiClient(context, BuildConfig.API_BASE_URL), SessionPreferences(context)
+    fun items(context: Context, itemId: Long? = null) = ItemUseRepositoryImpl(
+        JsonApiClient(context, BuildConfig.API_BASE_URL), SessionPreferences(context), itemId
     )
 }

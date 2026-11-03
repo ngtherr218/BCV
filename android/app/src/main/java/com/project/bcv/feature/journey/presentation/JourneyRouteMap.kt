@@ -66,6 +66,7 @@ class JourneyRouteMap(activity: Activity, savedState: Bundle?, private val host:
     private var routeJob: Job? = null
     private var requestedRoute: String? = null
     private var roadRoute: RoadRoute? = null
+    private var framedKey: String? = null
 
     init {
         MapLibre.getInstance(activity)
@@ -79,10 +80,14 @@ class JourneyRouteMap(activity: Activity, savedState: Bundle?, private val host:
         host.addView(walker, FrameLayout.LayoutParams(badgeSize, badgeSize))
         host.addView(startPin, FrameLayout.LayoutParams(pinSize, pinSize))
         listOf(startDot, startPin, walker, destinationBadge).forEach { it.visibility = View.INVISIBLE }
+        com.project.bcv.core.map.MapZoomControls.attach(host,
+            zoomIn = { map?.animateCamera(CameraUpdateFactory.zoomIn()) },
+            zoomOut = { map?.animateCamera(CameraUpdateFactory.zoomOut()) })
         mapView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> frame() }
         mapView.getMapAsync { readyMap ->
             map = readyMap
-            readyMap.uiSettings.setAllGesturesEnabled(false)
+            readyMap.uiSettings.setAllGesturesEnabled(true)
+            readyMap.uiSettings.isRotateGesturesEnabled = false
             readyMap.uiSettings.isCompassEnabled = false
             readyMap.uiSettings.isLogoEnabled = false
             readyMap.uiSettings.isAttributionEnabled = false
@@ -131,9 +136,13 @@ class JourneyRouteMap(activity: Activity, savedState: Bundle?, private val host:
         routeSource?.setGeoJson(roadRoute?.progressGeoJson(fraction)
             ?: """{"type":"FeatureCollection","features":[]}""")
         val pad = (40 * density).toInt()
-        active.moveCamera(CameraUpdateFactory.newLatLngBounds(
-            roadRoute?.bounds() ?: LatLngBounds.Builder().include(from).include(to).build(),
-            pad, pad, pad, pad))
+        val key = "${trip.id}:$from:$to:${roadRoute != null}:${mapView.width}:${mapView.height}"
+        if (framedKey != key) {
+            framedKey = key
+            active.moveCamera(CameraUpdateFactory.newLatLngBounds(
+                roadRoute?.bounds() ?: LatLngBounds.Builder().include(from).include(to).build(),
+                pad, pad, pad, pad))
+        }
         positionMarkers()
     }
 

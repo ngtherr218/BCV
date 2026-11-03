@@ -14,6 +14,7 @@ import com.project.bcv.feature.discovery.domain.RecommendedPlace
 import com.project.bcv.feature.discovery.domain.Recommendations
 import com.project.bcv.feature.location.startingpoint.domain.Coordinates
 import org.json.JSONObject
+import com.project.bcv.feature.discovery.domain.ActiveItemEffect
 
 class ExploreRepositoryImpl(
     private val remote: JsonApiClient,
@@ -24,14 +25,16 @@ class ExploreRepositoryImpl(
     override fun loadPlace(placeId: Long): ExplorePlaceDetail =
         remote.get("api/explore/places/$placeId", token()).let {
             ExplorePlaceDetail(it.getLong("placeId"), it.getString("name"), it.getString("placeType"),
-                it.optString("imageUrl").takeIf(String::isNotBlank), it.getBoolean("isDiscovered"),
+                it.nullableText("imageUrl"), it.getBoolean("isDiscovered"),
                 it.getDouble("distanceKm"), it.getInt("requiredSteps"),
-                it.optString("introduction").takeIf(String::isNotBlank),
-                it.optString("highlights").takeIf(String::isNotBlank),
-                it.optString("regionName").takeIf(String::isNotBlank),
+                it.nullableText("introduction"),
+                it.nullableText("highlights"),
+                it.nullableText("regionName"),
                 it.optJSONArray("imageUrls")?.let { array ->
                     (0 until array.length()).map(array::getString)
-                }.orEmpty())
+                }.orEmpty(),
+                if (it.isNull("rating")) null else it.optDouble("rating").takeIf { value -> value.isFinite() },
+                if (it.isNull("ratingCount")) null else it.optInt("ratingCount"))
         }
 
     override fun loadRecommendations(): Recommendations =
@@ -76,6 +79,11 @@ class ExploreRepositoryImpl(
                 if (it.has("startLatitude") && !it.isNull("startLatitude"))
                     Coordinates(it.getDouble("startLatitude"), it.getDouble("startLongitude")) else null,
                 it.optLong("destinationPlaceId").takeIf { id -> id > 0 },
+                if(it.has("sourceSteps") && !it.isNull("sourceSteps")) it.getLong("sourceSteps") else null,
+                it.optJSONObject("activeItem")?.let { effect ->
+                    ActiveItemEffect(effect.getString("itemType"), effect.getString("name"),
+                        effect.getDouble("multiplier"), effect.getInt("range"), effect.getInt("remainingSteps"))
+                }, it.nullableText("startPlaceName"),
                 it.optJSONObject("awardedCard")?.let { card ->
                     JourneyCardReward(card.getLong("cardId"), card.getString("name"))
                 })
@@ -95,3 +103,6 @@ class ExploreRepositoryImpl(
     private fun token(): String = session.token
         ?: throw ApiFailure("UNAUTHORIZED", "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.")
 }
+
+private fun JSONObject.nullableText(key: String): String? =
+    if (isNull(key)) null else optString(key).trim().takeIf { it.isNotEmpty() && it != "null" }

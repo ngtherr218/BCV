@@ -11,18 +11,18 @@ public static class ItemUseEndpoints
     public static void MapItemUseEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/items");
-        group.MapGet("/speed-shoes", (HttpRequest request, ISessionStore sessions, ItemUseRepository items,
-            ILoggerFactory logs, CancellationToken ct) => Run(request, sessions, logs, user => items.ShoesAsync(user, ct)));
-        group.MapPost("/speed-shoes/use", (HttpRequest request, ISessionStore sessions, ItemUseRepository items,
-            ILoggerFactory logs, CancellationToken ct) => Run(request, sessions, logs, user => items.UseShoesAsync(user, ct)));
-        group.MapGet("/flight-ticket", (HttpRequest request, ISessionStore sessions, ItemUseRepository items,
-            ILoggerFactory logs, CancellationToken ct) => Run(request, sessions, logs, user => items.FlightAsync(user, ct)));
+        group.MapGet("/speed-shoes", (long? itemId, HttpRequest request, ISessionStore sessions, ItemUseRepository items,
+            ILoggerFactory logs, CancellationToken ct) => Run(request, sessions, logs, user => items.ShoesAsync(user, ct, itemId)));
+        group.MapPost("/speed-shoes/use", (long? itemId, HttpRequest request, ISessionStore sessions, ItemUseRepository items,
+            ILoggerFactory logs, CancellationToken ct) => Run(request, sessions, logs, user => items.UseShoesAsync(user, ct, itemId)));
+        group.MapGet("/flight-ticket", (long? itemId, HttpRequest request, ISessionStore sessions, ItemUseRepository items,
+            ILoggerFactory logs, CancellationToken ct) => Run(request, sessions, logs, user => items.FlightAsync(user, ct, itemId)));
         group.MapGet("/flight-ticket/regions/{regionId:long}/places", (long regionId, HttpRequest request,
             ISessionStore sessions, ItemUseRepository items, ILoggerFactory logs, CancellationToken ct) =>
             Run(request, sessions, logs, async user => new { places = await items.RegionPlacesAsync(user, regionId, ct) }));
-        group.MapPost("/flight-ticket/use", (UsePlaceRequest body, HttpRequest request, ISessionStore sessions,
+        group.MapPost("/flight-ticket/use", (UsePlaceRequest body, long? itemId, HttpRequest request, ISessionStore sessions,
             ItemUseRepository items, ILoggerFactory logs, CancellationToken ct) =>
-            Run(request, sessions, logs, user => items.UseFlightAsync(user, body.PlaceId, ct)));
+            Run(request, sessions, logs, user => items.UseFlightAsync(user, body.PlaceId, ct, itemId)));
     }
 
     private static async Task<IResult> Run<T>(HttpRequest request, ISessionStore sessions, ILoggerFactory logs,

@@ -4,9 +4,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.health.READ_STEPS" />
-    <!-- Only for the "+2.000 bước thử" demo samples; real steps are never written. -->
-    <uses-permission android:name="android.permission.health.WRITE_STEPS" />
-    <!-- Recording API / direct step sensor fallback when Health Connect cannot supply steps. -->
+    <!-- Recording API and direct sensor fallback. -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />

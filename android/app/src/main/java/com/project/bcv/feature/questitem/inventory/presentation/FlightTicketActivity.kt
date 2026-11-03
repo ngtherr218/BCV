@@ -32,7 +32,7 @@ class FlightTicketActivity : AppCompatActivity() {
         binding.topBar.screenTitle.text = "Vé máy bay"
         binding.topBar.backButton.setOnClickListener { finish() }
         binding.backToInventory.setOnClickListener { finish() }
-        model = ViewModelProvider(this, viewModelFactory { FlightTicketViewModel(InventoryModule.items(this)) })[
+        model = ViewModelProvider(this, viewModelFactory { FlightTicketViewModel(InventoryModule.items(this, intent.getLongExtra("item_id", -1).takeIf { it > 0 })) })[
             FlightTicketViewModel::class.java]
         binding.state.stateRetry.setOnClickListener { model.load() }
         binding.regionPicker.setOnClickListener { pickRegion() }

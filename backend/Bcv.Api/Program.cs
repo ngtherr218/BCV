@@ -21,12 +21,21 @@ using Bcv.Api.Modules.Admin;
 using Bcv.Api.Modules.Shared.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
+// Cloud hosts such as Render assign the public listening port at runtime.
+if (builder.Configuration["PORT"] is { Length: > 0 } publicPort)
+{
+    if (!int.TryParse(publicPort, out var port) || port is < 1 or > 65535)
+        throw new InvalidOperationException("PORT must be an integer from 1 to 65535.");
+    builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+}
 var connectionString = builder.Configuration.GetConnectionString("Bcv")
     ?? throw new InvalidOperationException("Set ConnectionStrings__Bcv before starting the API.");
 
 builder.Services.AddSingleton(NpgsqlDataSource.Create(connectionString));
 builder.Services.AddScoped<AdminRepository>();
 builder.Services.AddScoped<RecommendationAdmin>();
+builder.Services.AddHttpClient<GoongGeocoder>(client => client.Timeout = TimeSpan.FromSeconds(10))
+    .RemoveAllLoggers();
 builder.Services.AddScoped<IAccountRepository, PostgresAccountRepository>();
 builder.Services.AddScoped<AccountService>();
 // Sign-ins survive restarts. The file holds only token hashes and lives outside the repository.
@@ -106,6 +115,12 @@ if (Array.IndexOf(args, "--create-admin") is var adminIndex && adminIndex >= 0)
     Console.WriteLine("Administrator created successfully.");
     return;
 }
+// The deployment image includes the Vite build. Local development still uses Vite's proxy.
+if (Directory.Exists(Path.Combine(app.Environment.ContentRootPath, "wwwroot")))
+{
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
+}
 app.MapGet("/health", async (NpgsqlDataSource db, CancellationToken cancellationToken) =>
 {
     try
@@ -134,4 +149,8 @@ app.MapInventoryEndpoints();
 app.MapItemUseEndpoints();
 app.MapStatsNotifyEndpoints();
 app.MapAdminEndpoints();
+await AccountSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
+await Bcv.Api.Modules.PlaceCollection.Infrastructure.CollectionSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
+await Bcv.Api.Modules.StatsNotify.Infrastructure.NotificationSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
+await RecommendationSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
 app.Run();

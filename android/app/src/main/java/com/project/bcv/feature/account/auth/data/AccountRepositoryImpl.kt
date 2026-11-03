@@ -17,7 +17,7 @@ class AccountRepositoryImpl(
             .put("email", email)
             .put("password", password)
             .put("confirmPassword", confirmPassword)
-        return remote.post("api/account/register", body).toSession().also { local.token = it.token }
+        return remote.post("api/account/register", body).toSession().also { local.token = it.token; local.userId = it.user.id }
     }
 
     override fun login(email: String, password: String): AccountSession {
@@ -25,6 +25,8 @@ class AccountRepositoryImpl(
         val response = remote.post("api/account/login", body)
         val session = response.toSession()
         local.token = session.token
+        local.userId = session.user.id
+        local.readyForHome = !session.needsInterestSelection && !session.needsActivityLevel && !session.needsVirtualLocation
         return session
     }
 
@@ -45,7 +47,10 @@ class AccountRepositoryImpl(
             throw error
         }
         return AccountSession(token, me.toAccountUser(), me.getBoolean("needsInterestSelection"),
-            me.getBoolean("needsActivityLevel"), me.getBoolean("needsVirtualLocation"))
+            me.getBoolean("needsActivityLevel"), me.getBoolean("needsVirtualLocation")).also {
+                local.userId = it.user.id
+                local.readyForHome = !it.needsInterestSelection && !it.needsActivityLevel && !it.needsVirtualLocation
+            }
     }
 
     override fun requestPasswordReset(email: String): Int = remote.post(

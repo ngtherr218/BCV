@@ -45,7 +45,7 @@ void Error(string code, Action action)
 var checks = new (string Name, Action Run)[]
 {
     ("Activity thresholds are versioned rather than fixed at 3000", () => {
-        var places = new[]{Place(1, meters:3000)};
+        var places = new[]{Place(1, meters:20000)};
         var custom = new Dictionary<string,int>{{"LOW",1000},{"MEDIUM",6000},{"HIGH",10000}};
         var result=Scores.Rank(places,[Preference()],"LOW",Weights(Scores.Activity),500000,custom);
         Assert(result[0].Criteria.Activity == .25);
@@ -77,7 +77,8 @@ var checks = new (string Name, Action Run)[]
         Assert(Rank(places, Weights(Scores.Preference), preference: Preference("landform__coast"))[0].Place.PlaceId == 2);
     }),
     ("Changing activity level changes the effort ranking", () => {
-        var places = new[] { Place(1, 6000), Place(2, 1000) };
+        // With kappa=0.15, 40 km / 10 km require 8,000 / 2,000 steps.
+        var places = new[] { Place(1, 40000), Place(2, 10000) };
         Assert(Rank(places, Weights(Scores.Activity), activity: "LOW")[0].Place.PlaceId == 2);
         Assert(Rank(places, Weights(Scores.Activity), activity: "HIGH")[0].Place.PlaceId == 1);
     }),
@@ -142,8 +143,9 @@ var checks = new (string Name, Action Run)[]
         Error("NO_RECOMMENDATION_PREFERENCES", () => Recommend(Input(preferences: [])));
         Error("NO_ACTIVITY_LEVEL", () => Recommend(Input(activity: null)));
     }),
-    ("Required steps keep the current kappa=1 conversion", () => {
-        Assert(StepConversion.RequiredSteps(50) == 66667);
+    ("Required steps use kappa=0.15 with a minimum of one", () => {
+        Assert(StepConversion.RequiredSteps(50) == 10000);
+        Assert(StepConversion.RequiredSteps(0) == 1);
     })
 };
 

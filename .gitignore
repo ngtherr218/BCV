@@ -37,3 +37,10 @@ android/.externalNativeBuild/
 *.iml
 recommendation/.venv/
 recommendation/**/__pycache__/
+
+# Local verification, logs and pre-sync backups
+/.playwright-cli/
+/output/
+/.local-backup-*/
+/.codex-sync-source/
+/backend/checks-build-out/

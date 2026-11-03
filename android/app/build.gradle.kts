@@ -22,6 +22,7 @@ fun quotedBuildValue(value: String): String = "\"" + value
     .replace("\n", "\\n")
     .replace("\r", "\\r") + "\""
 
+
 android {
     namespace = "com.project.bcv"
     compileSdk {
@@ -38,10 +39,12 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "PREVIEW_LOGIN_EMAIL", "\"\"")
         buildConfigField("String", "PREVIEW_LOGIN_PASSWORD", "\"\"")
+        buildConfigField("boolean", "STEP_TEST_ENABLED", "false")
     }
 
     buildTypes {
         debug {
+            buildConfigField("boolean", "STEP_TEST_ENABLED", "true")
             manifestPlaceholders["usesCleartextTraffic"] = "true"
             val apiUrl = providers.gradleProperty("bcvApiBaseUrl")
                 .orElse(localDevProperties.getProperty("bcvApiBaseUrl") ?: deployedApiUrl)

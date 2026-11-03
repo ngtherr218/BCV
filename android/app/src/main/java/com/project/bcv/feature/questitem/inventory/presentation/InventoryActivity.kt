@@ -287,7 +287,8 @@ class InventoryActivity : AppCompatActivity() {
             sheet.sheetAction.setOnClickListener {
                 dialog.dismiss()
                 startActivity(Intent(this,
-                    if (shoes) SpeedShoesActivity::class.java else FlightTicketActivity::class.java))
+                    if (shoes) SpeedShoesActivity::class.java else FlightTicketActivity::class.java)
+                    .putExtra("item_id", item.id))
             }
         } else {
             sheet.sheetAction.text = "Chưa thể sử dụng"

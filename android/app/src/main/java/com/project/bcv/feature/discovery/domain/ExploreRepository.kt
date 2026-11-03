@@ -16,9 +16,18 @@ data class ExploreJourney(
     val start: Coordinates? = null,
     /** The destination PLACE, opened from the journey screen once it is unlocked. */
     val destinationPlaceId: Long? = null,
+    /** Unboosted, cumulative server total; null means the server needs updating. */
+    val sourceSteps: Long? = null,
+    val activeItem: ActiveItemEffect? = null,
+    val startPlaceName: String? = null,
     /** Only provided by the server after the card is confirmed as owned. */
     val awardedCard: JourneyCardReward? = null
 ) {
+    val startLabel: String
+        get() = startPlaceName?.takeIf(String::isNotBlank)
+            ?: start?.let { String.format(java.util.Locale.US, "Vị trí xuất phát (%.5f, %.5f)", it.latitude, it.longitude) }
+            ?: "Chưa có thông tin điểm xuất phát"
+
     val progressPercent: Int
         get() = if (requiredSteps <= 0) 0 else (recordedSteps.toLong() * 100 / requiredSteps).toInt().coerceIn(0, 100)
 }
@@ -27,11 +36,15 @@ data class JourneyCardReward(val id: Long, val name: String)
 
 data class ExploreMapPlace(val id: Long, val name: String, val coordinates: Coordinates, val isDiscovered: Boolean)
 
+data class ActiveItemEffect(val itemType: String, val name: String, val multiplier: Double,
+    val range: Int, val remainingSteps: Int)
+
 /** [imageUrls] is filled only once the place is discovered; [imageUrl] is the locked (blurred) preview. */
 data class ExplorePlaceDetail(val id: Long, val name: String, val placeType: String,
     val imageUrl: String?, val isDiscovered: Boolean, val distanceKm: Double,
     val requiredSteps: Int, val introduction: String?, val highlights: String?,
-    val regionName: String? = null, val imageUrls: List<String> = emptyList())
+    val regionName: String? = null, val imageUrls: List<String> = emptyList(),
+    val rating: Double? = null, val ratingCount: Int? = null)
 
 data class ExploreSnapshot(val location: ExploreLocation?, val journey: ExploreJourney?,
     val places: List<ExploreMapPlace>)

@@ -200,6 +200,13 @@
                             android:imeOptions="actionDone" />
                     </com.google.android.material.textfield.TextInputLayout>
                 </LinearLayout>
+                <com.google.android.material.checkbox.MaterialCheckBox
+                    android:id="@+id/rememberLogin"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Ghi nhớ tài khoản và mật khẩu"
+                    android:textColor="@color/forest"
+                    android:textSize="13sp" />
                 <TextView
                     android:id="@+id/forgotPassword"
                     android:layout_width="match_parent"

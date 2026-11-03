@@ -15,17 +15,20 @@ import org.json.JSONObject
 
 class ItemUseRepositoryImpl(
     private val remote: JsonApiClient,
-    private val session: SessionPreferences
+    private val session: SessionPreferences,
+    private val itemId: Long? = null
 ) : ItemUseRepository {
     private fun token() = session.token
         ?: throw ApiFailure("UNAUTHORIZED", "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.")
 
-    override fun shoes(): SpeedShoesStatus = remote.get("api/items/speed-shoes", token()).toShoes()
+    private fun selected(path: String) = path + (itemId?.let { "?itemId=$it" } ?: "")
 
-    override fun useShoes(): SpeedShoesStatus = remote.post("api/items/speed-shoes/use", JSONObject(), token()).toShoes()
+    override fun shoes(): SpeedShoesStatus = remote.get(selected("api/items/speed-shoes"), token()).toShoes()
+
+    override fun useShoes(): SpeedShoesStatus = remote.post(selected("api/items/speed-shoes/use"), JSONObject(), token()).toShoes()
 
     override fun flight(): FlightTicketStatus {
-        val json = remote.get("api/items/flight-ticket", token())
+        val json = remote.get(selected("api/items/flight-ticket"), token())
         val regions = json.getJSONArray("regions")
         return FlightTicketStatus(
             json.getString("name"), json.getBoolean("active"), json.getInt("quantity"),
@@ -44,7 +47,7 @@ class ItemUseRepositoryImpl(
     }
 
     override fun useFlight(placeId: Long): FlightResult {
-        val json = remote.post("api/items/flight-ticket/use", JSONObject().put("placeId", placeId), token())
+        val json = remote.post(selected("api/items/flight-ticket/use"), JSONObject().put("placeId", placeId), token())
         return FlightResult(json.getString("region"), json.getString("place"), json.getInt("quantity"))
     }
 

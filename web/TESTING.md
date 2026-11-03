@@ -1,5 +1,20 @@
 # Kết quả kiểm tra web quản trị
 
+## Giao diện mobile — 29/10/2026
+
+Đã kiểm tra bằng Chromium qua Playwright với dữ liệu API giả lập, không ghi database:
+
+- Dashboard và danh sách địa danh ở độ rộng 320, 390, 760, 1024 và 1440 px; không tràn ngang trang. Điện thoại hiển thị bản ghi dạng thẻ; desktop vẫn là bảng.
+- Tám danh sách quản trị và trang hệ thống ở 320/390 px; nội dung, tên dài và nút thao tác nằm trong khung, nút thao tác dòng có chiều cao ít nhất 44 px.
+- Menu mở/đóng, đóng sau khi chọn trang, đóng bằng Escape và khóa cuộn nền.
+- Biểu mẫu thêm địa danh một cột ở 320/390/760 px, ô nhập và bộ lọc dùng chữ 16 px; mở/đóng chi tiết và hủy biểu mẫu.
+- Nhập tọa độ tự nhận khu vực qua phản hồi giả lập; chọn điểm trên bản đồ mobile rồi tạo địa danh nhận cả khu vực và tọa độ. Thông tin ghim nằm dưới canvas, không che bản đồ.
+- `npm run build` thành công. Ảnh kiểm tra nằm trong `output/playwright/mobile-places.png`, `mobile-place-form.png`, `mobile-map-selected.png` và `desktop-places.png` (tệp cục bộ, không đưa vào Git).
+
+Phạm vi kiểm tra mobile là bố cục và tương tác với API giả lập. Chưa kiểm thử trên thiết bị iOS/Android thật và không dùng lần kiểm tra này để xác nhận tải bản đồ nền Goong hoặc lưu dữ liệu thật.
+
+## Kiểm tra chức năng trước đó
+
 Chi tiết đối tượng: đã kiểm tra trên trình duyệt thao tác bấm dòng/nút xem chi tiết ở cả 8 nhóm người dùng, khu vực, địa danh, loại địa danh, thẻ, bộ sưu tập, nhiệm vụ và vật phẩm. Phần chi tiết chỉ đọc; có thể mở địa danh liên quan từ khu vực và chuyển sang biểu mẫu chỉnh sửa. Các thao tác xem không gửi yêu cầu lưu dữ liệu. React build thành công sau khi bổ sung chức năng.
 
 Cập nhật sắp xếp và cấu hình máy: đã kiểm tra ID khu vực tăng dần `1, 2, 3, 4, 5` trên API danh sách, dashboard và danh mục chọn. React build thành công, backend build 0 lỗi/0 cảnh báo. Script đọc được file cấu hình máy, biến môi trường ghi đè file, từ chối cổng ngoài phạm vi và bảo toàn mật khẩu có dấu chấm phẩy trong chuỗi kết nối. Vite đã chạy thử bằng `WEB_PORT=5174`, trả HTTP 200 và proxy `/health` thành công; server kiểm thử đã dừng.

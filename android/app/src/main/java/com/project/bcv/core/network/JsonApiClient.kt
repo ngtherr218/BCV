@@ -7,6 +7,7 @@ import com.project.bcv.BuildConfig
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.SocketTimeoutException
 
 /** Shared HTTP transport. Feature repositories own endpoint and JSON mapping. */
 class ApiFailure(val code: String, override val message: String, val field: String? = null) : Exception(message)
@@ -28,8 +29,9 @@ class JsonApiClient(context: Context, private val baseUrl: String) {
         val connection = (wifi?.openConnection(url) ?: url.openConnection()) as HttpURLConnection
         try {
             connection.requestMethod = method
-            connection.connectTimeout = 10_000
-            connection.readTimeout = 10_000
+            connection.connectTimeout = 15_000
+            // Render Free can take around a minute to wake after inactivity.
+            connection.readTimeout = 90_000
             connection.setRequestProperty("Accept", "application/json")
             if (token != null) connection.setRequestProperty("Authorization", "Bearer $token")
             if (body != null) {
@@ -52,6 +54,8 @@ class JsonApiClient(context: Context, private val baseUrl: String) {
                 json?.optString("message")?.takeIf(String::isNotBlank) ?: statusFailure(status).message,
                 json?.takeUnless { it.isNull("field") }?.optString("field")?.takeIf(String::isNotBlank)
             )
+        } catch (error: SocketTimeoutException) {
+            throw ApiFailure("TIMEOUT", "Máy chủ phản hồi quá lâu. Lần truy cập đầu sau thời gian không sử dụng có thể cần khoảng một phút; vui lòng thử lại.")
         } finally {
             connection.disconnect()
         }
