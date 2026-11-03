@@ -33,7 +33,7 @@ class StepSimulationTest {
             model = ExploreViewModel(repo, object : StepSource {
                 override suspend fun hasPermission() = false
                 override suspend fun needsActivityPermission() = false
-                override suspend fun capture(journeyId: Long) {}
+                override suspend fun capture(journeyId: Long, startedAtEpochSeconds: Long, destinationName: String) {}
                 override suspend fun totalStepsSince(journeyId: Long, startedAtEpochSeconds: Long) = 0L
             }, object : AddressLookup { override fun describe(coordinates: Coordinates): String? = null }, preferences)
             store.put("steps", model)
