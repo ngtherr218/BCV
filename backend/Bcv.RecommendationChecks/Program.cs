@@ -2,6 +2,7 @@ using System.Text.Json;
 using Bcv.Api.Modules.Discovery.Application;
 using Bcv.Api.Modules.Discovery.Domain;
 using Bcv.Api.Modules.StepLocation.Domain;
+using Bcv.Api.Modules.Admin;
 
 using Scores = Bcv.Api.Modules.Discovery.Domain.RecommendationScoring;
 
@@ -43,11 +44,20 @@ void Error(string code, Action action)
 
 var checks = new (string Name, Action Run)[]
 {
-    ("Vocabulary and all 12 preference mappings match the real 35-column dataset", () => {
+    ("Activity thresholds are versioned rather than fixed at 3000", () => {
+        var places = new[]{Place(1, meters:3000)};
+        var custom = new Dictionary<string,int>{{"LOW",1000},{"MEDIUM",6000},{"HIGH",10000}};
+        var result=Scores.Rank(places,[Preference()],"LOW",Weights(Scores.Activity),500000,custom);
+        Assert(result[0].Criteria.Activity == .25);
+    }),
+    ("Model import rejects malformed settings before database access", () => {
+        try { RecommendationAdmin.Validate(new ModelImport("bad",15,500000,null!,Weights(),[])); }
+        catch(AdminValidation) { return; }
+        throw new Exception("Invalid import accepted");
+    }),
+    ("Vocabulary matches the real 35-column dataset", () => {
         var columns = File.ReadLines(Path.Combine(AppContext.BaseDirectory, "features.csv")).First().Split(',').Skip(4).ToHashSet();
         Assert(columns.SetEquals(Scores.FeatureCodes));
-        Assert(Scores.PlaceTypeFeatures.Count == 12);
-        Assert(Scores.PlaceTypeFeatures.Values.All(group => group.Count > 0 && group.All(columns.Contains)));
     }),
     ("Top three are unique and ties have stable place-ID order", () => {
         var result = Rank([Place(5), Place(2), Place(2), Place(4), Place(1)], Weights(Scores.Preference));

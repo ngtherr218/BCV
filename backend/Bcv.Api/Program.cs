@@ -26,6 +26,7 @@ var connectionString = builder.Configuration.GetConnectionString("Bcv")
 
 builder.Services.AddSingleton(NpgsqlDataSource.Create(connectionString));
 builder.Services.AddScoped<AdminRepository>();
+builder.Services.AddScoped<RecommendationAdmin>();
 builder.Services.AddScoped<IAccountRepository, PostgresAccountRepository>();
 builder.Services.AddScoped<AccountService>();
 // Sign-ins survive restarts. The file holds only token hashes and lives outside the repository.

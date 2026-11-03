@@ -23,7 +23,7 @@ public sealed class PostgresActivityLevelRepository(NpgsqlDataSource db) : IActi
             SET activity_level = $2, updated_at = CURRENT_TIMESTAMP
             WHERE preference.user_id = $1
               AND EXISTS (
-                SELECT 1 FROM public.user_preference_place_type AS selected
+                SELECT 1 FROM public.user_preference_interest AS selected
                 WHERE selected.user_preference_id = preference.user_preference_id
               )
             """);

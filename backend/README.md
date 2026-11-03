@@ -110,7 +110,7 @@ Theo mục 3.5.1.2 của tài liệu: **S = max(1, ⌈1000 · D · κ / L⌉)**,
 
 1. **Ứng viên:** địa danh `ACTIVE`, chưa khám phá, cách vị trí ảo trong `distance_limit` của cấu hình gợi ý (500 km).
 2. **Điểm thành phần:**
-   - **P** (sở thích): tỷ lệ loại địa danh người dùng chọn mà địa danh khớp. 12 loại được ánh xạ theo ID sang nhóm đặc trưng của mô hình; khớp khi có ít nhất một đặc trưng trong nhóm ([bảng ánh xạ](../db/README.md#loại-địa-danh)).
+   - **P** (sở thích): tỷ lệ nhóm sở thích người dùng chọn mà địa danh khớp. Sáu nhóm ID 201–206 độc lập với 12 loại địa danh; mapping nằm trong `recommendation_config.settings.interestFeatures`. Khớp khi có ít nhất một đặc trưng trong nhóm.
    - **C** (cụm): trung bình P của các địa danh cùng cụm K-Means (`place_feature.cluster_number`).
    - **A** (vận động): `min(1, T / số bước cần đi)`, với T = 3.000 / 6.000 / 10.000 cho mức Ít / Trung bình / Năng động.
    - **R** (đánh giá): `rating / 5`.
@@ -124,7 +124,11 @@ Chỉ cấu hình `ACTIVE` được sử dụng. Nếu chưa có cấu hình ho�
 
 Chạy `db/016_preserve_missing_rating_counts.sql` trước khi dùng bản API này. Rating/count thiếu là NULL; count = 0 là số liệu thật, không đồng nghĩa thiếu. Kết quả kèm `criteria`, `usedCriteria`, `missingCriteria`, `effectiveWeights`, `reasons` và `configVersion` để truy vết. Trọng số bằng 0 không được ghi là đã dùng. App hiển thị tối đa hai lý do, với nội dung đầy đủ cho trình đọc màn hình. Cụm và đặc trưng đã lưu trong database, nên API không cần gọi dịch vụ Python trong [`recommendation/`](../recommendation/).
 
-Kiểm tra 18 tình huống về thay đổi sở thích/mức vận động, lọc ứng viên, loại trùng, dữ liệu thiếu, số 0 thật, trọng số, lý do và hợp đồng 35 đặc trưng. Chạy từ thư mục gốc với .NET SDK 10, không cần database hoặc thư viện kiểm thử bổ sung:
+Chạy migration `021_versioned_recommendations.sql` trước khi triển khai bản API sáu nhóm sở thích. API vẫn giữ tên trường `placeTypes`/`placeTypeIds` để tương thích giao thức Android, nhưng giá trị là ID nhóm 201–206. Người dùng cũ cần chọn lại nhóm khi đăng nhập; dữ liệu sở thích cũ được bảo toàn. Ngưỡng A lấy từ settings; R/N lấy từ snapshot theo phiên bản, chỉ cập nhật khi nhập phiên bản mới. `configuration` trong kết quả ghi metadata để truy vết.
+
+API quản trị bổ sung: `GET /api/admin/recommendations/dataset`, `POST /api/admin/recommendations/models` (tạo DRAFT) và `POST /api/admin/recommendations/models/{id}/activate`. Tất cả yêu cầu tài khoản ADMIN đang hoạt động. Xem [quy trình mô hình](../recommendation/README.md#đánh-giá-người-dùng-và-trao-đổi-mô-hình) và [mẫu chấm](../recommendation/evaluation/README.md).
+
+Kiểm tra 20 tình huống về thay đổi sở thích/mức vận động, lọc ứng viên, loại trùng, dữ liệu thiếu, số 0 thật, trọng số, lý do và hợp đồng 35 đặc trưng. Chạy từ thư mục gốc với .NET SDK 10, không cần database hoặc thư viện kiểm thử bổ sung:
 
 ```powershell
 dotnet run --project backend/Bcv.RecommendationChecks --artifacts-path .runtime.local/ai-checks -p:UseAppHost=false
