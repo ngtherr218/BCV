@@ -10,7 +10,7 @@ public static class StepConversion
     /// <summary>L: conventional step length in metres.</summary>
     public const decimal StepLengthMeters = 0.75m;
     /// <summary>κ: exploration scale, 0 &lt; κ ≤ 1.</summary>
-    public const decimal DistanceScale = 0.15m;
+    public const decimal DistanceScale = 1m;
 
     public static int RequiredSteps(decimal distanceKm) =>
         (int)Math.Clamp(Math.Ceiling(distanceKm * 1000m * DistanceScale / StepLengthMeters), 1m, int.MaxValue);
