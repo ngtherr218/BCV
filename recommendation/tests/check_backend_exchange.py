@@ -43,7 +43,8 @@ try:
     interests = request(base, '/api/interests', user)
     assert len(interests['placeTypes']) == 6
     expect_status(400, lambda: put('/api/interests', {'placeTypeIds': [101]}))
-    put('/api/interests', {'placeTypeIds': list(range(201, 207))})
+    expect_status(400, lambda: put('/api/interests', {'placeTypeIds': [201, 202, 203, 204]}))
+    put('/api/interests', {'placeTypeIds': [201, 202, 203]})
     put('/api/activity-level', {'activityLevel': 'MEDIUM'})
     put('/api/starting-point', {'source': 'SUGGESTED'})
     recommendations = request(base, '/api/explore/recommendations', user)

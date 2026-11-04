@@ -181,16 +181,6 @@
                             app:tint="@color/teal" />
                     </LinearLayout>
 
-                    <TextView
-                        android:id="@+id/startLocation"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:padding="12dp"
-                        android:background="@drawable/destination_locked_bg"
-                        android:textColor="@color/forest"
-                        android:textSize="14sp" />
-
                     <!-- Progress -->
                     <FrameLayout
                         android:layout_width="match_parent"

@@ -17,7 +17,7 @@ Mỗi người tham gia cung cấp mã ẩn danh, điểm xuất phát, sở th�
 | 205 | Lịch sử |
 | 206 | Kiến trúc |
 
-Chọn 1–6 nhóm. Mức vận động là `LOW`, `MEDIUM` hoặc `HIGH`. Ngưỡng vận động cụ thể lấy từ phiên bản cấu hình đã xuất, không sửa riêng khi so sánh thuật toán.
+Chọn 1–3 nhóm. Mức vận động là `LOW`, `MEDIUM` hoặc `HIGH`. Ngưỡng vận động cụ thể lấy từ phiên bản cấu hình đã xuất, không sửa riêng khi so sánh thuật toán.
 
 ## Tạo phiếu
 

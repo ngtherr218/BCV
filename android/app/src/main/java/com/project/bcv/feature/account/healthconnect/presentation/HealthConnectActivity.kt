@@ -190,7 +190,7 @@ class HealthConnectActivity : AppCompatActivity() {
         )
         HealthConnectStage.GRANTED -> ScreenCopy(
             "ĐÃ CẤP QUYỀN", "Đã kết nối.", "", "Bạn đã cho phép đọc bước chân từ Health Connect.",
-            "Quyền đọc bước chân", "Đã cho phép · Quyền ghi chỉ hỏi khi dùng bước thử", "",
+            "Quyền đọc bước chân", "Đã cho phép đọc dữ liệu Health Connect", "",
             "", "Tiếp tục", "Có quyền đọc không đồng nghĩa đã có dữ liệu bước chân.",
             R.drawable.ic_health_shield, R.drawable.ic_check,
             showSecondary = false, showPrivacy = false
@@ -238,9 +238,9 @@ class HealthConnectActivity : AppCompatActivity() {
         )
         HealthConnectStage.REVOKED -> ScreenCopy(
             "KẾT NỐI TẠM DỪNG", "Quyền đọc bước chân", "đã bị thu hồi.",
-            "Ứng dụng đã dừng truy cập bước chân. Kết nối lại khi bạn muốn tiếp tục.",
-            "Đọc bước mới", "Đã dừng", "Đồng bộ bước mới đã dừng",
-            "Chỉ đọc lại sau khi bạn cấp lại quyền.", "Mở Health Connect", "Chỉ đọc lại sau khi bạn cấp lại quyền.",
+            "Ứng dụng đã dừng đọc Health Connect. Bạn có thể cấp lại quyền khi muốn kết nối.",
+            "Đếm bước bằng điện thoại", "Cảm biến vẫn có thể đếm khi được cấp quyền Hoạt động thể chất.", "",
+            "", "Mở Health Connect", "Chỉ đọc lại Health Connect sau khi bạn cấp lại quyền.",
             R.drawable.ic_health_block, R.drawable.ic_health_block,
             accentColor = 0xFFAD8049.toInt(), iconColor = 0xFFAD8049.toInt(),
             orbitColor = 0xFFFBF0E5.toInt(), orbitStrokeColor = 0xFFF0DFC9.toInt(),

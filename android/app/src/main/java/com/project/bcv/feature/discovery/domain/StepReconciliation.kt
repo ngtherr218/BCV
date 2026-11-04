@@ -1,6 +1,6 @@
 package com.project.bcv.feature.discovery.domain
 
-enum class StepProvider { HEALTH_CONNECT, RECORDING, SENSOR }
+enum class StepProvider { HEALTH_CONNECT, SENSOR }
 
 /** Persisted, monotonic journey total. Shadow sensor steps never get added to a healthy primary. */
 data class StepReconciliation(
@@ -48,6 +48,20 @@ data class StepReconciliation(
     }
 
     companion object {
+        /** Import old checkpoints without reading or subscribing to the removed Recording API. */
+        fun restore(providerName: String, total: Long, primaryRaw: Long?, sensorAnchor: Long?,
+                    lastPrimaryAdvanceAt: Long, sensorUsable: Boolean): StepReconciliation? {
+            if (providerName == "RECORDING") {
+                // The sensor anchor was saved alongside the last credited total. Use only its delta.
+                // Without a usable sensor, Health Connect establishes its own cumulative baseline.
+                return StepReconciliation(
+                    if (sensorUsable) StepProvider.SENSOR else StepProvider.HEALTH_CONNECT,
+                    total = total, sensorAnchor = if (sensorUsable) sensorAnchor else null)
+            }
+            val provider = runCatching { StepProvider.valueOf(providerName) }.getOrNull() ?: return null
+            return StepReconciliation(provider, total, primaryRaw, sensorAnchor, lastPrimaryAdvanceAt)
+        }
+
         const val STALL_MILLIS = 120_000L
         const val STALL_STEPS = 20L
     }

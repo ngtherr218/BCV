@@ -79,11 +79,28 @@ class StepReconciliationTest {
         assertEquals(600, next.total)
         assertEquals(605, next.observe(null, 5, 2000).total)
     }
-    @Test fun recordingProviderAlsoRecoversFromAStalledRecorder() {
-        val next = StepReconciliation(StepProvider.RECORDING).observe(100, 50, 1000)
-            .observe(100, 80, 121_000)
+    @Test fun oldRecordingCheckpointMovesToSensorWithoutRecountingPreviousSteps() {
+        val restored = StepReconciliation.restore("RECORDING", 600, 600, 250, 1000, true)!!
+        val next = restored.observe(null, 262, 2000)
         assertEquals(StepProvider.SENSOR, next.provider)
-        assertEquals(130, next.total)
+        assertEquals(612, next.total)
+        assertEquals(612, next.observe(900, 262, 3000).total)
+    }
+    @Test fun oldRecordingCheckpointWithoutSensorUsesHealthConnectWithoutAddingTotals() {
+        val restored = StepReconciliation.restore("RECORDING", 600, 600, 250, 1000, false)!!
+        assertEquals(StepProvider.HEALTH_CONNECT, restored.provider)
+        assertNull(restored.primaryRaw)
+        assertNull(restored.sensorAnchor)
+        val next = restored.observe(500, null, 2000)
+        assertEquals(600, next.total)
+        assertEquals(650, next.observe(650, null, 3000).total)
+    }
+    @Test fun existingHealthConnectAndSensorCheckpointsKeepTheirBaselines() {
+        for (provider in StepProvider.entries) {
+            val old = StepReconciliation(provider, 600, 500, 250, 1000)
+            assertEquals(old, StepReconciliation.restore(provider.name, 600, 500, 250, 1000, true))
+        }
+        assertNull(StepReconciliation.restore("UNKNOWN", 600, 500, 250, 1000, true))
     }
     @Test fun partialCatchUpAfterBackgroundDoesNotDiscardTheUncoveredSensorWindow() {
         val next = healthy(primary = 100, sensor = 50).observe(120, 150, 600_000)

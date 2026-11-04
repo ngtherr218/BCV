@@ -174,7 +174,7 @@ class StartingPointActivity : AppCompatActivity() {
         stateMapContainer.visibility = if (mapState) View.VISIBLE else View.GONE
         stateHero.visibility = if (mapState || ready) View.GONE else View.VISIBLE
         when {
-            ready -> goongMap.show(readyMapHost, GoongStartingMap.DEFAULT_COORDINATES)
+            ready -> goongMap.show(readyMapHost, state.suggested?.coordinates)
             mapState -> goongMap.show(stateMapHost, state.currentCoordinates, GoongStartingMap.CURRENT_ZOOM)
         }
         if (!mapState && !ready) {

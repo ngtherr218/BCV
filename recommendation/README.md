@@ -78,7 +78,7 @@ Các kết quả có thể xem và tạo lại bằng các lệnh trên:
 
 Tham số `--data-dir` và `--output` chọn dữ liệu/đầu ra khác. `verify --model-output <đường-dẫn-model.joblib>` lưu thêm artifact sau khi mọi kiểm chứng đạt; không ghi đè artifact đã rà soát trong `service/data`. Mỗi lần phục vụ vẫn chỉ nạp mô hình có sẵn.
 
-Sau migration `021_versioned_recommendations.sql`, sở thích là sáu nhóm ID 201–206 theo thiết kế: Di sản, Thiên nhiên, Ẩm thực, Biển đảo, Lịch sử, Kiến trúc. Danh mục này độc lập với 12 loại địa danh. Người dùng chọn lại 1–6 nhóm; lựa chọn cũ vẫn được giữ trong bảng cũ, không tự suy diễn sang nhóm mới. Mapping đặc trưng, ngưỡng vận động, mã dữ liệu và SHA-256 mô hình được lưu theo phiên bản cấu hình, cùng snapshot điểm/số lượt đánh giá.
+Sau migration `021_versioned_recommendations.sql`, sở thích là sáu nhóm ID 201–206 theo thiết kế: Di sản, Thiên nhiên, Ẩm thực, Biển đảo, Lịch sử, Kiến trúc. Danh mục này độc lập với 12 loại địa danh. Người dùng chọn lại 1–3 nhóm; lựa chọn cũ vẫn được giữ trong bảng cũ, không tự suy diễn sang nhóm mới. Mapping đặc trưng, ngưỡng vận động, mã dữ liệu và SHA-256 mô hình được lưu theo phiên bản cấu hình, cùng snapshot điểm/số lượt đánh giá.
 
 ## Đánh giá người dùng và trao đổi mô hình
 

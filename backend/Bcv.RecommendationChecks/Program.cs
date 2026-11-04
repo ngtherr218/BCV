@@ -3,6 +3,7 @@ using Bcv.Api.Modules.Discovery.Application;
 using Bcv.Api.Modules.Discovery.Domain;
 using Bcv.Api.Modules.StepLocation.Domain;
 using Bcv.Api.Modules.Admin;
+using Bcv.Api.Modules.Account.Application;
 
 using Scores = Bcv.Api.Modules.Discovery.Domain.RecommendationScoring;
 
@@ -150,6 +151,18 @@ var checks = new (string Name, Action Run)[]
 };
 
 var failures = 0;
+var interestRepository = new InterestCheckRepository();
+var interestService = new InterestService(interestRepository);
+var savedInterests = await interestService.SaveAsync(1, [201, 202, 203], default);
+Assert(savedInterests.SequenceEqual(new long[] { 201, 202, 203 }));
+try
+{
+    await interestService.SaveAsync(1, [201, 202, 203, 204], default);
+    throw new Exception("Accepted a fourth interest");
+}
+catch (InterestException error) when (error.Code == "INTEREST_LIMIT_EXCEEDED") { }
+Assert(interestRepository.SaveCount == 1, "Over-limit selection reached storage");
+Console.WriteLine("PASS Interest selection accepts three and rejects four before saving");
 foreach (var check in checks)
 {
     try { check.Run(); Console.WriteLine($"PASS {check.Name}"); }
@@ -161,4 +174,16 @@ return failures == 0 ? 0 : 1;
 sealed class FixedRepository(RecommendationInput? input) : IRecommendationRepository
 {
     public Task<RecommendationInput?> LoadAsync(long userId, CancellationToken ct) => Task.FromResult(input);
+}
+
+sealed class InterestCheckRepository : IInterestRepository
+{
+    public int SaveCount { get; private set; }
+    public Task<InterestSnapshot> LoadAsync(long userId, CancellationToken ct) =>
+        Task.FromResult(new InterestSnapshot([], []));
+    public Task<IReadOnlyList<long>> SaveAsync(long userId, IReadOnlyList<long> ids, CancellationToken ct)
+    {
+        SaveCount++;
+        return Task.FromResult(ids);
+    }
 }

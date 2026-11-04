@@ -37,7 +37,7 @@ foreach(var profile in profiles) {
    ||!double.IsFinite(profile.Latitude)||!double.IsFinite(profile.Longitude)
    ||profile.Latitude is <-90 or >90 || profile.Longitude is <-180 or >180
    ||profile.ActivityLevel is null || !settings.ActivityThresholds.ContainsKey(profile.ActivityLevel)
-   ||profile.DiscoveredPlaceIds is null || profile.InterestIds is not {Length: >0}
+   ||profile.DiscoveredPlaceIds is null || profile.InterestIds is not {Length: >0 and <=3}
    ||profile.InterestIds.Distinct().Count()!=profile.InterestIds.Length
    ||profile.InterestIds.Any(id=>!settings.InterestFeatures.ContainsKey(id))) throw new ArgumentException("Invalid profile");
  var prefs=profile.InterestIds.Select(id=>new PreferenceGroup(id.ToString(),settings.InterestFeatures[id].ToHashSet())).ToArray();

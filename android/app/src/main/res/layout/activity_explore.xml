@@ -321,14 +321,6 @@
             android:textSize="25sp"
             android:textStyle="bold" />
         <TextView
-            android:id="@+id/startLocation"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:textColor="@color/teal"
-            android:textSize="13sp"
-            android:visibility="gone" />
-        <TextView
             android:id="@+id/sheetDescription"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
