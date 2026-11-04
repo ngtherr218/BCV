@@ -1,5 +1,7 @@
 package com.project.bcv
 
+import com.project.bcv.core.network.ApiEnvironment
+
 import android.content.Context
 import android.os.SystemClock
 import android.os.ParcelFileDescriptor
@@ -33,7 +35,7 @@ class CardReceiptTest {
         val journey = ExploreJourney(-2147483001, "Địa danh kiểm thử giao diện", Coordinates(21.0, 105.0),
             100, 100, "COMPLETED", 1, destinationPlaceId = -2147483001,
             awardedCard = JourneyCardReward(-2147483001, "Thẻ kiểm thử giao diện"))
-        val key = "${BuildConfig.API_BASE_URL}:${journey.id}:${journey.awardedCard!!.id}"
+        val key = "${ApiEnvironment.currentUrl}:${journey.id}:${journey.awardedCard!!.id}"
         preferences.edit().remove(key).commit()
         // Some OEMs block activity starts from an instrumented process in the background.
         // The debug-only exported host can be started through the instrumentation shell instead.

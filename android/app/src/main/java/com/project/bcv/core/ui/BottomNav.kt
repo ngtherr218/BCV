@@ -21,7 +21,6 @@ object BottomNav {
     private const val INACTIVE = 0xFF7D8A82.toInt()
 
     fun select(nav: ViewBottomNavBinding, selected: NavTab) {
-        CollectionNavBadge.attach(nav)
         val teal = ContextCompat.getColor(nav.root.context, R.color.teal)
         listOf(
             Triple(NavTab.EXPLORE, nav.tabExploreIcon, nav.tabExploreLabel) to "Khám phá",
@@ -35,7 +34,7 @@ object BottomNav {
             icon.imageTintList = ColorStateList.valueOf(if (active) teal else INACTIVE)
             label.setTextColor(if (active) teal else INACTIVE)
             label.setTypeface(null, if (active) Typeface.BOLD else Typeface.NORMAL)
-            (if (tab == NavTab.COLLECTION) nav.tabCollection else icon.parent as android.view.View).contentDescription = if (active) "$name, đang chọn" else name
+            (icon.parent as android.view.View).contentDescription = if (active) "$name, đang chọn" else name
         }
     }
 

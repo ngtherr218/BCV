@@ -1,10 +1,11 @@
 package com.project.bcv.core.ui
 
+import com.project.bcv.core.network.ApiEnvironment
+
 import android.content.Context
 import android.content.Intent
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.project.bcv.BuildConfig
 import com.project.bcv.R
 import com.project.bcv.feature.collection.presentation.CollectionActivity
 import com.project.bcv.feature.discovery.domain.ExploreJourney
@@ -14,10 +15,8 @@ object JourneyCompletionDialog {
     fun showIfNeeded(activity: AppCompatActivity, journey: ExploreJourney?) {
         if (journey?.status != "COMPLETED" || activity.isFinishing || activity.isDestroyed) return
         val card = journey.awardedCard ?: return
-        val inbox = com.project.bcv.feature.collection.data.CardInbox(activity)
-        if (inbox.dialogShown(journey.id)) return
         val preferences = activity.getSharedPreferences("bcv_card_receipts", Context.MODE_PRIVATE)
-        val key = "${BuildConfig.API_BASE_URL}:${journey.id}:${card.id}"
+        val key = "${ApiEnvironment.currentUrl}:${journey.id}:${card.id}"
         if (preferences.getBoolean(key, false)) return
         MaterialAlertDialogBuilder(activity)
             .setIcon(R.drawable.ic_check)
@@ -29,7 +28,5 @@ object JourneyCompletionDialog {
             .setNegativeButton("Tiếp tục khám phá", null)
             .show()
         preferences.edit().putBoolean(key, true).apply()
-        inbox.recordJourney(journey.id, journey.destinationPlaceId ?: return)
-        inbox.markDialogShown(journey.id)
     }
 }

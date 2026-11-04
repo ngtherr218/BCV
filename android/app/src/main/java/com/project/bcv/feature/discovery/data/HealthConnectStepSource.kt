@@ -1,8 +1,9 @@
 package com.project.bcv.feature.discovery.data
 
+import com.project.bcv.core.network.ApiEnvironment
+
 import android.content.Context
 import android.os.SystemClock
-import com.project.bcv.BuildConfig
 import com.project.bcv.core.network.BackendScope
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
@@ -99,7 +100,7 @@ class HealthConnectStepSource(context: Context) : StepSource {
 
     private suspend fun stateFor(journeyId: Long): StepReconciliation {
         store.load(journeyId)?.let { return it }
-        val legacy = app.getSharedPreferences(BackendScope.preferenceFile("bcv_step_fallback", BuildConfig.API_BASE_URL), Context.MODE_PRIVATE)
+        val legacy = app.getSharedPreferences(BackendScope.preferenceFile("bcv_step_fallback", ApiEnvironment.currentUrl), Context.MODE_PRIVATE)
         val saved = if (legacy.getLong("last_journey", -1) == journeyId) legacy.getLong("last_total", 0) else 0L
         val shadow = if (sensor.isTracking(journeyId)) sensor.total() else 0L
         val provider = when {
@@ -150,7 +151,7 @@ class HealthConnectStepSource(context: Context) : StepSource {
 
 /** Kept separate from raw sensor state, so service callbacks cannot overwrite a source checkpoint. */
 private class JourneyStepStateStore(context: Context) {
-    private val preferences = context.getSharedPreferences(BackendScope.preferenceFile("bcv_journey_step_state", BuildConfig.API_BASE_URL), Context.MODE_PRIVATE)
+    private val preferences = context.getSharedPreferences(BackendScope.preferenceFile("bcv_journey_step_state", ApiEnvironment.currentUrl), Context.MODE_PRIVATE)
     fun load(journeyId: Long): StepReconciliation? {
         if (journeyId <= 0 || preferences.getLong("journey", -1) != journeyId) return null
         val provider = preferences.getString("provider", null)?.let {

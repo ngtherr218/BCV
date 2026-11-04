@@ -1,5 +1,7 @@
 package com.project.bcv.feature.discovery.data
 
+import com.project.bcv.core.network.ApiEnvironment
+
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -13,14 +15,13 @@ import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import androidx.core.content.ContextCompat
-import com.project.bcv.BuildConfig
 import com.project.bcv.core.network.BackendScope
 import com.project.bcv.feature.discovery.domain.SensorStepProgress
 
 /** Hardware counter owned by JourneyStepService, including phones without Google Play services. */
 class DeviceStepCounter private constructor(context: Context) : SensorEventListener {
     private val app = context.applicationContext
-    private val preferences = app.getSharedPreferences(BackendScope.preferenceFile("bcv_sensor_steps", BuildConfig.API_BASE_URL), Context.MODE_PRIVATE)
+    private val preferences = app.getSharedPreferences(BackendScope.preferenceFile("bcv_sensor_steps", ApiEnvironment.currentUrl), Context.MODE_PRIVATE)
     private val manager = app.getSystemService(SensorManager::class.java)
     private val sensor = manager?.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
         ?: manager?.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR)
@@ -79,9 +80,11 @@ class DeviceStepCounter private constructor(context: Context) : SensorEventListe
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 
     companion object {
-        @Volatile private var instance: DeviceStepCounter? = null
-        fun get(context: Context): DeviceStepCounter = instance ?: synchronized(this) {
-            instance ?: DeviceStepCounter(context).also { instance = it }
+        private val instances = mutableMapOf<String, DeviceStepCounter>()
+        fun get(context: Context): DeviceStepCounter = synchronized(this) {
+            instances.getOrPut(ApiEnvironment.currentUrl) {
+                DeviceStepCounter(context)
+            }
         }
     }
 }

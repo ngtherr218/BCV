@@ -1,9 +1,10 @@
 package com.project.bcv.testhost
 
+import com.project.bcv.core.network.ApiEnvironment
+
 import android.os.Bundle
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import com.project.bcv.BuildConfig
 import com.project.bcv.core.ui.JourneyCompletionDialog
 import com.project.bcv.feature.discovery.domain.ExploreJourney
 import com.project.bcv.feature.discovery.domain.JourneyCardReward
@@ -20,7 +21,7 @@ class ReceiptHostActivity : AppCompatActivity() {
         setContentView(TextView(this).apply { text = "Kiểm thử giao diện nhận thẻ" })
         if (intent.getBooleanExtra("reset_fixture", false) || intent.getBooleanExtra("clear_fixture", false)) {
             getSharedPreferences("bcv_card_receipts", MODE_PRIVATE).edit()
-                .remove("${BuildConfig.API_BASE_URL}:${fixture.id}:${fixture.awardedCard!!.id}").apply()
+                .remove("${ApiEnvironment.currentUrl}:${fixture.id}:${fixture.awardedCard!!.id}").apply()
         }
         if (intent.getBooleanExtra("clear_fixture", false)) finish()
     }

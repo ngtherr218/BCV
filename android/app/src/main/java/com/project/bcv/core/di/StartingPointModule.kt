@@ -1,5 +1,7 @@
 package com.project.bcv.core.di
 
+import com.project.bcv.core.network.ApiEnvironment
+
 import android.content.Context
 import com.project.bcv.BuildConfig
 import com.project.bcv.core.network.JsonApiClient
@@ -11,7 +13,7 @@ import com.project.bcv.feature.location.startingpoint.domain.StartingPointReposi
 
 object StartingPointModule {
     fun repository(context: Context): StartingPointRepository = StartingPointRepositoryImpl(
-        JsonApiClient(context, BuildConfig.API_BASE_URL), SessionPreferences(context)
+        JsonApiClient(context, ApiEnvironment.currentUrl), SessionPreferences(context)
     )
 
     fun locationSource(context: Context) = AndroidDeviceLocationSource(context)

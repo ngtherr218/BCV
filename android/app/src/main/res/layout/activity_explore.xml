@@ -39,14 +39,14 @@
                     android:textColor="@color/forest"
                     android:textSize="27sp"
                     android:textStyle="bold" />
-                <!-- Debug/preview-only simulator; sends authenticated cumulative step totals. -->
+                <!-- Demo helper: writes 2,000 sample steps to Health Connect to try syncing. -->
                 <ImageButton
                     android:id="@+id/demoStepsButton"
-                    android:layout_width="44dp"
-                    android:layout_height="44dp"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
                     android:layout_marginStart="10dp"
                     android:background="@drawable/demo_steps_button_bg"
-                    android:contentDescription="Test bước chân: gửi số bước hoặc mô phỏng đi bộ"
+                    android:contentDescription="Thêm 2.000 bước chân mẫu vào Health Connect để thử đồng bộ"
                     android:padding="6dp"
                     android:scaleType="fitCenter"
                     android:src="@drawable/ic_demo_steps"
@@ -54,9 +54,6 @@
             </LinearLayout>
         </LinearLayout>
 
-        <FrameLayout
-            android:layout_width="56dp"
-            android:layout_height="56dp">
         <ImageButton
             android:id="@+id/notificationsButton"
             android:layout_width="48dp"
@@ -65,21 +62,6 @@
             android:contentDescription="Thông báo"
             android:padding="13dp"
             android:src="@drawable/ic_explore_bell" />
-            <TextView
-                android:id="@+id/notificationBadge"
-                android:layout_width="wrap_content"
-                android:layout_height="20dp"
-                android:layout_gravity="top|end"
-                android:minWidth="20dp"
-                android:paddingHorizontal="4dp"
-                android:gravity="center"
-                android:background="@drawable/notification_badge_bg"
-                android:textColor="@android:color/white"
-                android:textSize="10sp"
-                android:textStyle="bold"
-                android:importantForAccessibility="no"
-                android:visibility="gone" />
-        </FrameLayout>
         <!-- The user's avatar when one is set; the person icon otherwise (or until it loads). -->
         <FrameLayout
             android:id="@+id/profileButton"
@@ -321,14 +303,6 @@
             android:textSize="25sp"
             android:textStyle="bold" />
         <TextView
-            android:id="@+id/startLocation"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:textColor="@color/teal"
-            android:textSize="13sp"
-            android:visibility="gone" />
-        <TextView
             android:id="@+id/sheetDescription"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -336,12 +310,6 @@
             android:text="Hiện chưa có hành trình đang thực hiện."
             android:textColor="#758A7F"
             android:textSize="12sp" />
-        <com.project.bcv.core.ui.ActiveItemBanner
-            android:id="@+id/activeItemBanner"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:visibility="gone" />
         <LinearLayout
             android:id="@+id/progressSection"
             android:layout_width="match_parent"

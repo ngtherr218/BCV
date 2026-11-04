@@ -21,15 +21,11 @@ class NotificationsViewModel(private val repository: NotificationRepository) : V
 
     fun load() = loadInto(mutableState, repository::notifications)
 
-    fun markRead(id: Long) = mutate { repository.markRead(id) }
-    fun markAllRead() = mutate(repository::markAllRead)
-    fun deleteAll() = mutate(repository::deleteAll)
-
-    private fun mutate(action: () -> NotificationPage) = launchRemote<NotificationPage>({ result ->
+    fun markRead(id: Long) = launchRemote<NotificationPage>({ result ->
         when (result) {
             is Remote.Ready, Remote.SessionExpired -> mutableState.value = result
             is Remote.Failed -> mutableMessage.value = Event(result.message)
             Remote.Loading -> Unit
         }
-    }, action)
+    }) { repository.markRead(id) }
 }

@@ -1,5 +1,7 @@
 package com.project.bcv.feature.discovery.data
 
+import com.project.bcv.core.network.ApiEnvironment
+
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -18,7 +20,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.project.bcv.R
-import com.project.bcv.BuildConfig
 import com.project.bcv.core.network.BackendScope
 import com.project.bcv.feature.account.auth.data.local.SessionPreferences
 import com.project.bcv.feature.journey.presentation.JourneyActivity
@@ -113,7 +114,7 @@ class JourneyStepService : Service() {
         private const val TAG = "JourneyStepService"
         private const val CHANNEL = "bcv_journey_steps"
         private const val NOTIFICATION_ID = 2101
-        private val PREFERENCES = BackendScope.preferenceFile("bcv_step_service", BuildConfig.API_BASE_URL)
+        private val PREFERENCES get() = BackendScope.preferenceFile("bcv_step_service", ApiEnvironment.currentUrl)
         @Volatile var runningJourney: Long = 0
             private set
 

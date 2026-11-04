@@ -125,7 +125,6 @@ class JourneyActivity : AppCompatActivity() {
     override fun onDestroy() { routeMap.onDestroy(); super.onDestroy() }
 
     private fun render(state: JourneyUiState) = with(binding) {
-        activeItemBanner.show((state as? JourneyUiState.Loaded)?.snapshot?.journey)
         when (state) {
             JourneyUiState.Loading -> showLoading()
             is JourneyUiState.Failed -> showMessage(title = "Chưa tải được hành trình", body = state.message,
@@ -182,7 +181,6 @@ class JourneyActivity : AppCompatActivity() {
         statusChip.contentDescription = "Trạng thái: ${statusText.text}"
 
         destinationName.text = journey.destinationName
-        startLocation.text = "ĐIỂM XUẤT PHÁT\n${journey.startLabel}"
         unlockIcon.setImageResource(if (completed) R.drawable.ic_check else R.drawable.ic_lock)
         unlockIcon.imageTintList = android.content.res.ColorStateList.valueOf(
             if (completed) color(R.color.teal) else 0xFF8FA196.toInt())

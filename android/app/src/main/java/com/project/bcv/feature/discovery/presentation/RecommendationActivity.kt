@@ -11,7 +11,6 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.project.bcv.core.ui.confirmReplaceJourney
@@ -40,12 +39,6 @@ class RecommendationActivity : AppCompatActivity() {
     private lateinit var model: RecommendationViewModel
     private val cards = mutableMapOf<Long, ItemRecommendationBinding>()
     private val vietnamese = Locale.forLanguageTag("vi-VN")
-    private val detailLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            setResult(Activity.RESULT_OK)
-            finish()
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -127,16 +120,6 @@ class RecommendationActivity : AppCompatActivity() {
             item.selectButton.setTextColor(if (best) 0xFFFFFFFF.toInt() else 0xFF07836D.toInt())
             item.selectButton.contentDescription = "Chọn ${place.name} làm điểm đến"
             item.selectButton.setOnClickListener { model.select(place.id, place.name) }
-            item.card.isFocusable = true
-            item.card.contentDescription = "Xem thông tin ${place.name}"
-            item.card.setOnClickListener {
-                if (model.savingPlaceId.value == null) {
-                    detailLauncher.launch(Intent(this, PlaceDetailActivity::class.java)
-                        .putExtra(PlaceDetailActivity.EXTRA_PLACE_ID, place.id)
-                        .putExtra(PlaceDetailActivity.EXTRA_PLACE_NAME, place.name)
-                        .putExtra(PlaceDetailActivity.EXTRA_DISCOVERED, place.isDiscovered))
-                }
-            }
             if (Build.VERSION.SDK_INT >= 31 && !place.isDiscovered) {
                 item.image.setRenderEffect(RenderEffect.createBlurEffect(10f, 10f, Shader.TileMode.CLAMP))
             }

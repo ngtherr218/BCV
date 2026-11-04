@@ -22,7 +22,6 @@ fun quotedBuildValue(value: String): String = "\"" + value
     .replace("\n", "\\n")
     .replace("\r", "\\r") + "\""
 
-
 android {
     namespace = "com.project.bcv"
     compileSdk {
@@ -39,12 +38,10 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "PREVIEW_LOGIN_EMAIL", "\"\"")
         buildConfigField("String", "PREVIEW_LOGIN_PASSWORD", "\"\"")
-        buildConfigField("boolean", "STEP_TEST_ENABLED", "false")
     }
 
     buildTypes {
         debug {
-            buildConfigField("boolean", "STEP_TEST_ENABLED", "true")
             manifestPlaceholders["usesCleartextTraffic"] = "true"
             val apiUrl = providers.gradleProperty("bcvApiBaseUrl")
                 .orElse(localDevProperties.getProperty("bcvApiBaseUrl") ?: deployedApiUrl)
@@ -78,9 +75,11 @@ android {
         release {
             val apiUrl = providers.gradleProperty("bcvApiBaseUrl").orElse(deployedApiUrl).get()
             buildConfigField("String", "API_BASE_URL", "\"$apiUrl\"")
-            val goongMaptilesKey = providers.gradleProperty("bcvGoongMaptilesKey").orElse("").get()
+            val goongMaptilesKey = providers.gradleProperty("bcvGoongMaptilesKey")
+                .orElse(localDevProperties.getProperty("bcvGoongMaptilesKey") ?: "").get()
             buildConfigField("String", "GOONG_MAPTILES_KEY", "\"$goongMaptilesKey\"")
-            val goongApiKey = providers.gradleProperty("bcvGoongApiKey").orElse("").get()
+            val goongApiKey = providers.gradleProperty("bcvGoongApiKey")
+                .orElse(localDevProperties.getProperty("bcvGoongApiKey") ?: "").get()
             buildConfigField("String", "GOONG_API_KEY", "\"$goongApiKey\"")
             manifestPlaceholders["usesCleartextTraffic"] = "false"
             optimization {

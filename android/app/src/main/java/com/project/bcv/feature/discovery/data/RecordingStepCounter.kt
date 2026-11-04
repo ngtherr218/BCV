@@ -1,11 +1,12 @@
 package com.project.bcv.feature.discovery.data
 
+import com.project.bcv.core.network.ApiEnvironment
+
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
-import com.project.bcv.BuildConfig
 import com.project.bcv.core.network.BackendScope
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
@@ -33,7 +34,7 @@ import kotlin.coroutines.resumeWithException
  */
 class RecordingStepCounter(context: Context) {
     private val appContext = context.applicationContext
-    private val preferences = appContext.getSharedPreferences(BackendScope.preferenceFile("bcv_recording_steps", BuildConfig.API_BASE_URL), Context.MODE_PRIVATE)
+    private val preferences = appContext.getSharedPreferences(BackendScope.preferenceFile("bcv_recording_steps", ApiEnvironment.currentUrl), Context.MODE_PRIVATE)
     private val client by lazy { FitnessLocal.getLocalRecordingClient(appContext) }
 
     /** Play services is installed and new enough for the Recording API. */
