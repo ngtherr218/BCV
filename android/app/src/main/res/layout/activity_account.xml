@@ -90,23 +90,35 @@
                 android:layout_height="3dp"
                 android:background="@color/orange" />
             <LinearLayout
-                android:id="@+id/restoreStatus"
+                android:id="@+id/restoreContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:paddingVertical="32dp"
                 android:gravity="center"
                 android:orientation="vertical"
+                android:paddingVertical="48dp"
                 android:visibility="gone">
-                <ProgressBar
-                    android:layout_width="32dp"
-                    android:layout_height="32dp"
-                    android:indeterminateTint="@color/teal" />
+                <com.google.android.material.progressindicator.CircularProgressIndicator
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:indeterminate="true"
+                    app:indicatorColor="@color/teal" />
                 <TextView
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="Đang kết nối tài khoản…"
-                    android:textColor="@color/forest" />
+                    android:layout_marginTop="20dp"
+                    android:gravity="center"
+                    android:text="Đang khôi phục phiên đăng nhập"
+                    android:textColor="@color/forest"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center"
+                    android:text="Đang kiểm tra tài khoản và hành trình đã lưu của bạn."
+                    android:textColor="@color/muted"
+                    android:textSize="14sp" />
             </LinearLayout>
             <LinearLayout
                 android:id="@+id/formContainer"

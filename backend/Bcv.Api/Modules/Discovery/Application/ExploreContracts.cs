@@ -7,9 +7,11 @@ public sealed record ExploreJourney(
     decimal DestinationLongitude, int RequiredSteps, int RecordedSteps,
     string Status, long StartedAtEpochSeconds, decimal StartLatitude, decimal StartLongitude,
     long DestinationPlaceId, int SourceSteps = 0, ExploreItemEffect? ActiveItem = null,
-    string? StartPlaceName = null);
+    string? StartPlaceName = null, ExploreCardReward? AwardedCard = null);
 
 public sealed record ExploreItemEffect(string ItemType, string Name, decimal Multiplier, int Range, int RemainingSteps);
+
+public sealed record ExploreCardReward(long CardId, string Name);
 
 public sealed record ExploreMapPlace(long PlaceId, string Name, decimal Latitude, decimal Longitude, bool IsDiscovered);
 

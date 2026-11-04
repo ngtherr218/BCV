@@ -1,11 +1,13 @@
 package com.project.bcv.feature.account.auth.data.local
 
 import android.content.Context
+import com.project.bcv.BuildConfig
+import com.project.bcv.core.network.BackendScope
 
-class SessionPreferences(context: Context, namespace: String = "bcv_session") {
+class SessionPreferences(context: Context, namespace: String = BackendScope.preferenceFile("bcv_session", BuildConfig.API_BASE_URL)) {
+    private val appContext = context.applicationContext
     private val preferences = context.applicationContext
         .getSharedPreferences(namespace, Context.MODE_PRIVATE)
-
     /** Routing hint only; every protected API still validates the token on the server. */
     var readyForHome: Boolean
         get() = token != null && preferences.getBoolean("ready_for_home", false)
@@ -23,5 +25,6 @@ class SessionPreferences(context: Context, namespace: String = "bcv_session") {
                 if (changed || value == null) { remove("ready_for_home"); remove("user_id") }
                 if (value == null) remove("token") else putString("token", value)
             }.apply()
+            if (value == null) com.project.bcv.feature.discovery.data.JourneyStepService.stop(appContext)
         }
 }

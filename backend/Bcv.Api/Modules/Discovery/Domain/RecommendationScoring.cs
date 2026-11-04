@@ -51,35 +51,13 @@ public static class RecommendationScoring
         ["LOW"] = 3000, ["MEDIUM"] = 6000, ["HIGH"] = 10000
     };
 
-    /// <summary>
-    /// The onboarding interests are the 12 standard place types (db/014_standard_place_types.sql,
-    /// fixed ids 101-112). A type is satisfied by any of its 35-feature model columns, like
-    /// "Biển đảo = coast or island" in the design. Keyed by id, so renaming a type in the admin web
-    /// keeps the mapping; a type not listed here does not count towards P.
-    /// </summary>
-    public static readonly IReadOnlyDictionary<long, IReadOnlySet<string>> PlaceTypeFeatures =
-        new Dictionary<long, IReadOnlySet<string>>
-    {
-        [101] = Set("kind__heritage", "kind__museum"),                      // Di tích và bảo tàng
-        [102] = Set("kind__religious"),                                     // Đền, chùa và nhà thờ
-        [103] = Set("kind__structure"),                                     // Công trình kiến trúc
-        [104] = Set("kind__community", "kind__craft"),                      // Phố cổ và làng nghề
-        [105] = Set("kind__market", "theme__cuisine"),                      // Chợ và ẩm thực
-        [106] = Set("kind__recreation"),                                    // Vui chơi và nghỉ dưỡng
-        [107] = Set("kind__agriculture"),                                   // Đồng quê và nông nghiệp
-        [108] = Set("landform__coast", "landform__island", "landform__lagoon", "landform__dunes"), // Biển và đảo
-        [109] = Set("landform__river", "landform__lake", "landform__waterfall", "landform__stream"), // Sông, hồ và thác
-        [110] = Set("landform__mountain", "landform__valley"),              // Núi và đèo
-        [111] = Set("landform__cave"),                                      // Hang động
-        [112] = Set("ecosystem__forest", "ecosystem__flooded_habitat", "ecosystem__grassland") // Rừng và khu bảo tồn
-    };
-
     private static IReadOnlySet<string> Set(params string[] codes) => codes.ToHashSet();
 
     /// <param name="places">Every active place with features: the reference set for C and N_max.</param>
     public static IReadOnlyList<ScoredPlace> Rank(IReadOnlyList<RecommendationPlace> places,
         IReadOnlyList<PreferenceGroup> preferences, string? activityLevel,
-        IReadOnlyDictionary<string, decimal> weights, decimal distanceLimitMeters)
+        IReadOnlyDictionary<string, decimal> weights, decimal distanceLimitMeters,
+        IReadOnlyDictionary<string, int>? activityThresholds = null)
     {
         if (distanceLimitMeters <= 0) throw new ArgumentOutOfRangeException(nameof(distanceLimitMeters));
         if (!ValidWeights(weights)) throw new ArgumentException("Expected five nonnegative criterion weights summing to one", nameof(weights));
@@ -94,7 +72,7 @@ public static class RecommendationScoring
 
         // N_max comes from the reference set before the per-user distance and discovery filters.
         var maxCount = places.Where(HasRatingCount).Select(p => p.RatingCount!.Value).DefaultIfEmpty(0).Max();
-        int? threshold = activityLevel is not null && ActivityThresholds.TryGetValue(activityLevel, out var t) ? t : null;
+        int? threshold = activityLevel is not null && (activityThresholds ?? ActivityThresholds).TryGetValue(activityLevel, out var t) ? t : null;
 
         var ranked = new List<ScoredPlace>();
         foreach (var place in places)

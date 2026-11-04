@@ -1,6 +1,6 @@
 # Database Bước Chân Việt (*db*)
 
-Schema 25 bảng, dữ liệu 311 địa danh và các migration cho database `bcv` (PostgreSQL 18 + PostGIS 3.6).
+Schema gốc 25 bảng; migration 021 thêm 3 bảng cho sở thích và snapshot đánh giá. Dữ liệu gồm 311 địa danh trong database `bcv` (PostgreSQL 18 + PostGIS 3.6).
 
 Thiết kế theo mục 3.1.2 và 3.1.5 của [tài liệu đồ án](https://docs.google.com/document/d/1GAQdAqCcwr_IivfHzInilF0LhbWyniN6AONmzqEHWjo/edit?tab=t.0). Mỗi file SQL chạy trong một giao dịch, kiểm tra trạng thái trước và sau, và (trừ `001`) chạy lại được an toàn.
 
@@ -45,7 +45,11 @@ try {
         '014_standard_place_types.sql',
         '015_tune_recommendation_weights.sql',
         '016_preserve_missing_rating_counts.sql',
-        '017_complete_place_cards.sql'
+        '017_complete_place_cards.sql',
+        '018_user_last_login.sql',
+        '019_card_seen.sql',
+        '020_notification_hidden.sql',
+        '021_versioned_recommendations.sql'
     )) {
         & $psql -X -w -v ON_ERROR_STOP=1 -h $config.DbHost -p $config.DbPort -U $config.DbUser -d $config.DbName -f (Join-Path db $file)
         if ($LASTEXITCODE -ne 0) { throw "Import failed: $file" }
@@ -92,6 +96,7 @@ Thay đổi dữ liệu nghiệp vụ hằng ngày nên làm qua web quản tr�
 | `015_tune_recommendation_weights.sql` | Trọng số gợi ý sau khi chỉnh (P 0,35 · C 0,15 · A 0,3 · R 0,1 · N 0,1) và kích hoạt cấu hình gợi ý |
 | `016_preserve_missing_rating_counts.sql` | Cho phép số lượt đánh giá thiếu là NULL; khôi phục 35 giá trị thiếu từ bản nhập gốc, giữ nguyên đánh giá đã bổ sung |
 | `017_complete_place_cards.sql` | Tạo 176 thẻ còn thiếu và 5 bộ sưu tập khu vực; mỗi địa danh có một thẻ, giữ nguyên thẻ cũ và cấp thẻ mới cho người đã khám phá |
+| `021_versioned_recommendations.sql` | Sáu nhóm sở thích độc lập, metadata cấu hình và snapshot rating/count; giữ nguyên lựa chọn cũ để đối chiếu |
 | `012_northern_place_images_sources.md` | Nguồn của từng ảnh trong `012` |
 
 Số thứ tự bị nhảy (`005`–`008`, `011`) vì các migration sửa dữ liệu cũ đã được gộp vào `004` và `010` rồi xóa.
@@ -121,13 +126,13 @@ Ghi chú về schema:
 | 111 | Hang động | `landform__cave` | 22 |
 | 112 | Rừng và khu bảo tồn | `ecosystem__forest`, `ecosystem__flooded_habitat`, `ecosystem__grassland` | 15 |
 
-Cùng bảng ánh xạ nằm trong backend (`RecommendationScoring.PlaceTypeFeatures`), tra theo **ID**, nên đổi tên loại trên web quản trị không ảnh hưởng gợi ý. Khi thêm loại mới ứng với đặc trưng có sẵn, chỉ cần thêm một dòng ánh xạ, không phải train lại mô hình; loại chưa có trong bảng vẫn hiện ở màn chọn sở thích nhưng không được tính điểm P.
+Đây là danh mục phân loại địa danh. Từ migration 021, màn chọn sở thích và điểm P dùng sáu nhóm riêng trong `interest_group`, liên kết qua `user_preference_interest`; mapping được lưu theo phiên bản cấu hình. Không dùng danh mục 12 loại trên làm sở thích nữa.
 
 `014` tách 145 địa danh "Thiên nhiên" cũ theo địa hình (hang động → biển → sông/hồ/thác → núi → rừng). Sở thích "Thiên nhiên" đã lưu bị bỏ vì nay ứng với 5 loại trong khi mỗi người chọn tối đa 3; người dùng không còn sở thích nào sẽ được app hỏi chọn lại.
 
 ## Trạng thái nội dung
 
-Các bảng `place`, `card`, `collection`, `quest`, `item`, `region`, `recommendation_config` có cột `status`: `DRAFT`, `ACTIVE` hoặc `INACTIVE`. **App chỉ dùng nội dung `ACTIVE`**; gợi ý điểm đến chỉ dùng cấu hình `ACTIVE`; nếu chưa có, API báo chưa có cấu hình gợi ý đang hoạt động.
+Các bảng `place`, `card`, `collection`, `quest`, `item`, `region`, `recommendation_config` có cột `status`: `DRAFT`, `ACTIVE` hoặc `INACTIVE`. **App chỉ dùng nội dung `ACTIVE`**; gợi ý điểm đến yêu cầu cấu hình `ACTIVE`, không tự dùng bản nháp. Migration 021 bảo đảm tối đa một cấu hình ACTIVE.
 
 Dữ liệu mẫu được nhập ở trạng thái `DRAFT` (riêng cấu hình gợi ý được `015` kích hoạt). Khi còn `DRAFT`, app không có điểm xuất phát đề xuất, báo mọi vị trí "chưa nằm trong vùng hỗ trợ", và bộ sưu tập, nhiệm vụ đều trống.
 
@@ -150,7 +155,7 @@ COMMIT;
 - **Nhiệm vụ:** 11 nhiệm vụ ngày/tuần với điều kiện `STEP_COUNT`, `DISCOVER_PLACE`, `COMPLETE_JOURNEY`.
 - **Thẻ và bộ sưu tập:** sau `017` có 311 thẻ cho 311 địa danh, thuộc 12 bộ sưu tập; 270 thẻ chưa có ảnh. Migration giữ nguyên 135 thẻ cũ, thêm 176 thẻ và gán vào 5 bộ mới: Hành trình Bắc Trung Bộ (28), Duyên hải Nam Trung Bộ (35), Khám phá Tây Nguyên (23), Dấu chân Đông Nam Bộ (28), Sắc màu miền Tây (62). Một số thẻ mẫu cũ thuộc nhiều bộ nên tổng số thẻ theo từng bộ có thể lớn hơn 311. Thẻ mới dùng ảnh địa danh nếu có; không tự tạo ảnh thay thế. Thẻ mới được kích hoạt khi địa danh và khu vực đều ACTIVE; các bộ mới ở trạng thái ACTIVE. Chạy lại không thêm bản trùng.
 - **Ảnh:** 61 ảnh địa danh là URL trực tiếp từ Wikimedia Commons.
-- **Hành trình mẫu** tính số bước theo κ = 1 như Backend.
+- **Hành trình mẫu cũ** giữ số bước đã lưu. Backend hiện dùng κ = 0,15 cho hành trình mới.
 - Trường dữ liệu gốc không có cột tương ứng (URL nguồn, mã băm, metadata mô hình) không được nhập; `rating_count` bị thiếu đặt `0`, `rating` để `NULL`.
 
 ## Máy phát triển hiện tại

@@ -20,6 +20,7 @@ import com.project.bcv.core.ui.NavTab
 import com.project.bcv.feature.collection.presentation.CollectionActivity
 import com.project.bcv.feature.questitem.quest.presentation.QuestActivity
 import com.project.bcv.core.ui.ScreenMotion
+import com.project.bcv.core.ui.JourneyCompletionDialog
 import com.project.bcv.core.ui.Skeleton
 import com.project.bcv.databinding.ActivityJourneyBinding
 import com.project.bcv.feature.account.auth.data.local.SessionPreferences
@@ -56,7 +57,7 @@ class JourneyActivity : AppCompatActivity() {
         routeMap = JourneyRouteMap(this, savedInstanceState, binding.mapHost)
         binding.progressBar.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> layoutProgress() }
 
-        model = ViewModelProvider(this, JourneyViewModelFactory(ExploreModule.repository(this)))[
+        model = ViewModelProvider(this, JourneyViewModelFactory(ExploreModule.repository(this), ExploreModule.stepSource(this)))[
             JourneyViewModel::class.java]
         model.state.observe(this, ::render)
 
@@ -220,6 +221,7 @@ class JourneyActivity : AppCompatActivity() {
 
         state.snapshot.location?.coordinates?.let { routeMap.show(it, journey) }
         if (firstShow) ScreenMotion.reveal(journeyContent)
+        JourneyCompletionDialog.showIfNeeded(this@JourneyActivity, journey)
     }
 
     /** Sizes the light fill and places the white thumb at its end. */

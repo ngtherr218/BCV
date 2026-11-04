@@ -111,7 +111,8 @@ class AccountActivity : AppCompatActivity() {
         )[AccountViewModel::class.java]
         model.state.observe(this, ::render)
         // A saved sign-in continues straight into the app; the form appears only if it is rejected.
-        if (savedInstanceState == null && SessionPreferences(this).token != null) model.restoreSession()
+        // A recreated process has a fresh ViewModel even when Android restores a Bundle.
+        if (SessionPreferences(this).token != null) model.restoreSession()
 
         binding.emailInput.doAfterTextChanged { model.onFieldEdited(AccountField.EMAIL) }
         binding.passwordInput.doAfterTextChanged { model.onFieldEdited(AccountField.PASSWORD) }
@@ -199,6 +200,7 @@ class AccountActivity : AppCompatActivity() {
             virtualLocationResult.launch(Intent(this@AccountActivity, StartingPointActivity::class.java), transition)
         }
         val registering = state.mode == AccountMode.REGISTER
+        restoreContainer.visibility = if (state.restoring) View.VISIBLE else View.GONE
         val showingSuccess = state.registrationSuccess || state.completed
         heroHeadline.setText(if (registering) R.string.register_hero_headline else R.string.login_hero_headline)
         authBackButton.visibility = if (registering && !state.completed) View.VISIBLE else View.GONE
@@ -244,7 +246,6 @@ class AccountActivity : AppCompatActivity() {
             return@with
         }
 
-        restoreStatus.visibility = if (state.restoring) View.VISIBLE else View.GONE
         if (state.restoring) {
             formContainer.visibility = View.GONE
             successContainer.visibility = View.GONE

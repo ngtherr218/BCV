@@ -91,15 +91,23 @@ class ExploreViewModel(
      * (no app records steps in Health Connect); steps are recorded only from then on.
      */
     fun captureDeviceSteps() {
-        val journey = mutableState.value?.snapshot?.journey?.takeIf { it.status == "IN_PROGRESS" } ?: return
-        if (isTestJourney(journey.id)) return
-        viewModelScope.launch { runCatching { steps.capture(journey.id) } }
+        val snapshot = mutableState.value?.snapshot ?: return
+        val journey = snapshot.journey?.takeIf { it.status == "IN_PROGRESS" }
+        if (journey != null && isTestJourney(journey.id)) return
+        viewModelScope.launch { runCatching {
+            steps.capture(journey?.id ?: 0, journey?.startedAtEpochSeconds ?: 0, journey?.destinationName.orEmpty())
+        } }
     }
 
     /** Calls [ask] when the Recording API is the only way to count walking and still needs permission. */
     fun whenActivityPermissionNeeded(ask: () -> Unit) {
         if (mutableState.value?.snapshot?.journey?.id?.let(::isTestJourney) == true) return
         viewModelScope.launch { if (runCatching { steps.needsActivityPermission() }.getOrDefault(false)) ask() }
+    }
+
+    /** An already usable sensor must not be blocked by another Health Connect prompt on every launch. */
+    fun whenStepPermissionNeeded(ask: () -> Unit) {
+        viewModelScope.launch { if (!runCatching { steps.hasPermission() }.getOrDefault(false)) ask() }
     }
 
     fun checkPermission() {
@@ -141,6 +149,7 @@ class ExploreViewModel(
                     snapshot
                 )
                 lookupAddress(snapshot)
+                captureDeviceSteps()
             } catch (error: ApiFailure) {
                 if (error.code == "UNAUTHORIZED") sessionExpired()
                 else mutableState.value = current.copy(stage = ExploreStage.SYNC_FAILED, message = error.message)
@@ -181,6 +190,7 @@ class ExploreViewModel(
                     snapshot
                 )
                 lookupAddress(snapshot)
+                captureDeviceSteps()
             } catch (error: ApiFailure) {
                 if (error.code == "UNAUTHORIZED") sessionExpired()
                 else Log.w(TAG, "Automatic step sync was refused: ${error.message}")
@@ -314,6 +324,11 @@ class ExploreViewModel(
         "IN_PROGRESS" -> ExploreStage.ACTIVE
         "COMPLETED" -> ExploreStage.COMPLETED
         else -> ExploreStage.EMPTY
+    }
+
+    override fun onCleared() {
+        steps.release()
+        super.onCleared()
     }
 }
 

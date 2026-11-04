@@ -15,7 +15,7 @@ public interface IInterestRepository
 
 public sealed class InterestService(IInterestRepository repository)
 {
-    private const int MaxPlaceTypes = 3;
+    private const int MaxPlaceTypes = 6;
 
     public Task<InterestSnapshot> LoadAsync(long userId, CancellationToken ct) => repository.LoadAsync(userId, ct);
 
@@ -24,7 +24,7 @@ public sealed class InterestService(IInterestRepository repository)
         if (ids is null || ids.Length == 0)
             throw new InterestException("INTEREST_REQUIRED", "Hãy chọn ít nhất một nhóm địa danh.");
         if (ids.Length > MaxPlaceTypes)
-            throw new InterestException("INTEREST_LIMIT_EXCEEDED", "Chỉ được chọn tối đa 3 nhóm địa danh.");
+            throw new InterestException("INTEREST_LIMIT_EXCEEDED", "Chỉ được chọn tối đa 6 nhóm sở thích.");
         if (ids.Any(id => id <= 0) || ids.Distinct().Count() != ids.Length)
             throw new InterestException("INVALID_INTERESTS", "Danh sách nhóm địa danh không hợp lệ.");
         return repository.SaveAsync(userId, ids, ct);

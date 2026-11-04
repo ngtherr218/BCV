@@ -99,10 +99,14 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
                    j.start_latitude, j.start_longitude, j.destination_place_id,
                    COALESCE((SELECT s.step_count FROM public.step_data s
                      WHERE s.user_id = j.user_id AND s.source_data_id = 'health-connect:journey:' || j.journey_id::text), 0),
-                   start_place.name
+                   start_place.name, c.card_id AS awarded_card_id, c.name AS awarded_card_name
             FROM public.journey j
             JOIN public.place p ON p.place_id = j.destination_place_id
             LEFT JOIN public.place start_place ON start_place.place_id = j.start_place_id
+            LEFT JOIN public.card c ON c.place_id = p.place_id AND c.status = 'ACTIVE'
+                AND j.status = 'COMPLETED'
+                AND (EXISTS (SELECT 1 FROM public.user_card uc WHERE uc.user_id = j.user_id AND uc.card_id = c.card_id)
+                     OR EXISTS (SELECT 1 FROM public.user_discovered_place d WHERE d.user_id = j.user_id AND d.place_id = p.place_id))
             WHERE j.user_id = $1 AND j.status IN ('IN_PROGRESS', 'COMPLETED')
             ORDER BY CASE WHEN j.status = 'IN_PROGRESS' THEN 0 ELSE 1 END,
                      j.started_at DESC, j.journey_id DESC
@@ -116,7 +120,8 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
                     reader.GetDecimal(2), reader.GetDecimal(3), reader.GetInt32(4),
                     reader.GetInt32(5), reader.GetString(6), reader.GetInt64(7),
                     reader.GetDecimal(8), reader.GetDecimal(9), reader.GetInt64(10), reader.GetInt32(11),
-                    StartPlaceName: reader.IsDBNull(12) ? null : reader.GetString(12));
+                    StartPlaceName: reader.IsDBNull(12) ? null : reader.GetString(12),
+                    AwardedCard: reader.IsDBNull(13) ? null : new ExploreCardReward(reader.GetInt64(13), reader.GetString(14)));
         }
         if (journey is { Status: "IN_PROGRESS" })
         {

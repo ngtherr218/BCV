@@ -2,6 +2,7 @@ using System.Text.Json;
 using Bcv.Api.Modules.Discovery.Application;
 using Bcv.Api.Modules.Discovery.Domain;
 using Bcv.Api.Modules.StepLocation.Domain;
+using Bcv.Api.Modules.Admin;
 
 using Scores = Bcv.Api.Modules.Discovery.Domain.RecommendationScoring;
 
@@ -43,11 +44,20 @@ void Error(string code, Action action)
 
 var checks = new (string Name, Action Run)[]
 {
-    ("Vocabulary and all 12 preference mappings match the real 35-column dataset", () => {
+    ("Activity thresholds are versioned rather than fixed at 3000", () => {
+        var places = new[]{Place(1, meters:20000)};
+        var custom = new Dictionary<string,int>{{"LOW",1000},{"MEDIUM",6000},{"HIGH",10000}};
+        var result=Scores.Rank(places,[Preference()],"LOW",Weights(Scores.Activity),500000,custom);
+        Assert(result[0].Criteria.Activity == .25);
+    }),
+    ("Model import rejects malformed settings before database access", () => {
+        try { RecommendationAdmin.Validate(new ModelImport("bad",15,500000,null!,Weights(),[])); }
+        catch(AdminValidation) { return; }
+        throw new Exception("Invalid import accepted");
+    }),
+    ("Vocabulary matches the real 35-column dataset", () => {
         var columns = File.ReadLines(Path.Combine(AppContext.BaseDirectory, "features.csv")).First().Split(',').Skip(4).ToHashSet();
         Assert(columns.SetEquals(Scores.FeatureCodes));
-        Assert(Scores.PlaceTypeFeatures.Count == 12);
-        Assert(Scores.PlaceTypeFeatures.Values.All(group => group.Count > 0 && group.All(columns.Contains)));
     }),
     ("Top three are unique and ties have stable place-ID order", () => {
         var result = Rank([Place(5), Place(2), Place(2), Place(4), Place(1)], Weights(Scores.Preference));
@@ -67,8 +77,8 @@ var checks = new (string Name, Action Run)[]
         Assert(Rank(places, Weights(Scores.Preference), preference: Preference("landform__coast"))[0].Place.PlaceId == 2);
     }),
     ("Changing activity level changes the effort ranking", () => {
-        // With kappa=0.1, use 60 km / 10 km to retain the 8,000 / 1,334-step effort contrast.
-        var places = new[] { Place(1, 60000), Place(2, 10000) };
+        // With kappa=0.15, 40 km / 10 km require 8,000 / 2,000 steps.
+        var places = new[] { Place(1, 40000), Place(2, 10000) };
         Assert(Rank(places, Weights(Scores.Activity), activity: "LOW")[0].Place.PlaceId == 2);
         Assert(Rank(places, Weights(Scores.Activity), activity: "HIGH")[0].Place.PlaceId == 1);
     }),
@@ -133,8 +143,8 @@ var checks = new (string Name, Action Run)[]
         Error("NO_RECOMMENDATION_PREFERENCES", () => Recommend(Input(preferences: [])));
         Error("NO_ACTIVITY_LEVEL", () => Recommend(Input(activity: null)));
     }),
-    ("Required steps use kappa=0.1 with a minimum of one", () => {
-        Assert(StepConversion.RequiredSteps(50) == 6667);
+    ("Required steps use kappa=0.15 with a minimum of one", () => {
+        Assert(StepConversion.RequiredSteps(50) == 10000);
         Assert(StepConversion.RequiredSteps(0) == 1);
     })
 };

@@ -88,7 +88,7 @@ public sealed class PostgresAccountRepository(NpgsqlDataSource db) : IAccountRep
         await using var command = db.CreateCommand("""
             SELECT EXISTS (
                 SELECT 1 FROM public.user_preference up
-                JOIN public.user_preference_place_type uppt ON uppt.user_preference_id = up.user_preference_id
+                JOIN public.user_preference_interest uppt ON uppt.user_preference_id = up.user_preference_id
                 WHERE up.user_id = $1
             )
             """);

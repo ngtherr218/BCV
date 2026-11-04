@@ -116,7 +116,7 @@ cd android
 .\gradlew.bat installDebug
 ```
 
-Hoặc mở thư mục `android/` bằng Android Studio và bấm **Run**. Mặc định app dùng backend HTTPS đã deploy và có thể dùng Wi-Fi hoặc dữ liệu di động. Nếu chủ động chạy backend local, ghi đè `bcvApiBaseUrl` bằng `http://10.0.2.2:5081/` cho emulator hoặc IP máy tính cho điện thoại cùng mạng. Chi tiết: [android/README.md](android/README.md).
+Hoặc mở thư mục `android/` bằng Android Studio và bấm **Run**. Mặc định app dùng API deploy `https://bcv-admin.onrender.com/`, không cần backend local hay cáp USB. Để thử backend local, cấu hình rõ `bcvApiBaseUrl=http://10.0.2.2:5081/` cho emulator hoặc IP Wi-Fi của máy tính cho điện thoại thật. Chi tiết: [android/README.md](android/README.md).
 
 ### 6. (Tùy chọn) Kiểm thử mô hình gợi ý
 

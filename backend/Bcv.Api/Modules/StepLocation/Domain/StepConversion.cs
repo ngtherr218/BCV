@@ -2,7 +2,7 @@ namespace Bcv.Api.Modules.StepLocation.Domain;
 
 /// <summary>
 /// Virtual distance to steps (design 3.5.1.2): S = max(1, ⌈1000 · D · κ / L⌉) with D in km.
-/// κ = 0.1 scales virtual exploration down (50 km → 6,667 steps).
+/// κ = 0.15 scales virtual exploration down (50 km → 10,000 steps).
 /// Only new journeys use it; a journey keeps the steps it was created with.
 /// </summary>
 public static class StepConversion

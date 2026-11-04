@@ -33,6 +33,7 @@ var connectionString = builder.Configuration.GetConnectionString("Bcv")
 
 builder.Services.AddSingleton(NpgsqlDataSource.Create(connectionString));
 builder.Services.AddScoped<AdminRepository>();
+builder.Services.AddScoped<RecommendationAdmin>();
 builder.Services.AddHttpClient<GoongGeocoder>(client => client.Timeout = TimeSpan.FromSeconds(10))
     .RemoveAllLoggers();
 builder.Services.AddScoped<IAccountRepository, PostgresAccountRepository>();
@@ -90,6 +91,8 @@ else
 }
 
 var app = builder.Build();
+app.UseDefaultFiles();
+app.UseStaticFiles();
 // Explicit CLI operation; the public registration endpoint never grants ADMIN permissions.
 if (Array.IndexOf(args, "--create-admin") is var adminIndex && adminIndex >= 0)
 {
@@ -149,4 +152,5 @@ app.MapAdminEndpoints();
 await AccountSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
 await Bcv.Api.Modules.PlaceCollection.Infrastructure.CollectionSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
 await Bcv.Api.Modules.StatsNotify.Infrastructure.NotificationSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
+await RecommendationSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
 app.Run();

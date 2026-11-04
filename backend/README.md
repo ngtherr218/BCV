@@ -100,7 +100,7 @@ Khi chưa cấu hình R2, ảnh được lưu thẳng trong cột ảnh của da
 
 ## Quy đổi khoảng cách thành số bước
 
-Theo mục 3.5.1.2 của tài liệu: **S = max(1, ⌈1000 · D · κ / L⌉)**, với D là khoảng cách (km) từ vị trí ảo tới điểm đến, L = 0,75 m/bước, **κ = 0,1**. Ví dụ 10 km cần 1.334 bước, 50 km cần 6.667 bước.
+Theo mục 3.5.1.2 của tài liệu: **S = max(1, ⌈1000 · D · κ / L⌉)**, với D là khoảng cách (km) từ vị trí ảo tới điểm đến, L = 0,75 m/bước, **κ = 0,15**. Ví dụ 10 km cần 2.000 bước, 50 km cần 10.000 bước.
 
 κ là hệ số tỉ lệ (0 < κ ≤ 1). κ = 1 giữ nguyên quãng đường thật; κ nhỏ hơn thu nhỏ hành trình (tài liệu ví dụ κ = 0,01). Mã: `Modules/StepLocation/Domain/StepConversion.cs`. Số bước được lưu khi tạo hành trình, nên đổi κ chỉ áp dụng cho hành trình mới.
 
@@ -110,7 +110,7 @@ Theo mục 3.5.1.2 của tài liệu: **S = max(1, ⌈1000 · D · κ / L⌉)**,
 
 1. **Ứng viên:** địa danh `ACTIVE`, chưa khám phá, cách vị trí ảo trong `distance_limit` của cấu hình gợi ý (500 km).
 2. **Điểm thành phần:**
-   - **P** (sở thích): tỷ lệ loại địa danh người dùng chọn mà địa danh khớp. 12 loại được ánh xạ theo ID sang nhóm đặc trưng của mô hình; khớp khi có ít nhất một đặc trưng trong nhóm ([bảng ánh xạ](../db/README.md#loại-địa-danh)).
+   - **P** (sở thích): tỷ lệ nhóm sở thích người dùng chọn mà địa danh khớp. Sáu nhóm ID 201–206 độc lập với 12 loại địa danh; mapping nằm trong `recommendation_config.settings.interestFeatures`. Khớp khi có ít nhất một đặc trưng trong nhóm.
    - **C** (cụm): trung bình P của các địa danh cùng cụm K-Means (`place_feature.cluster_number`).
    - **A** (vận động): `min(1, T / số bước cần đi)`, với T = 3.000 / 6.000 / 10.000 cho mức Ít / Trung bình / Năng động.
    - **R** (đánh giá): `rating / 5`.
@@ -124,7 +124,11 @@ Chỉ cấu hình `ACTIVE` được sử dụng. Nếu chưa có cấu hình ho�
 
 Chạy `db/016_preserve_missing_rating_counts.sql` trước khi dùng bản API này. Rating/count thiếu là NULL; count = 0 là số liệu thật, không đồng nghĩa thiếu. Kết quả kèm `criteria`, `usedCriteria`, `missingCriteria`, `effectiveWeights`, `reasons` và `configVersion` để truy vết. Trọng số bằng 0 không được ghi là đã dùng. App hiển thị tối đa hai lý do, với nội dung đầy đủ cho trình đọc màn hình. Cụm và đặc trưng đã lưu trong database, nên API không cần gọi dịch vụ Python trong [`recommendation/`](../recommendation/).
 
-Kiểm tra 18 tình huống về thay đổi sở thích/mức vận động, lọc ứng viên, loại trùng, dữ liệu thiếu, số 0 thật, trọng số, lý do và hợp đồng 35 đặc trưng. Chạy từ thư mục gốc với .NET SDK 10, không cần database hoặc thư viện kiểm thử bổ sung:
+Backend tự chạy migration nhúng `021_versioned_recommendations.sql` khi khởi động nếu chưa có schema mới, bằng kết nối DB đã cấu hình. Transaction và advisory lock bảo vệ khi hai service khởi động cùng lúc; migration lỗi sẽ chặn khởi động bản mới. Có thể chạy SQL thủ công trước. API vẫn giữ tên trường `placeTypes`/`placeTypeIds`, nhưng giá trị là ID nhóm 201–206. Người dùng cũ cần chọn lại nhóm; lựa chọn cũ được bảo toàn. Ngưỡng A lấy từ settings; R/N lấy từ snapshot. Nhập mô hình hoặc sửa địa danh trên web tạo phiên bản mới, giữ snapshot cũ để quay lui. `configuration` trong kết quả ghi metadata để truy vết.
+
+API quản trị bổ sung: `GET /api/admin/recommendations/dataset`, `POST /api/admin/recommendations/models` (tạo DRAFT) và `POST /api/admin/recommendations/models/{id}/activate`. Tất cả yêu cầu tài khoản ADMIN đang hoạt động. Xem [quy trình mô hình](../recommendation/README.md#đánh-giá-người-dùng-và-trao-đổi-mô-hình) và [mẫu chấm](../recommendation/evaluation/README.md).
+
+Kiểm tra 20 tình huống về thay đổi sở thích/mức vận động, lọc ứng viên, loại trùng, dữ liệu thiếu, số 0 thật, trọng số, lý do và hợp đồng 35 đặc trưng. Chạy từ thư mục gốc với .NET SDK 10, không cần database hoặc thư viện kiểm thử bổ sung:
 
 ```powershell
 dotnet run --project backend/Bcv.RecommendationChecks --artifacts-path .runtime.local/ai-checks -p:UseAppHost=false

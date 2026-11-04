@@ -19,7 +19,9 @@ data class ExploreJourney(
     /** Unboosted, cumulative server total; null means the server needs updating. */
     val sourceSteps: Long? = null,
     val activeItem: ActiveItemEffect? = null,
-    val startPlaceName: String? = null
+    val startPlaceName: String? = null,
+    /** Only provided by the server after the card is confirmed as owned. */
+    val awardedCard: JourneyCardReward? = null
 ) {
     val startLabel: String
         get() = startPlaceName?.takeIf(String::isNotBlank)
@@ -29,6 +31,8 @@ data class ExploreJourney(
     val progressPercent: Int
         get() = if (requiredSteps <= 0) 0 else (recordedSteps.toLong() * 100 / requiredSteps).toInt().coerceIn(0, 100)
 }
+
+data class JourneyCardReward(val id: Long, val name: String)
 
 data class ExploreMapPlace(val id: Long, val name: String, val coordinates: Coordinates, val isDiscovered: Boolean)
 
@@ -61,14 +65,16 @@ interface ExploreRepository {
     fun syncSteps(journeyId: Long, cumulativeSteps: Long): ExploreSnapshot
 }
 
-/** Health Connect first; the Recording API only when no app records steps there. */
+/** Health Connect first; Recording API and direct sensors provide fallbacks. */
 interface StepSource {
     /** Steps can be read: Health Connect access, or the Recording API allowed as fallback. */
     suspend fun hasPermission(): Boolean
     /** No app records steps in Health Connect and the Recording API still needs physical-activity access. */
     suspend fun needsActivityPermission(): Boolean
-    /** Starts recording for this journey when the Recording API is its source; stops it when no longer needed. */
-    suspend fun capture(journeyId: Long)
+    /** Starts the journey's background hardware shadow; journeyId=0 stops tracking after confirmed completion. */
+    suspend fun capture(journeyId: Long, startedAtEpochSeconds: Long = 0, destinationName: String = "")
     /** Steps since the journey started, cumulative, from the journey's source. */
     suspend fun totalStepsSince(journeyId: Long, startedAtEpochSeconds: Long): Long
+    /** Release listeners owned by this screen; Recording API subscriptions can continue in background. */
+    fun release() = Unit
 }

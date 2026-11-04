@@ -60,6 +60,10 @@ public static class AdminEndpoints
             }
         });
 
+        // These internal/offline routes inherit the ACTIVE ADMIN filter above.
+        group.MapGet("/recommendations/dataset", (RecommendationAdmin service, CancellationToken ct) => service.Export(ct));
+        group.MapPost("/recommendations/models", (ModelImport body, RecommendationAdmin service, CancellationToken ct) => service.Import(body, ct));
+        group.MapPost("/recommendations/models/{id:long}/activate", (long id, RecommendationAdmin service, CancellationToken ct) => service.Activate(id, ct));
         group.MapGet("/me", (HttpRequest request, ISessionStore sessions) => Results.Ok(CurrentUser.Get(request, sessions)));
         group.MapGet("/dashboard", (int? days, AdminRepository repo, CancellationToken ct) => repo.Dashboard(days ?? 30, ct));
         group.MapGet("/lookups", (AdminRepository repo, CancellationToken ct) => repo.Lookups(ct));

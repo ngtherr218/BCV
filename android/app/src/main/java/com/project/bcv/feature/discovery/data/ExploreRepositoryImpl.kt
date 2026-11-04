@@ -4,6 +4,7 @@ import com.project.bcv.core.network.ApiFailure
 import com.project.bcv.core.network.JsonApiClient
 import com.project.bcv.feature.account.auth.data.local.SessionPreferences
 import com.project.bcv.feature.discovery.domain.ExploreJourney
+import com.project.bcv.feature.discovery.domain.JourneyCardReward
 import com.project.bcv.feature.discovery.domain.ExploreLocation
 import com.project.bcv.feature.discovery.domain.ExploreMapPlace
 import com.project.bcv.feature.discovery.domain.ExplorePlaceDetail
@@ -82,7 +83,10 @@ class ExploreRepositoryImpl(
                 it.optJSONObject("activeItem")?.let { effect ->
                     ActiveItemEffect(effect.getString("itemType"), effect.getString("name"),
                         effect.getDouble("multiplier"), effect.getInt("range"), effect.getInt("remainingSteps"))
-                }, it.nullableText("startPlaceName"))
+                }, it.nullableText("startPlaceName"),
+                it.optJSONObject("awardedCard")?.let { card ->
+                    JourneyCardReward(card.getLong("cardId"), card.getString("name"))
+                })
         }
         val places = optJSONArray("places")?.let { array ->
             (0 until array.length()).map { index ->

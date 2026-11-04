@@ -19,7 +19,7 @@ data class InterestsUiState(
 )
 
 class InterestsViewModel(private val repository: InterestRepository) : ViewModel() {
-    companion object { const val MAX_INTERESTS = 3 }
+    companion object { const val MAX_INTERESTS = 6 }
 
     private val executor = Executors.newSingleThreadExecutor()
     private val mutableState = MutableLiveData(InterestsUiState())

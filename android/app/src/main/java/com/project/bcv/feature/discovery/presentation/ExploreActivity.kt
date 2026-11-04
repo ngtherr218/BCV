@@ -74,6 +74,9 @@ class ExploreActivity : AppCompatActivity() {
     private var stepsAnimator: ValueAnimator? = null
     private val readStepsPermission = HealthPermission.getReadPermission(StepsRecord::class)
     private var stepsPermissionAsked = false
+    private var activityPermissionAsked = false
+    private var notificationPermissionAsked = false
+    private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private val stepsPermissionLauncher = registerForActivityResult(
         PermissionController.createRequestPermissionResultContract()
     ) { granted ->
@@ -91,6 +94,7 @@ class ExploreActivity : AppCompatActivity() {
         if (granted) {
             model.checkPermission()
             model.captureDeviceSteps()
+            requestTrackingNotificationPermission()
         }
         else Snackbar.make(binding.root, "Cần quyền Hoạt động thể chất để đếm bước khi đi bộ.",
             Snackbar.LENGTH_LONG).show()
@@ -190,9 +194,11 @@ class ExploreActivity : AppCompatActivity() {
         }
         if (model.state.value?.snapshot == null) model.load()
         stepsPermissionAsked = savedInstanceState?.getBoolean(STEPS_PERMISSION_ASKED_KEY) ?: false
+        activityPermissionAsked = savedInstanceState?.getBoolean("activityPermissionAsked") ?: false
+        notificationPermissionAsked = savedInstanceState?.getBoolean("notificationPermissionAsked") ?: false
         if (!stepsPermissionAsked) {
             stepsPermissionAsked = true
-            requestStepsPermission(openSetupIfUnavailable = false)
+            model.whenStepPermissionNeeded { requestStepsPermission(openSetupIfUnavailable = false) }
         }
     }
 
@@ -206,7 +212,7 @@ class ExploreActivity : AppCompatActivity() {
                 if (openSetupIfUnavailable) {
                     startActivity(Intent(this@ExploreActivity, HealthConnectActivity::class.java))
                 }
-                requestActivityPermissionIfNeeded()
+                requestActivityPermissionIfNeeded(force = openSetupIfUnavailable)
                 return@launch
             }
             val granted = runCatching {
@@ -215,7 +221,7 @@ class ExploreActivity : AppCompatActivity() {
             if (readStepsPermission !in granted) stepsPermissionLauncher.launch(setOf(readStepsPermission))
             else {
                 model.checkPermission()
-                requestActivityPermissionIfNeeded()
+                requestActivityPermissionIfNeeded(force = openSetupIfUnavailable)
             }
         }
     }
@@ -224,10 +230,25 @@ class ExploreActivity : AppCompatActivity() {
      * Asks for Android's "physical activity" permission only when no app records steps in Health
      * Connect, so the Recording API is the only way to count real walking (see RecordingStepCounter).
      */
-    private fun requestActivityPermissionIfNeeded() {
+    private fun requestActivityPermissionIfNeeded(force: Boolean = false) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        if (activityPermissionAsked && !force) return
         model.whenActivityPermissionNeeded {
+            if (activityPermissionAsked && !force) return@whenActivityPermissionNeeded
+            activityPermissionAsked = true
             activityPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+        }
+    }
+
+    private fun requestTrackingNotificationPermission() {
+        if (Build.VERSION.SDK_INT < 33 || notificationPermissionAsked ||
+            model.state.value?.snapshot?.journey?.status != "IN_PROGRESS" ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACTIVITY_RECOGNITION) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED) return
+        notificationPermissionAsked = true
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
@@ -265,6 +286,8 @@ class ExploreActivity : AppCompatActivity() {
         super.onSaveInstanceState(outState)
         outState.putBoolean(SHEET_STATE_KEY, sheetCollapsed)
         outState.putBoolean(STEPS_PERMISSION_ASKED_KEY, stepsPermissionAsked)
+        outState.putBoolean("activityPermissionAsked", activityPermissionAsked)
+        outState.putBoolean("notificationPermissionAsked", notificationPermissionAsked)
         goongMap.onSaveInstanceState(outState)
     }
     override fun onDestroy() { handler.removeCallbacksAndMessages(null); stepsAnimator?.cancel(); goongMap.onDestroy(); super.onDestroy() }
@@ -401,6 +424,10 @@ class ExploreActivity : AppCompatActivity() {
     }
 
     private fun render(state: ExploreUiState) = with(binding) {
+        if (state.snapshot?.journey?.status == "IN_PROGRESS") {
+            requestActivityPermissionIfNeeded()
+            requestTrackingNotificationPermission()
+        }
         activeItemBanner.show(state.snapshot?.journey)
         state.snapshot?.let { snapshot ->
             if (snapshot != lastSnapshot) {
@@ -509,9 +536,9 @@ class ExploreActivity : AppCompatActivity() {
             ExploreStage.NO_NEW_STEPS -> ScreenCopy("Chưa có bước chân mới", "Không cộng lại bước đã ghi nhận.",
                 journey?.destinationName.orEmpty(), "Tiến độ hiện tại của bạn đã được giữ nguyên.",
                 "Xem hành trình", secondary = "Đồng bộ", footer = "Cập nhật lại khi có bước chân mới.")
-            ExploreStage.PERMISSION_REQUIRED -> ScreenCopy("Quyền bước chân đã tắt", "Dừng đọc và đồng bộ bước mới.",
-                journey?.destinationName.orEmpty(), "Kết nối Health Connect để tiếp tục đồng bộ.",
-                "Kết nối Health Connect", secondary = "Xem hành trình đã lưu",
+            ExploreStage.PERMISSION_REQUIRED -> ScreenCopy("Chưa có quyền bước chân", "Tiến độ đã lưu vẫn được giữ nguyên.",
+                journey?.destinationName.orEmpty(), "Cho phép Health Connect hoặc Hoạt động thể chất để đếm bước.",
+                "Cho phép đếm bước", secondary = "Xem hành trình đã lưu",
                 footer = "Giữ nguyên tiến độ đã được xác nhận.",
                 noticeBackground = 0xFFFFF0D9.toInt(), noticeColor = 0xFFAD7A32.toInt())
             ExploreStage.COMPLETED -> ScreenCopy("Hành trình hoàn thành", "",

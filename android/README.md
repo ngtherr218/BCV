@@ -2,7 +2,7 @@
 
 App Kotlin cho người dùng: đọc số bước, đi hành trình ảo trên bản đồ Goong và mở khóa địa danh.
 
-App gọi Backend API qua HTTPS tại `https://bcv-admin-test.onrender.com/`, không truy cập database trực tiếp. Có thể ghi đè địa chỉ để chạy backend nội bộ khi phát triển. Mã nguồn chia theo nghiệp vụ trong `feature/`; phần dùng chung nằm trong `core/`.
+App gọi Backend API qua HTTPS, không truy cập database trực tiếp. Mặc định dùng cùng backend/database với web quản trị tại `https://bcv-admin.onrender.com/`. Mã nguồn chia theo nghiệp vụ trong `feature/`; phần dùng chung nằm trong `core/`.
 
 ## Mục lục
 
@@ -29,21 +29,23 @@ App gọi Backend API qua HTTPS tại `https://bcv-admin-test.onrender.com/`, kh
 Tạo `android/dev.properties` (Git bỏ qua file này):
 
 ```properties
-bcvApiBaseUrl=https://bcv-admin-test.onrender.com/
+bcvApiBaseUrl=https://bcv-admin.onrender.com/
 bcvGoongMaptilesKey=<Goong Maptiles Key>
 bcvGoongApiKey=<Goong REST API Key>
 ```
 
 | Khóa | Ý nghĩa | Nếu bỏ trống |
 | --- | --- | --- |
-| `bcvApiBaseUrl` | Địa chỉ Backend, kết thúc bằng `/` | `https://bcv-admin-test.onrender.com/` |
+| `bcvApiBaseUrl` | Địa chỉ Backend, kết thúc bằng `/` | `https://bcv-admin.onrender.com/` |
 | `bcvGoongMaptilesKey` | Hiển thị bản đồ Goong | Bản đồ trống |
 | `bcvGoongApiKey` | Tra địa chỉ từ tọa độ và chỉ đường theo đường phố | Không hiện địa chỉ, không vẽ đường đi |
 
-- **Backend đã deploy:** dùng URL HTTPS trên; điện thoại có thể dùng Wi-Fi hoặc dữ liệu di động, không cần bật máy tính chạy backend.
-- **Chạy backend local:** ghi đè URL bằng `http://10.0.2.2:5081/` cho emulator, hoặc IP Wi-Fi máy tính cho điện thoại thật (hai máy phải cùng mạng). `127.0.0.1` trên điện thoại/emulator là chính thiết bị đó; chỉ dùng được với backend máy tính khi đã cấu hình chuyển tiếp ADB tương ứng.
+- **Bản deploy:** chỉ cần Internet, không cần backend local, cùng Wi-Fi với máy tính hay kết nối USB.
+- **Chạy local:** ghi đè bằng `bcvApiBaseUrl=http://10.0.2.2:5081/` cho emulator, hoặc IP Wi-Fi máy tính cho điện thoại thật. Khi đó máy tính phải chạy backend và điện thoại cùng mạng; có thể dùng `127.0.0.1:5081` với `adb reverse` qua USB.
 - Giá trị được đóng vào app lúc build, nên **sửa xong phải build lại**.
 - Bản release nhận giá trị qua Gradle property, ví dụ `-PbcvApiBaseUrl=https://... -PbcvGoongMaptilesKey=...`, và cần URL HTTPS.
+- Phiên đăng nhập, bộ đếm cảm biến, Recording API và mốc đối chiếu bước được tách theo địa chỉ backend. Đổi từ local sang deploy không gửi token hoặc tổng bước của local sang database deploy; dữ liệu local được giữ để có thể quay lại cấu hình local. App yêu cầu đăng nhập bằng tài khoản thuộc database đang chọn.
+- Tài khoản tự điền cho kiểm thử chỉ dùng ở backend được chỉ định bởi `bcvPreviewLoginApiBaseUrl` (mặc định `http://127.0.0.1:5081/`). Chuyển sang Render không tự điền tài khoản local.
 
 ### Build và cài
 
@@ -84,42 +86,26 @@ Health Connect là nguồn bước chính, vì nó đã gộp mọi ứng dụng
 
 | Tình huống | Nguồn bước của hành trình |
 | --- | --- |
-| Trong 30 ngày qua có ứng dụng **khác BCV** ghi bước vào Health Connect | Tổng bước của Health Connect |
+| Trong 24 giờ qua có ứng dụng **khác BCV** ghi bước vào Health Connect | Tổng bước của Health Connect |
 | Không có ứng dụng nào ghi bước, máy có Google Play services **và** người dùng đã cho phép **Hoạt động thể chất** | Recording API của Google Play services (`RecordingStepCounter`), cộng với bước thử của BCV |
-| Còn lại (chưa cho phép, hoặc máy không có Google Play services) | Chỉ bước thử của BCV |
+| Không dùng được Recording API, hoặc nguồn đọc lỗi/quá hạn; máy có cảm biến và đã cấp quyền Hoạt động thể chất | Cảm biến trực tiếp `TYPE_STEP_COUNTER`, dự phòng `TYPE_STEP_DETECTOR` |
+| Chưa cấp quyền đọc và cũng chưa cho phép Hoạt động thể chất | Yêu cầu cấp quyền; giữ nguyên tiến độ đã lưu |
 
-- **Bước từ Recording API chỉ lưu trong app, không ghi vào Health Connect**, nên không bị đọc lại và cộng trùng. Bảng test hiện tại gửi bước trực tiếp đến backend, không ghi vào Health Connect.
-- Quyền Hoạt động thể chất chỉ được hỏi khi Health Connect không có nguồn đếm bước. Không cần cài thêm app nào: Recording API chạy trong Google Play services có sẵn trên máy.
+- **Bước từ Recording API chỉ lưu trong app, không ghi vào Health Connect**, nên không bị đọc lại và cộng trùng. BCV chỉ ghi vào Health Connect bước thử (+2.000).
+- Quyền Hoạt động thể chất dùng cho cảm biến dự phòng và phát hiện nguồn Health Connect bị đứng, kể cả khi Health Connect đang hoạt động. Quyền thông báo giúp hiển thị trạng thái đếm bước nền; từ chối thông báo không tự cấp hoặc thay thế quyền cảm biến.
+- Khi đã có nguồn bước dùng được (kể cả cảm biến), mở lại Khám phá không tự bật hộp xin quyền Health Connect nữa. Người dùng vẫn có thể kết nối Health Connect trong Hồ sơ.
 - Recording API bắt đầu ghi khi app đăng ký lần đầu cho hành trình (lúc tạo hành trình hoặc mở màn Khám phá); bước đi trước đó không có.
 - Sau khi đăng ký, Google Play services tự đếm cả khi app tắt hay điện thoại khởi động lại, và giữ dữ liệu 10 ngày trên máy. Không mở app đồng bộ quá 10 ngày thì phần bước cũ hơn bị mất.
-- Hành trình đã bắt đầu đếm bằng Recording API thì dùng nó tới hết hành trình, để tổng bước không bị tụt khi nguồn thay đổi. Hành trình sau dùng Health Connect thì app hủy đăng ký.
+- `JourneyStepService` là foreground service loại `health`, giữ cảm biến chạy khi chuyển ứng dụng, khóa màn hình hoặc vuốt Activity khỏi danh sách gần đây. Dịch vụ được mở lúc app đang hiển thị và đã có quyền Hoạt động thể chất, kèm thông báo "Bước Chân Việt đang đếm bước". Sensor listener thuộc dịch vụ, không bị dừng khi đóng một màn hình. Hành trình kết thúc hoặc đăng xuất thì dịch vụ dừng và bỏ mốc phần cứng để không tính khoảng đã ngừng theo dõi.
+- Khi dùng Health Connect/Recording, dịch vụ vẫn lưu bước cảm biến làm nguồn dự phòng nhưng không cộng vào tổng của nguồn chính. Nếu nguồn chính đứng ít nhất **120 giây**, trong khi cảm biến tăng ít nhất **20 bước**, lần đồng bộ tiếp theo chuyển sang cảm biến: giữ tổng đã xác nhận và cộng đúng phần cảm biến kể từ mốc nguồn chính cuối cùng tiến lên. Sau thời gian ở nền, nếu nguồn chính chỉ cập nhật một phần và còn thiếu ít nhất 20 bước so với cửa sổ cảm biến, dùng tổng lớn hơn của hai nguồn trong cửa sổ đó, không cộng hai nguồn với nhau. Lỗi hoặc quá hạn 5 giây cũng chuyển nguồn nếu có số đo cảm biến. Trạng thái được lưu trong `bcv_journey_step_state`, kể cả sau khi process được tạo lại.
+- Sau khi chuyển sang cảm biến, hành trình giữ nguồn đó tới khi kết thúc. Health Connect cập nhật bù muộn không được cộng lần nữa; bước thử Health Connect cũng không cộng thêm ở chế độ này. Các ngưỡng 120 giây/20 bước là quy tắc dự phòng, không phải thông số học máy.
+- Dịch vụ chỉ đọc cảm biến, không đọc Health Connect trong nền và không xin quyền đọc sức khỏe nền. Bước được giữ trên máy khi offline; khi mở Khám phá hoặc Hành trình, app đối chiếu nguồn và đồng bộ với backend. Hành trình cũng đồng bộ khi được mở trực tiếp từ thông báo.
+- `TYPE_STEP_COUNTER` giữ tổng trong phần cứng và không cần giữ CPU thức liên tục. Chỉ máy dùng `TYPE_STEP_DETECTOR` không đánh thức CPU mới dùng partial wake lock có thời hạn, giải phóng khi dịch vụ dừng. Mốc vẫn xử lý an toàn trường hợp khởi động lại hoặc reset cảm biến.
+- Android vẫn dừng dịch vụ nếu người dùng chọn **Buộc dừng** hoặc dừng ứng dụng từ trình quản lý dịch vụ đang chạy. Khi đó cần mở lại app để tiếp tục; app không cố vượt quyết định dừng của người dùng và không tự khởi động dịch vụ sức khỏe sau khi bật máy.
 - **Tự động đồng bộ:** khi màn Khám phá đang mở, app tự gửi bước mới lúc mở màn và mỗi phút một lần (chỉ gửi khi tổng bước tăng), không hiện trạng thái "Đang đồng bộ" và lỗi thì giữ nguyên tiến độ để lần sau thử lại. Nút **Đồng bộ** vẫn dùng được để cập nhật ngay.
-- Bảng **Test bước chân** gửi trực tiếp bước tích lũy tới API đã xác thực, không ghi mẫu Health Connect. Các mẫu cũ nếu đã có trong Health Connect vẫn được nguồn đọc xử lý như trước.
+- Nút "+2.000 bước thử" ghi bản ghi thử vào Health Connect; mỗi bản ghi bắt đầu sau bản ghi trước. Bước thử chỉ được tính khi hành trình đang dùng Health Connect/Recording, không dùng để tăng tổng của nguồn cảm biến đã chuyển sang.
 
-## Test bước chân, nhiệm vụ và vật phẩm
-
-1. Cài APK debug/preview đã build với backend `https://bcv-admin-test.onrender.com/`; đăng nhập tài khoản dùng để test và bắt đầu một hành trình.
-2. Bấm icon người đi bộ cạnh **Khám phá**. Nhập **Số bước mỗi lần**, ví dụ `200`, và **Chu kỳ gửi**, ví dụ `5` giây.
-3. Chọn **Gửi bước một lần** hoặc **Bắt đầu mô phỏng**, rồi **Xem bản đồ** để theo dõi bước, phần trăm và người đi bộ. Chỉ gửi lần kế tiếp sau khi lần trước đã được xác nhận và chờ đủ chu kỳ; không gửi chồng request.
-4. Mở lại bảng để **Dừng mô phỏng**. Rời màn Khám phá, chuyển tab hoặc đưa app ra nền sẽ dừng lịch gửi; request đang gửi được phép hoàn tất. Lỗi hoặc hoàn thành hành trình cũng dừng mô phỏng.
-5. Bấm **Kiểm tra nhiệm vụ** để xem tiến độ. Nhiệm vụ đếm bước chỉ nhận bước gốc, không nhận phần thưởng nhân đôi của giày. Khi đạt mục tiêu, mở Nhiệm vụ để nhận phần thưởng theo xử lý hiện có.
-6. Trong **Kiểm tra / dùng vật phẩm**, dùng giày khi đang có hành trình, trở lại Khám phá và gửi thêm bước: tiến độ hành trình có thưởng, nhưng **Bước gốc** không bị nhân đôi. Vé máy bay chỉ dùng khi không có hành trình đang đi và chọn địa danh ở khu vực khác.
-
-Bảng cho phép `1–100.000` bước/lần, chu kỳ `2–3.600` giây. Các bước test **ghi thật vào tài khoản và ảnh hưởng nhiệm vụ, phần thưởng, tồn kho**; dùng tài khoản thử riêng. Hành trình đã bật test giữ nguồn mô phỏng đến khi kết thúc, không trộn thêm Health Connect/Recording API. Khi mất phản hồi, tổng bước đang chờ được lưu để lần gửi lại không cộng trùng. Tính năng ẩn trong bản release (`STEP_TEST_ENABLED=false`).
-
-Backend phải có trường `journey.sourceSteps` (bước gốc chưa cộng giày) trong phản hồi `/api/explore`. Nếu server cũ chưa có trường này, app sẽ báo cần cập nhật và không đoán từ tiến độ đã nhân đôi.
-
-Nhiệm vụ và vật phẩm phải đang `ACTIVE` và tài khoản phải có vật phẩm để sử dụng. Dữ liệu hiện tại có thể còn giày/vé ở `DRAFT`; kích hoạt qua web quản trị khi muốn sử dụng, không tự cấp thêm vật phẩm cho tài khoản thật từ nút test.
-
-Bản đồ Khám phá, Hành trình và Điểm xuất phát hỗ trợ cử chỉ zoom và nút **+ / −**; dùng các nút khi test bằng chuột trên emulator.
-
-Kiểm thử Android `StepSimulationTest`: bước gốc so với giày, mất phản hồi sau khi server đã nhận, dừng chu kỳ và tự dừng khi hoàn thành. `LocalApiNetworkTest` kiểm tra `/health` và request đăng ký sai định dạng không tạo tài khoản. Kiểm thử backend trên bản database local tạm:
-
-```powershell
-.\backend\test-step-flow.ps1 -Psql 'E:\PostgreSQL\bin\psql.exe'
-```
-
-Script cần `BCV_DB_PASSWORD`, sao chép database local thành `bcv_step_checks_*`, chạy ca bước/nhiệm vụ/giày/vé và xóa đúng database tạm; không thay dữ liệu gốc hoặc Neon.
+Tham khảo Android: [foreground service loại health](https://developer.android.com/develop/background-work/services/fgs/service-types#health), [điều kiện khởi chạy dịch vụ](https://developer.android.com/develop/background-work/services/fgs/launch), [cảm biến đếm bước](https://developer.android.com/develop/sensors-and-location/sensors/sensors_motion#sensors-motion-stepcounter).
 
 ## Cấu trúc mã nguồn
 
@@ -134,11 +120,23 @@ Mỗi tính năng chia `presentation` (Activity + ViewModel), `domain` (model, i
 
 ## Kiểm thử
 
+Kiểm thử đơn vị cho khôi phục phiên (thành công, hết hạn, offline, onboarding và tái tạo màn hình) và bộ đếm cảm biến (mốc ban đầu, không cộng trùng, khởi động lại/reset):
+
+```powershell
+.\gradlew.bat testDebugUnitTest
+```
+
+Khi có phiên lưu, màn đăng nhập hiện trạng thái **Đang khôi phục phiên đăng nhập**. Activity được tạo lại vẫn kiểm tra phiên với ViewModel mới, đồng thời không gửi yêu cầu lặp khi ViewModel cũ còn sống.
+
+Khi backend trả `journey.awardedCard` cho hành trình hoàn thành và thẻ được xác nhận đã sở hữu, app hiện hộp thoại nhận thẻ với nút **Xem Bộ sưu tập**. Mỗi cặp hành trình/thẻ chỉ hiện một lần trên máy, dùng chung cho Khám phá và Hành trình. Backend cũ chưa trả trường này vẫn tương thích nhưng không hiện hộp thoại.
+
 Test giao diện và tích hợp nằm trong `app/src/androidTest/`, chạy trên thiết bị hoặc emulator đang kết nối:
 
 ```powershell
 .\gradlew.bat connectedDebugAndroidTest
 ```
+
+`CardReceiptTest` kiểm tra hộp thoại nhận thẻ trên thiết bị: không hiện khi chưa hoàn thành/chưa có xác nhận thẻ, mở đúng Bộ sưu tập và không hiện lặp. Test dùng thẻ giả chỉ trong giao diện, không thêm bước hay thẻ vào database.
 
 ## Xử lý sự cố
 
