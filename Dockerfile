@@ -11,6 +11,7 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS api
 WORKDIR /src
 COPY backend/Bcv.Api/Bcv.Api.csproj backend/Bcv.Api/
 COPY db/021_versioned_recommendations.sql db/
+COPY db/022_community_media.sql db/
 RUN dotnet restore backend/Bcv.Api/Bcv.Api.csproj
 COPY backend/Bcv.Api/ backend/Bcv.Api/
 RUN dotnet publish backend/Bcv.Api/Bcv.Api.csproj -c Release --no-restore -p:UseAppHost=false -o /publish

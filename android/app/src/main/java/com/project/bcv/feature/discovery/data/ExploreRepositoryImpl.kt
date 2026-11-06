@@ -93,7 +93,8 @@ class ExploreRepositoryImpl(
                 array.getJSONObject(index).let { place ->
                     ExploreMapPlace(place.getLong("placeId"), place.getString("name"),
                         Coordinates(place.getDouble("latitude"), place.getDouble("longitude")),
-                        place.getBoolean("isDiscovered"))
+                        place.getBoolean("isDiscovered"), place.optString("placeType"),
+                        place.nullableText("imageUrl")?.let { if (it.startsWith("/")) com.project.bcv.BuildConfig.API_BASE_URL.trimEnd('/') + it else it })
                 }
             }
         }.orEmpty()

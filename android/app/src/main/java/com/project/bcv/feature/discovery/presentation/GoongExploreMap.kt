@@ -5,6 +5,10 @@ import android.app.Activity
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import android.content.res.ColorStateList
 import android.graphics.Bitmap
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.PointF
@@ -58,12 +62,10 @@ import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
 import kotlin.math.hypot
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /** Live Goong tiles. The server owns the virtual location and journey positions. */
 class GoongExploreMap(
@@ -83,6 +85,10 @@ class GoongExploreMap(
         accent = 0xFF3C7DB0.toInt(), fill = 0xFFFFFFFF.toInt(), ring = 0xFF3C7DB0.toInt(), ringWidth = 3.5f)
     private var map: MapLibreMap? = null
     private var snapshot: ExploreSnapshot? = null
+    private val photoUrls = mutableMapOf<Long, String>()
+    private val photoLoading = mutableSetOf<Long>()
+    private val photoFailed = mutableSetOf<String>()
+    private val photoSlots = Semaphore(3)
     private var styleLoaded = false
     private var placeSource: GeoJsonSource? = null
     private var routeSource: GeoJsonSource? = null
@@ -116,7 +122,7 @@ class GoongExploreMap(
                         LatLng(place.coordinates.latitude, place.coordinates.longitude))
                     // Explored badges stand above their dot, so their tap target is centred higher.
                     val zoom = readyMap.cameraPosition.zoom
-                    val lift = if (place.isDiscovered && zoom >= EXPLORED_BADGE_MIN_ZOOM)
+                    val lift = if (photoUrls[place.id] == null && place.isDiscovered && zoom >= EXPLORED_BADGE_MIN_ZOOM)
                         26 * density * badgeScale(zoom) else 0f
                     place.id to hypot(markerPoint.x - point.x, markerPoint.y - lift - point.y)
                 }?.minByOrNull { it.second }
@@ -124,7 +130,7 @@ class GoongExploreMap(
                 else { onMapTap(); false }
             }
             readyMap.addOnCameraMoveListener { positionMarkers() }
-            readyMap.addOnCameraIdleListener { positionMarkers() }
+            readyMap.addOnCameraIdleListener { positionMarkers(); loadPlacePhotos() }
             loadStyle()
         }
     }
@@ -149,6 +155,18 @@ class GoongExploreMap(
     /** The recenter button: glides back instead of jumping. */
     fun recenter() = frameCamera(force = true, animate = true, durationMs = 600)
 
+    fun focusSearchResults() {
+        val places = snapshot?.places.orEmpty()
+        if (places.isEmpty()) return
+        if (places.size == 1) {
+            map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(places[0].coordinates.latitude, places[0].coordinates.longitude), 13.0))
+        } else {
+            val bounds = LatLngBounds.Builder()
+            places.forEach { bounds.include(LatLng(it.coordinates.latitude, it.coordinates.longitude)) }
+            map?.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds.build(), (48 * density).toInt()))
+        }
+    }
+
     fun retry() {
         routeJob?.cancel()
         requestedRoute = null
@@ -167,6 +185,8 @@ class GoongExploreMap(
         placeSource = null
         routeSource = null
         active.setStyle("https://tiles.goong.io/assets/goong_map_web.json?api_key=$key") { style ->
+            photoUrls.clear()
+            photoFailed.clear()
             styleLoaded = true
             installRouteLayers(style)
             installPlaceLayers(style)
@@ -179,6 +199,7 @@ class GoongExploreMap(
         val value = snapshot ?: return
         if (map == null || !styleLoaded) return
         placeSource?.setGeoJson(placesGeoJson(value.places))
+        loadPlacePhotos()
         val location = value.location
         val journey = value.journey?.takeIf { it.status == "IN_PROGRESS" }
         startMarker.visibility = if (location != null) View.VISIBLE else View.GONE
@@ -347,14 +368,70 @@ class GoongExploreMap(
                 lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND)))
     }
 
+    private fun loadPlacePhotos() {
+        if (!styleLoaded) return
+        val active = map ?: return
+        val style = active.style ?: return
+        val places = snapshot?.places ?: return
+        places.filter { place ->
+            val point = active.projection.toScreenLocation(LatLng(place.coordinates.latitude, place.coordinates.longitude))
+            place.imageUrl != null && photoUrls[place.id] != place.imageUrl && place.id !in photoLoading &&
+                place.imageUrl !in photoFailed && point.x in -50f..(mapView.width + 50f) && point.y in -50f..(mapView.height + 50f)
+        }.take(30).forEach { place ->
+            val url = place.imageUrl ?: return@forEach
+            photoLoading.add(place.id)
+            routeScope.launch {
+                try {
+                    val bitmap = photoSlots.withPermit {
+                        if (url.startsWith("data:image/")) withContext(Dispatchers.IO) {
+                            runCatching {
+                                val bytes = android.util.Base64.decode(url.substringAfter(','), android.util.Base64.DEFAULT)
+                                android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size,
+                                    android.graphics.BitmapFactory.Options().apply { inSampleSize = 4 })
+                            }.getOrNull()
+                        } else com.project.bcv.core.ui.RemoteImages.load(url, 4)
+                    }
+                    if (bitmap == null) { photoFailed.add(url); return@launch }
+                    if (active.style !== style) return@launch
+                    if (photoUrls.size >= 100 && place.id !in photoUrls) {
+                        val oldest = photoUrls.keys.first()
+                        photoUrls.remove(oldest)
+                        style.removeImage("place-photo-$oldest")
+                    }
+                    val size = (44 * density).toInt().coerceAtLeast(44)
+                    val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+                    val canvas = Canvas(output)
+                    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+                    paint.color = 0xFFC8463D.toInt()
+                    canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
+                    val radius = size / 2f - 3 * density
+                    val saved = canvas.save()
+                    val path = android.graphics.Path().apply { addCircle(size / 2f, size / 2f, radius, android.graphics.Path.Direction.CW) }
+                    canvas.clipPath(path)
+                    val side = minOf(bitmap.width, bitmap.height)
+                    val source = android.graphics.Rect((bitmap.width-side)/2,(bitmap.height-side)/2,(bitmap.width+side)/2,(bitmap.height+side)/2)
+                    canvas.drawBitmap(bitmap, source, android.graphics.RectF(0f,0f,size.toFloat(),size.toFloat()), paint)
+                    canvas.restoreToCount(saved)
+                    style.addImage("place-photo-${place.id}", output)
+                    photoUrls[place.id] = url
+                    placeSource?.setGeoJson(placesGeoJson(snapshot?.places.orEmpty()))
+                } finally { photoLoading.remove(place.id) }
+            }
+        }
+    }
+
     private fun installPlaceLayers(style: Style) {
         placeSource = GeoJsonSource(PLACE_SOURCE, EMPTY_COLLECTION)
         style.addSource(placeSource!!)
+        style.addLayer(SymbolLayer("place-photo-layer", PLACE_SOURCE)
+            .withFilter(Expression.eq(Expression.get("hasPhoto"), Expression.literal(true)))
+            .withProperties(iconImage(Expression.get("thumbnail")), iconAllowOverlap(false),
+                iconSize(zoomScale(8f to .4f, 12f to .65f, 15f to 1f)), iconPadding(4f)))
         // Marker sizes follow the zoom: full size at street level, small dots when zoomed out,
         // so places stop swelling over the map and each other.
         style.addImage(LOCKED_IMAGE, lockedDot())
         style.addLayer(SymbolLayer(LOCKED_LAYER, PLACE_SOURCE)
-            .withFilter(Expression.eq(Expression.get("isDiscovered"), Expression.literal(false)))
+            .withFilter(Expression.all(Expression.eq(Expression.get("isDiscovered"), Expression.literal(false)), Expression.eq(Expression.get("hasPhoto"), Expression.literal(false))))
             .withProperties(iconImage(LOCKED_IMAGE),
                 iconSize(zoomScale(9f to 0.3f, 12f to 0.6f, 15f to 1f)),
                 // Zoomed out, overlapping locked dots thin themselves out; up close every one shows.
@@ -362,7 +439,7 @@ class GoongExploreMap(
                     Expression.stop(13, true))),
                 iconPadding(1f)))
         style.addLayer(CircleLayer(EXPLORED_DOT_LAYER, PLACE_SOURCE)
-            .withFilter(Expression.eq(Expression.get("isDiscovered"), Expression.literal(true)))
+            .withFilter(Expression.all(Expression.eq(Expression.get("isDiscovered"), Expression.literal(true)), Expression.eq(Expression.get("hasPhoto"), Expression.literal(false))))
             .withProperties(circleColor(0xFFEE8F3A.toInt()), circleRadius(4f),
                 circleStrokeColor(0xFFFFFFFF.toInt()), circleStrokeWidth(1.5f))
             .apply { maxZoom = EXPLORED_BADGE_MIN_ZOOM })
@@ -448,6 +525,8 @@ class GoongExploreMap(
                     .put("coordinates", JSONArray().put(place.coordinates.longitude)
                         .put(place.coordinates.latitude)))
                 .put("properties", JSONObject().put("placeId", place.id)
+                    .put("hasPhoto", photoUrls[place.id] == place.imageUrl && place.imageUrl != null)
+                    .put("thumbnail", "place-photo-${place.id}")
                     .put("isDiscovered", place.isDiscovered)))
         }
         return JSONObject().put("type", "FeatureCollection").put("features", features).toString()

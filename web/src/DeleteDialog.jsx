@@ -31,11 +31,12 @@ export default function DeleteDialog({ resource, record, close, deleted }) {
     return () => { document.body.style.overflow = overflow; document.removeEventListener('keydown', keydown); if (previous?.isConnected) previous.focus(); };
   }, [close, busy]);
   async function confirm() {
-    if (busy) return;
+    if (busy || config.delete === false) return;
     setBusy(true); setError('');
     try { await api(`/data/${resource}/${id}`, { method: 'DELETE' }); deleted(`Đã xóa ${config.singular} “${name}”.`); }
     catch (error) { setError(error.message); setBusy(false); }
   }
+  if (config.delete === false) return null;
   return <div className="overlay delete-overlay" onMouseDown={event => { if (event.target === event.currentTarget && !busy) close(); }}>
     <section className="delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-title" aria-describedby="delete-description" aria-busy={busy} ref={panel}>
       <span className="delete-symbol"><Trash2 size={25}/></span>

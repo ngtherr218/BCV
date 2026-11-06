@@ -188,3 +188,15 @@ dotnet run --project backend/Bcv.Checks/Bcv.Checks.csproj --artifacts-path backe
 `GET /api/admin/map/region?latitude=21.0272&longitude=105.8355` yêu cầu phiên quản trị và trả về tỉnh hiện tại, tỉnh trước sáp nhập (nếu có) và địa chỉ từ Goong Geocode V2. Web đối chiếu tên với khu vực trong database trước khi điền biểu mẫu tạo địa danh; tọa độ giữ nguyên điểm người dùng chọn.
 
 Cấu hình Goong REST API Key bằng `Goong__ApiKey`. Script `run-local.ps1` cũng hỗ trợ `BCV_GOONG_API_KEY` và khóa `bcvGoongApiKey` trong `android/dev.properties` cho môi trường phát triển. Không dùng Maptiles Key thay cho REST key. REST key không được trả về trình duyệt. Khi thiếu khóa, lỗi dịch vụ hoặc không có khu vực tương ứng, người dùng vẫn có thể điền khu vực thủ công trong biểu mẫu.
+
+## Ảnh/video cộng đồng và kiểm duyệt
+
+- Android: Chi tiết địa danh → Ảnh/video cộng đồng → chọn tệp và gửi.
+- Web quản trị: Duyệt ảnh/video → mở xem trước → Duyệt công khai hoặc Từ chối, kèm ghi chú.
+- Chỉ nội dung APPROVED được xem công khai. Người gửi xem được trạng thái nội dung của mình.
+- JPEG/PNG/WebP tối đa 10 MB; MP4/WebM tối đa 30 MB; mô tả tối đa 500 ký tự.
+- Migration db/022_community_media.sql được nhúng và chạy idempotent khi API khởi động. Tệp hiện lưu BYTEA trong PostgreSQL; không phụ thuộc ổ đĩa container.
+- Danh sách trả tối đa 100 mục mới nhất theo trạng thái.
+- API: GET/POST /api/places/{id}/media, GET /api/community-media/{id}/content, GET /api/admin/community-media, POST /api/admin/community-media/{id}/review.
+- Kiểm tra HTTP không dùng DB thật: dotnet run --project backend/Bcv.MediaChecks.
+- Cần deploy backend/web và cài APK mới cùng nhau; backend cũ chưa có các API này.

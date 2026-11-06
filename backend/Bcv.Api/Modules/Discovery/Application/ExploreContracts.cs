@@ -13,7 +13,7 @@ public sealed record ExploreItemEffect(string ItemType, string Name, decimal Mul
 
 public sealed record ExploreCardReward(long CardId, string Name);
 
-public sealed record ExploreMapPlace(long PlaceId, string Name, decimal Latitude, decimal Longitude, bool IsDiscovered);
+public sealed record ExploreMapPlace(long PlaceId, string Name, decimal Latitude, decimal Longitude, bool IsDiscovered, string PlaceType = "", string? ImageUrl = null);
 
 /// <summary>
 /// ImageUrl stays the first photo for older clients. ImageUrls (every PLACE_IMAGE row)

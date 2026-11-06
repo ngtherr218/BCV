@@ -21,6 +21,8 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
 
     public async Task Delete(string key, long id, CancellationToken ct)
     {
+        if (key is "users" or "items")
+            throw new AdminValidation("Không hỗ trợ xóa người dùng hoặc vật phẩm. Hãy cập nhật trạng thái khi cần ngừng sử dụng.");
         var r = Resource(key);
         await using var conn = await db.OpenConnectionAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);

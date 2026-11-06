@@ -20,7 +20,9 @@ class JsonApiClient(context: Context, private val baseUrl: String) {
     fun post(path: String, body: JSONObject, token: String? = null) = request("POST", path, body, token)
     fun put(path: String, body: JSONObject, token: String) = request("PUT", path, body, token)
 
-    private fun request(method: String, path: String, body: JSONObject?, token: String?): JSONObject {
+    fun postBytes(path: String, bytes: ByteArray, mime: String, token: String) = request("POST", path, null, token, bytes, mime)
+
+    private fun request(method: String, path: String, body: JSONObject?, token: String?, bytes: ByteArray? = null, mime: String? = null): JSONObject {
         val url = URL(baseUrl.trimEnd('/') + "/" + path)
         val wifi = if (useWifiForLocalApi) connectivityManager.allNetworks.firstOrNull { network ->
             connectivityManager.getNetworkCapabilities(network)
@@ -34,6 +36,12 @@ class JsonApiClient(context: Context, private val baseUrl: String) {
             connection.readTimeout = 90_000
             connection.setRequestProperty("Accept", "application/json")
             if (token != null) connection.setRequestProperty("Authorization", "Bearer $token")
+            if (bytes != null) {
+                connection.setRequestProperty("Content-Type", mime)
+                connection.doOutput = true
+                connection.setFixedLengthStreamingMode(bytes.size)
+                connection.outputStream.use { it.write(bytes) }
+            }
             if (body != null) {
                 connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
                 connection.doOutput = true

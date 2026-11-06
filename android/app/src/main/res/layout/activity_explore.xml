@@ -109,6 +109,14 @@
         </FrameLayout>
     </LinearLayout>
 
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:paddingHorizontal="20dp" android:paddingBottom="8dp">
+        <AutoCompleteTextView android:id="@+id/placeTypeSearch" android:layout_width="match_parent"
+            android:layout_height="48dp" android:singleLine="true" android:inputType="text"
+            android:hint="Tìm loại địa danh hoặc tên địa danh…" android:textSize="14sp" />
+        <TextView android:id="@+id/filterSummary" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:textSize="12sp" android:textColor="@color/teal" />
+    </LinearLayout>
     <FrameLayout
         android:id="@+id/mapContainer"
         android:layout_width="match_parent"

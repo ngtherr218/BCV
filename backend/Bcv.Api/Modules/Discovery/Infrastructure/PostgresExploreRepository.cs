@@ -138,7 +138,12 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
         var places = new List<ExploreMapPlace>();
         await using (var command = new NpgsqlCommand("""
             SELECT p.place_id, p.name, p.latitude, p.longitude,
-                   (d.place_id IS NOT NULL) AS is_discovered
+                   (d.place_id IS NOT NULL) AS is_discovered,
+                   COALESCE((SELECT name FROM public.place_type WHERE place_type_id=p.place_type_id),''),
+                   COALESCE((SELECT CASE WHEN image_key LIKE 'data:%' THEN '/api/places/' || p.place_id || '/thumbnail' ELSE image_key END
+                        FROM public.place_image WHERE place_id=p.place_id ORDER BY place_image_id LIMIT 1),
+                       (SELECT '/api/community-media/' || media_id || '/content' FROM public.community_media
+                        WHERE place_id=p.place_id AND status='APPROVED' AND mime_type LIKE 'image/%' ORDER BY media_id DESC LIMIT 1))
             FROM public.place p
             LEFT JOIN public.user_discovered_place d
               ON d.place_id = p.place_id AND d.user_id = $1
@@ -150,7 +155,7 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
             await using var reader = await command.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
                 places.Add(new ExploreMapPlace(reader.GetInt64(0), reader.GetString(1),
-                    reader.GetDecimal(2), reader.GetDecimal(3), reader.GetBoolean(4)));
+                    reader.GetDecimal(2), reader.GetDecimal(3), reader.GetBoolean(4), reader.GetString(5), reader.IsDBNull(6) ? null : reader.GetString(6)));
         }
         return new ExploreSnapshot(location, journey, places);
     }

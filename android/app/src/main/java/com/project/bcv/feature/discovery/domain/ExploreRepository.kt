@@ -34,7 +34,7 @@ data class ExploreJourney(
 
 data class JourneyCardReward(val id: Long, val name: String)
 
-data class ExploreMapPlace(val id: Long, val name: String, val coordinates: Coordinates, val isDiscovered: Boolean)
+data class ExploreMapPlace(val id: Long, val name: String, val coordinates: Coordinates, val isDiscovered: Boolean, val placeType: String = "", val imageUrl: String? = null)
 
 data class ActiveItemEffect(val itemType: String, val name: String, val multiplier: Double,
     val range: Int, val remainingSteps: Int)

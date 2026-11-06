@@ -226,6 +226,9 @@
         android:paddingBottom="26dp">
         <View android:layout_width="match_parent" android:layout_height="1dp"
             android:background="#DDE8DA" />
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/communityMediaButton" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="Ảnh / video cộng đồng · Gửi nội dung" />
         <Button android:id="@+id/selectButton" android:layout_width="match_parent"
             android:layout_height="56dp" android:layout_marginTop="26dp"
             android:background="@drawable/destination_button_bg"

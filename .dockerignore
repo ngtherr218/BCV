@@ -8,6 +8,7 @@
 !backend/Bcv.Api/**
 !db/
 !db/021_versioned_recommendations.sql
+!db/022_community_media.sql
 **/node_modules
 **/dist
 **/bin

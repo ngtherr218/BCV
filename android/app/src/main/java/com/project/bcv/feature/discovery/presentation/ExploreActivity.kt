@@ -59,6 +59,10 @@ class ExploreActivity : AppCompatActivity() {
     private var sheetDragging = false
     private var mapLoaded = false
     private var mapFailed = false
+    private val searchMapFocus = Runnable {
+        if (binding.placeTypeSearch.text.isNotBlank()) goongMap.focusSearchResults()
+    }
+    private var placeTypeOptions = emptyList<String>()
     private var lastSnapshot: com.project.bcv.feature.discovery.domain.ExploreSnapshot? = null
     private var renderedStage: ExploreStage? = null
     private var shownStepsJourneyId: Long? = null
@@ -170,6 +174,17 @@ class ExploreActivity : AppCompatActivity() {
             }
         }
         model.address.observe(this) { model.state.value?.let(::renderLocationName) }
+        binding.placeTypeSearch.threshold = 1
+        binding.placeTypeSearch.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                lastSnapshot = null
+                model.state.value?.let(::render)
+                handler.removeCallbacks(searchMapFocus)
+                handler.postDelayed(searchMapFocus, 400)
+            }
+            override fun afterTextChanged(s: android.text.Editable?) = Unit
+        })
         binding.recenterButton.setOnClickListener { goongMap.recenter() }
         binding.primaryButton.setOnClickListener { primaryAction() }
         binding.secondaryButton.setOnClickListener { secondaryAction() }
@@ -430,9 +445,17 @@ class ExploreActivity : AppCompatActivity() {
         }
         activeItemBanner.show(state.snapshot?.journey)
         state.snapshot?.let { snapshot ->
-            if (snapshot != lastSnapshot) {
-                goongMap.show(snapshot)
-                lastSnapshot = snapshot
+            val options = snapshot.places.map { it.placeType }.filter(String::isNotBlank).distinct().sorted()
+            if (options != placeTypeOptions) {
+                placeTypeOptions = options
+                placeTypeSearch.setAdapter(android.widget.ArrayAdapter(this@ExploreActivity, android.R.layout.simple_dropdown_item_1line, options))
+            }
+            val query = placeTypeSearch.text.toString().trim()
+            val filtered = snapshot.copy(places = com.project.bcv.feature.discovery.domain.PlaceSearch.filter(snapshot.places, query))
+            filterSummary.text = if (query.isEmpty()) "${snapshot.places.size} địa danh · Chọn loại để lọc bản đồ" else "${filtered.places.size} địa danh phù hợp"
+            if (filtered != lastSnapshot) {
+                goongMap.show(filtered)
+                lastSnapshot = filtered
             }
         }
         renderLocationName(state)

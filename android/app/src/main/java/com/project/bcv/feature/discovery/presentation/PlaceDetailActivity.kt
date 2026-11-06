@@ -65,6 +65,10 @@ class PlaceDetailActivity : AppCompatActivity() {
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
+        binding.communityMediaButton.setOnClickListener {
+            startActivity(android.content.Intent(this, CommunityMediaActivity::class.java)
+                .putExtra("place_id", intent.getLongExtra(EXTRA_PLACE_ID, 0L)))
+        }
         binding.backButton.setOnClickListener { finish() }
         binding.selectButton.setOnClickListener { model.select() }
         model = ViewModelProvider(this, PlaceDetailViewModelFactory(
