@@ -19,6 +19,53 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
     private static AdminResource Resource(string key) => AdminCatalog.Resources.TryGetValue(key, out var r) ? r : throw new AdminValidation("Chức năng không tồn tại.");
     private static JsonElement Json(string json) => JsonSerializer.Deserialize<JsonElement>(json);
 
+    public sealed record DeleteCheck(bool CanDelete, bool CanChangeStatus, string Message);
+
+    private static async Task<DeleteCheck> CheckReferences(string key, long id, NpgsqlConnection conn, NpgsqlTransaction tx, CancellationToken ct)
+    {
+        var r = Resource(key);
+        await using var parent = new NpgsqlCommand($"SELECT {r.Id} FROM {r.Table} WHERE {r.Id}=$1 FOR UPDATE", conn, tx);
+        parent.Parameters.AddWithValue(id);
+        if (await parent.ExecuteScalarAsync(ct) is null) throw new KeyNotFoundException("Bản ghi không tồn tại.");
+        // Include CASCADE and SET NULL references, not just constraints that reject DELETE.
+        await using var metadata = new NpgsqlCommand("""
+            SELECT format('%I.%I', ns.nspname, child.relname),
+                   string_agg(format('c.%I = p.%I', ca.attname, pa.attname), ' AND ' ORDER BY k.ordinality)
+            FROM pg_constraint fk
+            JOIN pg_class child ON child.oid=fk.conrelid
+            JOIN pg_namespace ns ON ns.oid=child.relnamespace
+            CROSS JOIN LATERAL unnest(fk.conkey, fk.confkey) WITH ORDINALITY AS k(childkey,parentkey,ordinality)
+            JOIN pg_attribute ca ON ca.attrelid=fk.conrelid AND ca.attnum=k.childkey
+            JOIN pg_attribute pa ON pa.attrelid=fk.confrelid AND pa.attnum=k.parentkey
+            WHERE fk.contype='f' AND fk.confrelid=to_regclass($1)
+            GROUP BY fk.oid, ns.nspname, child.relname
+            """, conn, tx);
+        metadata.Parameters.AddWithValue(r.Table);
+        var references = new List<(string Table, string Join)>();
+        await using (var reader = await metadata.ExecuteReaderAsync(ct))
+            while (await reader.ReadAsync(ct)) references.Add((reader.GetString(0), reader.GetString(1)));
+        foreach (var reference in references)
+        {
+            // Identifiers are quoted by PostgreSQL from its own metadata; id remains parameterized.
+            await using var check = new NpgsqlCommand($"SELECT EXISTS(SELECT 1 FROM {reference.Table} c JOIN {r.Table} p ON {reference.Join} WHERE p.{r.Id}=$1)", conn, tx);
+            check.Parameters.AddWithValue(id);
+            if (await check.ExecuteScalarAsync(ct) is true)
+                return new(false, r.Fields.Any(f => f.Name == "status"), "Nội dung có dữ liệu liên kết hoặc lịch sử sử dụng nên không thể xóa.");
+        }
+        return new(true, r.Fields.Any(f => f.Name == "status"), "Nội dung chưa có dữ liệu liên kết. Thao tác xóa vĩnh viễn không thể hoàn tác.");
+    }
+
+    public async Task<DeleteCheck> CheckDelete(string key, long id, CancellationToken ct)
+    {
+        if (key is "users" or "items") throw new AdminValidation("Không hỗ trợ xóa người dùng hoặc vật phẩm.");
+        Resource(key);
+        await using var conn = await db.OpenConnectionAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var result = await CheckReferences(key, id, conn, tx, ct);
+        await tx.CommitAsync(ct);
+        return result;
+    }
+
     public async Task Delete(string key, long id, CancellationToken ct)
     {
         if (key is "users" or "items")
@@ -26,27 +73,8 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
         var r = Resource(key);
         await using var conn = await db.OpenConnectionAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
-        await using var check = new NpgsqlCommand($"SELECT {(key == "users" ? "role" : r.Id)} FROM {r.Table} WHERE {r.Id}=$1 FOR UPDATE", conn, tx);
-        check.Parameters.AddWithValue(id);
-        var existing = await check.ExecuteScalarAsync(ct);
-        if (existing is null) throw new KeyNotFoundException("Bản ghi đã bị xóa hoặc không tồn tại.");
-        if (key == "users" && existing is "ADMIN") throw new AdminValidation("Không được xóa tài khoản quản trị.");
-        // Only remove owned media/membership rows. Other references preserve business history.
-        var ownedSql = key switch
-        {
-            "places" => "DELETE FROM place_feature_value WHERE place_feature_id IN (SELECT place_feature_id FROM place_feature WHERE place_id=$1); DELETE FROM place_feature WHERE place_id=$1; DELETE FROM place_image WHERE place_id=$1",
-            "collections" => "DELETE FROM collection_card WHERE collection_id=$1",
-            _ => null
-        };
-        if (ownedSql is not null)
-        {
-            foreach (var statement in ownedSql.Split(';', StringSplitOptions.RemoveEmptyEntries))
-            {
-                await using var owned = new NpgsqlCommand(statement, conn, tx);
-                owned.Parameters.AddWithValue(id);
-                await owned.ExecuteNonQueryAsync(ct);
-            }
-        }
+        var eligibility = await CheckReferences(key, id, conn, tx, ct);
+        if (!eligibility.CanDelete) throw new AdminValidation(eligibility.Message + " Hãy chuyển trạng thái thay vì xóa.");
         try
         {
             await using var command = new NpgsqlCommand($"DELETE FROM {r.Table} WHERE {r.Id}=$1", conn, tx);
@@ -58,7 +86,6 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
         {
             throw new AdminValidation("Không thể xóa vì bản ghi đang được sử dụng hoặc có lịch sử liên quan. Hãy gỡ liên kết trước hoặc dùng trạng thái Tạm ngưng.");
         }
-        if (key == "users") sessions.RevokeAll(id);
     }
 
     public async Task<object> List(string key, string? q, string? status, long? regionId, long? typeId, int page, int pageSize, CancellationToken ct)

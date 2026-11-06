@@ -82,6 +82,7 @@ public static class AdminEndpoints
             repo.Save(resource, null, body, (long)http.Items["AdminId"]!, ct));
         group.MapPut("/data/{resource}/{id:long}", (string resource, long id, System.Text.Json.JsonElement body, HttpContext http, AdminRepository repo, CancellationToken ct) =>
             repo.Save(resource, id, body, (long)http.Items["AdminId"]!, ct));
+        group.MapGet("/data/{resource}/{id:long}/delete-check", (string resource, long id, AdminRepository repo, CancellationToken ct) => repo.CheckDelete(resource, id, ct));
         group.MapDelete("/data/{resource}/{id:long}", async (string resource, long id, AdminRepository repo, CancellationToken ct) =>
         {
             await repo.Delete(resource, id, ct);
