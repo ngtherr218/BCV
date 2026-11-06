@@ -179,6 +179,8 @@
                 android:layout_height="wrap_content" android:layout_marginTop="22dp"
                 android:accessibilityHeading="true" android:text="Câu chuyện địa danh"
                 android:textColor="@color/forest" android:textSize="20sp" android:textStyle="bold" />
+            <LinearLayout android:id="@+id/officialVideos" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginTop="16dp" android:visibility="gone" />
+
             <TextView android:id="@+id/storyText" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:layout_marginTop="8dp"
                 android:lineSpacingExtra="5dp" android:textColor="#6F8579" android:textSize="16sp" />

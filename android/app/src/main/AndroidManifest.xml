@@ -45,6 +45,7 @@
         <activity android:name=".feature.account.profile.presentation.ProfileActivity" android:exported="false" />
         <activity android:name=".feature.account.profile.presentation.EditProfileActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".feature.account.profile.presentation.ChangePasswordActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".feature.discovery.presentation.PlaceVideoActivity" android:exported="false" />
         <activity android:name=".feature.discovery.presentation.CommunityMediaActivity" android:exported="false" />
         <activity android:name=".feature.statsnotify.stats.presentation.StatsActivity" android:exported="false" />
         <activity android:name=".feature.journey.presentation.JourneyHistoryActivity" android:exported="false" />

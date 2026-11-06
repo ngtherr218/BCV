@@ -34,7 +34,11 @@ class ExploreRepositoryImpl(
                     (0 until array.length()).map(array::getString)
                 }.orEmpty(),
                 if (it.isNull("rating")) null else it.optDouble("rating").takeIf { value -> value.isFinite() },
-                if (it.isNull("ratingCount")) null else it.optInt("ratingCount"))
+                if (it.isNull("ratingCount")) null else it.optInt("ratingCount"),
+                it.optJSONArray("videos")?.let { array -> (0 until array.length()).map { index ->
+                    val video = array.getJSONObject(index)
+                    com.project.bcv.feature.discovery.domain.PlaceVideo(video.getLong("videoId"), video.getString("url"), video.getDouble("durationSeconds"))
+                } }.orEmpty())
         }
 
     override fun loadRecommendations(): Recommendations =

@@ -33,7 +33,16 @@ static class ModerationChecks
         {
             var builder=WebApplication.CreateBuilder();builder.Logging.ClearProviders();builder.WebHost.UseUrls("http://127.0.0.1:0");
             builder.Services.AddSingleton(db);builder.Services.AddSingleton<ISessionStore,ModerationSessions>();builder.Services.AddScoped<AdminRepository>();
-            await using var app=builder.Build();app.MapCommunityMedia();await app.StartAsync();
+            await using var app=builder.Build();app.MapCommunityMedia();
+            var videoAdmin=app.MapGroup("/api/admin");
+            videoAdmin.AddEndpointFilter(async(context,next)=>{
+                var user=Bcv.Api.Modules.Account.Api.CurrentUser.Get(context.HttpContext.Request,context.HttpContext.RequestServices.GetRequiredService<ISessionStore>());
+                if(user is null)return Microsoft.AspNetCore.Http.Results.Unauthorized();
+                if(user.Role!="ADMIN")return Microsoft.AspNetCore.Http.Results.StatusCode(403);
+                context.HttpContext.Items["AdminId"]=user.UserId;
+                try{return await next(context);}catch(AdminValidation error){return Microsoft.AspNetCore.Http.Results.BadRequest(new{message=error.Message});}
+            });
+            PlaceVideos.MapEndpoints(videoAdmin,app);await app.StartAsync();
             using var client=new HttpClient{BaseAddress=new Uri(app.Urls.Single())};
             void Token(string? token){client.DefaultRequestHeaders.Authorization=token is null?null:new AuthenticationHeaderValue("Bearer",token);}
             async Task Send(string url,object body,HttpStatusCode expected){using var response=await client.PostAsJsonAsync(url,body);Check(response.StatusCode==expected,$"{url}: {response.StatusCode}, expected {expected}: {await response.Content.ReadAsStringAsync()}");}
@@ -61,16 +70,18 @@ static class ModerationChecks
             await Send("/api/admin/community-media/950001/review",new{status="APPROVED",note="Đã kiểm tra báo cáo",expectedStatus="FLAGGED"},HttpStatusCode.OK);
             Check(await Scalar("SELECT count(*) FROM media_report WHERE status='OPEN'")==0,"Restore did not resolve reports");
             Check(await Scalar("SELECT progress_value FROM quest_progress WHERE user_id=950001 AND quest_id=950001")==1,"Restore repeated task credit");
+            await Send("/api/community-media/950001/reports",new{reason="Vi phạm được xác nhận"},HttpStatusCode.OK);
             await Send("/api/admin/community-media/950001/review",new{status="REMOVED",note="Cần gỡ",expectedStatus="APPROVED"},HttpStatusCode.OK);
+            Check(await Scalar("SELECT count(*) FROM media_report WHERE media_id=950001 AND status='ACCEPTED'")==1,"Removing reported content must accept its report");
             Token(null);using(var r=await client.GetAsync("/api/community-media/950001/content"))Check(r.StatusCode==HttpStatusCode.NotFound,"Removed content still public");
-            Token("950005");await Send("/api/admin/community-media/950001/review",new{status="APPROVED",note="Đã xử lý",expectedStatus="REMOVED"},HttpStatusCode.OK);
+            Token("950005");await Send("/api/admin/community-media/950001/review",new{status="APPROVED",note="Đã xử lý",expectedStatus="REMOVED"},HttpStatusCode.BadRequest);
             Check(await Scalar("SELECT progress_value FROM quest_progress WHERE user_id=950001 AND quest_id=950001")==1,"Removed restore repeated task credit");
             Console.WriteLine("PASS report uniqueness/self-report protection, threshold auto-hide, report queue, restore/remove visibility and no repeated task credit");
             await Send("/api/admin/community-media/users/950001/upload-access",new{blocked=true,note="Vi phạm quy định"},HttpStatusCode.OK);
             Token("950001");using(var bytes=new ByteArrayContent(new byte[]{137,80,78,71,13,10,26,10,0,0,0,0})){bytes.Headers.ContentType=new MediaTypeHeaderValue("image/png");using var r=await client.PostAsync("/api/places/910001/media",bytes);Check(r.StatusCode==HttpStatusCode.Forbidden,"Blocked upload accepted");}
             Token("950005");await Send("/api/admin/community-media/users/950001/upload-access",new{blocked=false,note="Được gửi trở lại"},HttpStatusCode.OK);
             Token("950001");using(var bytes=new ByteArrayContent(new byte[]{137,80,78,71,13,10,26,10,0,0,0,0})){bytes.Headers.ContentType=new MediaTypeHeaderValue("image/png");using var r=await client.PostAsync("/api/places/910001/media",bytes);Check(r.IsSuccessStatusCode,"Unblocked upload rejected");}
-            Check(await Scalar("SELECT count(*) FROM notification WHERE user_id=950001 AND notification_type LIKE 'MEDIA_%'")==8,"Moderation notifications missing/duplicated");
+            Check(await Scalar("SELECT count(*) FROM notification WHERE user_id=950001 AND notification_type LIKE 'MEDIA_%'")==7,"Moderation notifications missing/duplicated");
             Console.WriteLine("PASS upload lock/unlock enforced by upload API and transactional owner notifications");
             await Exec("INSERT INTO community_media(media_id,user_id,place_id,mime_type,media_data) OVERRIDING SYSTEM VALUE VALUES(950003,950001,910001,'image/png',decode('89504e470d0a1a0a00000000','hex'))");
             Token("950005");await Send("/api/admin/community-media/950003/review",new{status="APPROVED",expectedStatus="PENDING"},HttpStatusCode.OK);
@@ -80,6 +91,14 @@ static class ModerationChecks
             Check(await Scalar("SELECT progress_value FROM quest_progress WHERE user_id=950001 AND quest_id=950001")==2,"Keeping reported content public repeated task credit");
             await Send("/api/admin/community-media/950003/review",new{status="APPROVED",note="Lặp lại",expectedStatus="APPROVED"},HttpStatusCode.BadRequest);
             Console.WriteLine("PASS reports below auto-hide threshold can be dismissed while keeping content public without duplicate credit");
+            await Send("/api/admin/community-media/users/950005/upload-access",new{blocked=true,note="Admin protected"},HttpStatusCode.BadRequest);
+            await PlaceVideoChecks.Run(db,client);
+            await Exec("UPDATE community_media SET delete_after=CURRENT_TIMESTAMP-INTERVAL '1 hour' WHERE media_id=950002; UPDATE community_media SET created_at=CURRENT_TIMESTAMP-INTERVAL '31 days' WHERE status='PENDING' AND user_id=950001");
+            await MediaMaintenance.SweepAsync(db,default);
+            Check(await Scalar("SELECT count(*) FROM community_media WHERE media_id=950002 AND media_data IS NULL")==1,"Rejected file not cleaned");
+            Check(await Scalar("SELECT count(*) FROM community_media WHERE status='EXPIRED' AND user_id=950001")>0,"Pending expiry not cleaned");
+            Check(await Scalar("SELECT count(*) FROM media_report WHERE status='DISMISSED'")>0,"Reports not marked dismissed");
+            Console.WriteLine("PASS protected admin upload access, rejected-file cleanup and pending expiry");
             await app.StopAsync();
         }
         finally

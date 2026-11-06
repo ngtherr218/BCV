@@ -11,6 +11,7 @@
 !db/022_community_media.sql
 !db/023_place_type_features.sql
 !db/024_media_moderation.sql
+!db/025_place_videos.sql
 **/node_modules
 **/dist
 **/bin

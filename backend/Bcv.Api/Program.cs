@@ -90,6 +90,7 @@ else
     builder.Services.AddSingleton<IImageStorage, InlineImageStorage>();
 }
 
+builder.Services.AddHostedService<Bcv.Api.Modules.CommunityMedia.MediaMaintenance>();
 var app = builder.Build();
 app.UseDefaultFiles();
 app.UseStaticFiles();

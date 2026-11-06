@@ -7,7 +7,7 @@ namespace Bcv.Api.Modules.CommunityMedia;
 
 public static class MediaModeration
 {
-    public static readonly string[] Statuses = ["PENDING", "APPROVED", "REJECTED", "FLAGGED", "REMOVED"];
+    public static readonly string[] Statuses = ["PENDING", "APPROVED", "REJECTED", "FLAGGED", "REMOVED", "EXPIRED"];
     public static string Note(string? note, bool required)
     {
         var value = note?.Trim() ?? "";
@@ -22,17 +22,20 @@ public static class MediaModeration
         var reason = Note(note, status != "APPROVED");
         await using var conn = await db.OpenConnectionAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
-        long owner; string previous, place; bool first;
-        await using (var cmd = new NpgsqlCommand("SELECT m.user_id,m.status,m.first_approved_at IS NULL,p.name FROM community_media m JOIN place p USING(place_id) WHERE m.media_id=$1 FOR UPDATE OF m", conn, tx))
+        // Lock the parent first to serialize the video quota with official-video edits.
+        await using(var gate=new NpgsqlCommand("SELECT place_id FROM place WHERE place_id=(SELECT place_id FROM community_media WHERE media_id=$1) FOR UPDATE",conn,tx))
+        {gate.Parameters.AddWithValue(id);await gate.ExecuteScalarAsync(ct);}
+        long owner; string previous, place; bool first, video;long placeId;
+        await using (var cmd = new NpgsqlCommand("SELECT m.user_id,m.status,m.first_approved_at IS NULL,p.name,m.mime_type LIKE 'video/%',m.place_id FROM community_media m JOIN place p USING(place_id) WHERE m.media_id=$1 FOR UPDATE OF m", conn, tx))
         {
             cmd.Parameters.AddWithValue(id);
             await using var r = await cmd.ExecuteReaderAsync(ct);
             if (!await r.ReadAsync(ct)) throw new KeyNotFoundException("Không tìm thấy nội dung.");
-            owner=r.GetInt64(0); previous=r.GetString(1); first=r.GetBoolean(2); place=r.GetString(3);
+            owner=r.GetInt64(0); previous=r.GetString(1); first=r.GetBoolean(2); place=r.GetString(3);video=r.GetBoolean(4);placeId=r.GetInt64(5);
         }
         if (expectedStatus is not null && previous != expectedStatus) throw new AdminValidation("Trạng thái đã thay đổi. Hãy tải lại trước khi xử lý.");
         var valid = status switch {
-            "APPROVED" => previous is "PENDING" or "FLAGGED" or "REMOVED",
+            "APPROVED" => previous is "PENDING" or "FLAGGED",
             "REJECTED" => previous == "PENDING",
             "REMOVED" => previous is "APPROVED" or "FLAGGED",
             _ => false
@@ -45,12 +48,18 @@ public static class MediaModeration
         }
         if (!valid) throw new AdminValidation("Nội dung đã được xử lý hoặc không thể thực hiện thao tác này. Hãy tải lại.");
         if (status == "APPROVED" && previous != "PENDING") reason = Note(note, true);
-        await using (var cmd = new NpgsqlCommand("UPDATE community_media SET status=$2,review_note=$3,reviewed_by=$4,reviewed_at=CURRENT_TIMESTAMP,first_approved_at=CASE WHEN $2='APPROVED' THEN COALESCE(first_approved_at,CURRENT_TIMESTAMP) ELSE first_approved_at END WHERE media_id=$1",conn,tx))
+        if(status=="APPROVED" && previous!="APPROVED" && video)
+        {
+            await using var quota=new NpgsqlCommand("SELECT (SELECT count(*) FROM place_video WHERE place_id=$1)+(SELECT count(*) FROM community_media WHERE place_id=$1 AND status='APPROVED' AND mime_type LIKE 'video/%')",conn,tx);
+            quota.Parameters.AddWithValue(placeId);
+            if((long)(await quota.ExecuteScalarAsync(ct))!>=5)throw new AdminValidation("Địa danh đã đủ 5 video công khai. Không thể duyệt thêm video.");
+        }
+        await using (var cmd = new NpgsqlCommand("UPDATE community_media SET status=$2,review_note=$3,reviewed_by=$4,reviewed_at=CURRENT_TIMESTAMP,media_data=CASE WHEN $2='REMOVED' THEN NULL ELSE media_data END,file_deleted_at=CASE WHEN $2='REMOVED' THEN CURRENT_TIMESTAMP ELSE file_deleted_at END,delete_after=CASE WHEN $2='REJECTED' THEN CURRENT_TIMESTAMP+INTERVAL '7 days' ELSE NULL END,first_approved_at=CASE WHEN $2='APPROVED' THEN COALESCE(first_approved_at,CURRENT_TIMESTAMP) ELSE first_approved_at END WHERE media_id=$1",conn,tx))
         {
             cmd.Parameters.AddWithValue(id); cmd.Parameters.AddWithValue(status); cmd.Parameters.AddWithValue(reason); cmd.Parameters.AddWithValue(actor); await cmd.ExecuteNonQueryAsync(ct);
         }
-        await using (var cmd = new NpgsqlCommand("UPDATE media_report SET status='RESOLVED',resolved_at=CURRENT_TIMESTAMP,resolved_by=$2 WHERE media_id=$1 AND status='OPEN'",conn,tx))
-        { cmd.Parameters.AddWithValue(id); cmd.Parameters.AddWithValue(actor); await cmd.ExecuteNonQueryAsync(ct); }
+        await using (var cmd = new NpgsqlCommand("UPDATE media_report SET status=CASE WHEN $3='REMOVED' THEN 'ACCEPTED' ELSE 'DISMISSED' END,resolved_at=CURRENT_TIMESTAMP,resolved_by=$2 WHERE media_id=$1 AND status='OPEN'",conn,tx))
+        { cmd.Parameters.AddWithValue(id); cmd.Parameters.AddWithValue(actor); cmd.Parameters.AddWithValue(status); await cmd.ExecuteNonQueryAsync(ct); }
         var title = status switch {"APPROVED"=>previous=="PENDING"?"Nội dung đã được duyệt":previous=="APPROVED"?"Báo cáo nội dung đã được xử lý":"Nội dung đã được khôi phục", "REJECTED"=>"Nội dung bị từ chối", _=>"Nội dung đã bị gỡ"};
         await Notify(conn,tx,owner,"MEDIA_"+status,title,$"Ảnh/video tại {place}. {reason}",ct);
         if (status == "APPROVED" && first) await QuestProgress.RecordAsync(conn,tx,owner,"MEDIA_APPROVED",1,ct);
@@ -62,6 +71,8 @@ public static class MediaModeration
         var reason=Note(note,true);
         await using var conn=await db.OpenConnectionAsync(ct);
         await using var tx=await conn.BeginTransactionAsync(ct);
+        await using(var role=new NpgsqlCommand("SELECT role FROM app_user WHERE user_id=$1 FOR UPDATE",conn,tx))
+        {role.Parameters.AddWithValue(userId);if(await role.ExecuteScalarAsync(ct) is "ADMIN")throw new AdminValidation("Không thay đổi quyền gửi của tài khoản quản trị.");}
         await using(var cmd=new NpgsqlCommand("SELECT media_upload_blocked FROM app_user WHERE user_id=$1 FOR UPDATE",conn,tx))
         {
             cmd.Parameters.AddWithValue(userId);
@@ -122,7 +133,7 @@ public static class MediaModeration
             WITH rows AS (
               SELECT m.media_id,m.place_id,m.user_id,p.name place_name,u.full_name author,u.media_upload_blocked,
                 m.caption,m.mime_type,m.status,m.review_note,m.created_at,m.reviewed_at,a.full_name reviewer,
-                octet_length(m.media_data)::bigint bytes,
+                COALESCE(octet_length(m.media_data),0)::bigint bytes,m.media_data IS NOT NULL content_available,
                 (SELECT count(*) FROM media_report r WHERE r.media_id=m.media_id AND r.status='OPEN') report_count,
                 (SELECT count(*) FROM media_report r WHERE r.media_id=m.media_id) total_reports
               FROM community_media m JOIN place p USING(place_id) JOIN app_user u ON u.user_id=m.user_id
@@ -136,8 +147,8 @@ public static class MediaModeration
                 'flagged',(SELECT count(*) FROM rows WHERE status='FLAGGED'),'reported',(SELECT count(*) FROM rows WHERE report_count>0),'bytes',(SELECT COALESCE(sum(bytes),0) FROM rows)),
               'items',COALESCE((SELECT jsonb_agg(jsonb_build_object('mediaId',media_id,'placeId',place_id,'userId',user_id,'placeName',place_name,'author',author,
                 'uploadBlocked',media_upload_blocked,'caption',caption,'mimeType',mime_type,'status',status,'reviewNote',review_note,'createdAt',created_at,'reviewedAt',reviewed_at,
-                'reviewer',reviewer,'bytes',bytes,'reportCount',report_count,'totalReports',total_reports,'contentUrl','/api/community-media/'||media_id||'/content'))
-                FROM (SELECT * FROM filtered ORDER BY created_at DESC,media_id DESC LIMIT $6 OFFSET (($5-1)*$6)) s),'[]'::jsonb))::text
+                'reviewer',reviewer,'contentAvailable',content_available,'bytes',bytes,'reportCount',report_count,'totalReports',total_reports,'contentUrl','/api/community-media/'||media_id||'/content'))
+                FROM (SELECT * FROM filtered ORDER BY CASE WHEN status='PENDING' THEN created_at END ASC,created_at DESC,media_id DESC LIMIT $6 OFFSET (($5-1)*$6)) s),'[]'::jsonb))::text
             """);
         cmd.Parameters.AddWithValue(status);cmd.Parameters.AddWithValue(q);cmd.Parameters.AddWithValue(kind);cmd.Parameters.AddWithValue(reported);cmd.Parameters.AddWithValue(page);cmd.Parameters.AddWithValue(pageSize);
         return JsonSerializer.Deserialize<JsonElement>((string)(await cmd.ExecuteScalarAsync(ct))!);

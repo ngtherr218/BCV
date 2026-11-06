@@ -66,10 +66,18 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
             while (await reader.ReadAsync(ct)) images.Add(reader.GetString(0));
         }
 
+        var videos=new List<ExplorePlaceVideo>();
+        if(discovered)
+        {
+            await using var command=new NpgsqlCommand("SELECT video_id,duration_seconds,width,height FROM place_video WHERE place_id=$1 ORDER BY video_id",connection);
+            command.Parameters.AddWithValue(placeId);
+            await using var reader=await command.ExecuteReaderAsync(ct);
+            while(await reader.ReadAsync(ct))videos.Add(new ExplorePlaceVideo(reader.GetInt64(0),$"/api/explore/places/{placeId}/videos/{reader.GetInt64(0)}",reader.GetDouble(1),reader.GetInt32(2),reader.GetInt32(3)));
+        }
         // The first photo stays visible (blurred) while locked; the gallery opens with the place.
         return new ExplorePlaceDetail(id, name, placeType, images.FirstOrDefault(), discovered, distanceKm,
             distanceKm <= 0 ? 0 : StepConversion.RequiredSteps(distanceKm), introduction, highlights, regionName,
-            discovered ? images : [], rating, ratingCount);
+            discovered ? images : [], rating, ratingCount, videos);
     }
 
     private static async Task<ExploreSnapshot> LoadSnapshotAsync(NpgsqlConnection connection,

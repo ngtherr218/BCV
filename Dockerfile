@@ -14,6 +14,7 @@ COPY db/021_versioned_recommendations.sql db/
 COPY db/022_community_media.sql db/
 COPY db/023_place_type_features.sql db/
 COPY db/024_media_moderation.sql db/
+COPY db/025_place_videos.sql db/
 RUN dotnet restore backend/Bcv.Api/Bcv.Api.csproj
 COPY backend/Bcv.Api/ backend/Bcv.Api/
 RUN dotnet publish backend/Bcv.Api/Bcv.Api.csproj -c Release --no-restore -p:UseAppHost=false -o /publish

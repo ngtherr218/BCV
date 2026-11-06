@@ -53,6 +53,7 @@ try
     await using var isolated = NpgsqlDataSource.Create(settings.ConnectionString);
     var repo = new AdminRepository(isolated, new TestSessions());
     await PlaceTypeFeatureSchema.EnsureAsync(isolated);
+    await Bcv.Api.Modules.CommunityMedia.CommunityMediaEndpoints.EnsureAsync(isolated);
     await FeatureInheritanceChecks.Run(isolated, repo);
     await ModerationChecks.Run(isolated);
     void Assert(bool condition, string message) { if (!condition) throw new Exception(message); }

@@ -18,6 +18,9 @@ public static class CommunityMediaEndpoints
         using var moderationStream=typeof(CommunityMediaEndpoints).Assembly.GetManifestResourceStream("Bcv.MediaModerationMigration.sql")!;
         using var moderationReader=new StreamReader(moderationStream);
         await using(var migration=new NpgsqlCommand(await moderationReader.ReadToEndAsync(),conn,tx)) await migration.ExecuteNonQueryAsync();
+        using var videoStream=typeof(CommunityMediaEndpoints).Assembly.GetManifestResourceStream("Bcv.PlaceVideoMigration.sql")!;
+        using var videoReader=new StreamReader(videoStream);
+        await using(var migration=new NpgsqlCommand(await videoReader.ReadToEndAsync(),conn,tx))await migration.ExecuteNonQueryAsync();
         await tx.CommitAsync();
     }
 
@@ -116,6 +119,7 @@ public static class CommunityMediaEndpoints
             command.Parameters.AddWithValue(id);
             await using var reader = await command.ExecuteReaderAsync(ct);
             if (!await reader.ReadAsync(ct)) return Results.NotFound();
+            if (reader.IsDBNull(2)) return Results.NotFound();
             if (reader.GetString(3) != "APPROVED" && (user is null ||
                 user.UserId != reader.GetInt64(0) && !await admins.IsAdmin(user.UserId, ct))) return Results.NotFound();
             request.HttpContext.Response.Headers.CacheControl = "private, no-store";
@@ -167,7 +171,7 @@ public static class CommunityMediaEndpoints
             FROM community_media m JOIN place p ON p.place_id=m.place_id JOIN app_user u ON u.user_id=m.user_id
             WHERE ($1::bigint IS NULL OR m.place_id=$1) AND ($3 OR m.status='APPROVED' OR m.user_id=$2)
                 AND ($4='' OR m.status=$4)
-            ORDER BY m.created_at DESC,m.media_id DESC LIMIT 100
+            ORDER BY COALESCE(m.reviewed_at,m.created_at) DESC,m.media_id DESC LIMIT 100
             """);
         command.Parameters.AddWithValue(NpgsqlTypes.NpgsqlDbType.Bigint, (object?)placeId ?? DBNull.Value);
         command.Parameters.AddWithValue(userId);

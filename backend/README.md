@@ -217,11 +217,23 @@ Kiểm thử local: `./backend/test-admin-delete.ps1` (đã bao gồm kế thừ
 Trang **Kiểm duyệt nội dung** (`#media`) có các bộ lọc trạng thái, ảnh/video, địa danh/người gửi/chú thích, báo cáo chưa xử lý và phân trang. Các chỉ số thể hiện số chờ duyệt, đã duyệt, có báo cáo và dung lượng tệp đang lưu (không phải phần trăm hạn mức lưu trữ).
 
 - Duyệt sau khi tải được bản xem trước. Từ chối/gỡ/khôi phục/khóa quyền gửi đều có dialog xác nhận; lý do là bắt buộc, trừ lần duyệt mới.
-- `PENDING → APPROVED/REJECTED`; `APPROVED → REMOVED`; `FLAGGED → APPROVED/REMOVED`; `REMOVED → APPROVED`. Nội dung APPROVED có báo cáo mở có thể giữ công khai và đóng báo cáo sau khi kiểm tra.
-- Gỡ là ngừng công khai; tệp vẫn được giữ để quản trị viên xem và khôi phục. Chưa triển khai chính sách xóa tệp theo thời hạn/NFR-10.
+- `PENDING → APPROVED/REJECTED`; `APPROVED → REMOVED`; `FLAGGED → APPROVED/REMOVED`. `REMOVED` là trạng thái kết thúc sau khi xóa tệp. Nội dung APPROVED có báo cáo mở có thể giữ công khai và đóng báo cáo sau khi kiểm tra.
+- Gỡ là ngừng công khai và xóa tệp vĩnh viễn; chỉ nội dung đang tạm ẩn do báo cáo mới có thể được khôi phục. Tệp bị từ chối được dọn sau 7 ngày.
 - Kết quả kiểm duyệt và thay đổi quyền gửi tạo thông báo cho người gửi trong cùng transaction. Điều kiện nhiệm vụ `MEDIA_APPROVED` chỉ tăng một lần khi duyệt đầu tiên, không tăng lại khi khôi phục.
 - Khóa quyền gửi không khóa toàn bộ tài khoản; API upload kiểm tra quyền này trực tiếp tại backend.
 - API `POST /api/community-media/{id}/reports` nhận `{ reason }`: không tự báo cáo, không báo cáo trùng; mặc định 3 báo cáo mở từ các tài khoản khác nhau sẽ tạm ẩn. Đổi ngưỡng bằng `CommunityMedia__ReportThreshold` (1–100). API đã có; nút báo cáo trên Android chưa được bổ sung trong đợt thay đổi web này.
 - Các API quản trị: `GET /api/admin/community-media?status=&q=&kind=image|video&reported=true&page=1&pageSize=12`; `GET /api/admin/community-media/{id}/reports`; `POST /api/admin/community-media/{id}/review` với `{status,note,expectedStatus}`; `POST /api/admin/community-media/users/{id}/upload-access` với `{blocked,note}`. Tất cả yêu cầu tài khoản ADMIN đang hoạt động.
-- Migration `db/024_media_moderation.sql` được nhúng và tự chạy khi backend khởi động. Tạo thêm bảng `media_report`, cột `app_user.media_upload_blocked`, `community_media.first_approved_at` và trạng thái FLAGGED/REMOVED. Sau khi áp dụng đầy đủ các migration hiện có, schema có 31 bảng.
+- Migration `db/024_media_moderation.sql` được nhúng và tự chạy khi backend khởi động. Tạo thêm bảng `media_report`, cột `app_user.media_upload_blocked`, `community_media.first_approved_at` và trạng thái FLAGGED/REMOVED. Sau migration 024 có 31 bảng; migration 025 thêm `place_video`, tổng cộng 32 bảng.
 - Kiểm thử bằng `./backend/test-admin-delete.ps1`: bao gồm HTTP authentication/authorization, từ chối thiếu lý do, báo cáo/ẩn/khôi phục, quyền gửi, thông báo và chống cộng lặp nhiệm vụ; sử dụng schema PostgreSQL local riêng và tự dọn.
+
+## Video địa danh và quy tắc theo phụ lục chức năng
+
+- Migration 025 tự chạy cùng khởi tạo module media. Thêm bảng place_video, cho phép dọn dữ liệu tệp cộng đồng nhưng giữ metadata và kết quả báo cáo ACCEPTED/DISMISSED. Migration 024 cũng chấp nhận EXPIRED để khởi động lại an toàn sau khi có dữ liệu hết hạn.
+- Web thêm/sửa địa danh cho tải video MP4, tối đa 15 MB, 30 giây, 720p. Cả trình duyệt và backend kiểm tra thông tin video. Backend đọc cấu trúc MP4; tệp không có metadata/thời lượng hoặc luồng video hợp lệ bị từ chối. Chưa có tính năng tự chuyển mã/nén video hoặc hỗ trợ mọi biến thể MP4 phân mảnh.
+- Video tải trước được giữ tạm theo tài khoản quản trị; video_ids chỉ được gắn khi lưu địa danh trong cùng transaction. Tệp chưa được gắn sau 24 giờ được dọn. Video đã gắn bị loại khỏi biểu mẫu sẽ bị xóa khi lưu thành công.
+- Tổng video chính thức + video cộng đồng đang APPROVED của một địa danh không vượt 5. Khóa hàng địa danh đồng bộ kiểm tra này giữa duyệt và sửa địa danh.
+- Android chỉ nhận danh sách và phát video chính thức khi đã khám phá địa danh; API kiểm tra quyền và hỗ trợ Range/seek. Nút cộng đồng được giữ hiển thị cho cả trang đã khám phá.
+- MediaMaintenance chạy khi khởi động và mỗi giờ: dọn tệp từ chối đến hạn 7 ngày, chuyển nội dung chờ quá 30 ngày sang EXPIRED, dọn video quản trị chưa gắn sau 24 giờ.
+- Báo cáo sau khi gỡ: ACCEPTED; báo cáo bị bác/khôi phục: DISMISSED. Không thể khóa quyền gửi của ADMIN. Có thể quản lý quyền gửi từ chi tiết người dùng.
+- Bản đồ web và Android chỉ hiện ảnh từ zoom 11; phía dưới dùng chấm. Web không tải thumbnail trước ngưỡng này.
+- Danh sách địa danh khi thêm thẻ loại bỏ mọi địa danh đã có thẻ, kể cả thẻ DRAFT/INACTIVE. Khi sửa thẻ, vẫn giữ lựa chọn địa danh hiện tại; backend và ràng buộc duy nhất tiếp tục chặn tạo trùng.

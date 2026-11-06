@@ -39,7 +39,7 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
             JOIN pg_attribute pa ON pa.attrelid=fk.confrelid AND pa.attnum=k.parentkey
             WHERE fk.contype='f' AND fk.confrelid=to_regclass($1)
               AND NOT ($2='places' AND COALESCE(fk.conrelid IN (
-                  to_regclass('place_image'), to_regclass('place_feature'), to_regclass('recommendation_rating_snapshot')), false))
+                  to_regclass('place_image'), to_regclass('place_feature'), to_regclass('recommendation_rating_snapshot'), to_regclass('place_video')), false))
               AND NOT ($2='place-types' AND COALESCE(fk.conrelid=to_regclass('place_type_feature'), false))
             GROUP BY fk.oid, ns.nspname, child.relname
             """, conn, tx);
@@ -93,7 +93,8 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
                 foreach (var sql in new[] {
                     "DELETE FROM place_feature_value WHERE place_feature_id IN (SELECT place_feature_id FROM place_feature WHERE place_id=$1)",
                     "DELETE FROM place_feature WHERE place_id=$1",
-                    "DELETE FROM place_image WHERE place_id=$1" })
+                    "DELETE FROM place_image WHERE place_id=$1",
+                    "DELETE FROM place_video WHERE place_id=$1" })
                 {
                     await using var owned = new NpgsqlCommand(sql, conn, tx);
                     owned.Parameters.AddWithValue(id);
@@ -149,7 +150,7 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
         var r = Resource(key);
         var extra = key switch
         {
-            "places" => " || jsonb_build_object('images',COALESCE((SELECT jsonb_agg(image_key ORDER BY place_image_id) FROM place_image WHERE place_id=t.place_id),'[]'::jsonb),'feature_codes',COALESCE((SELECT jsonb_agg(c.code ORDER BY c.criterion_id) FROM place_feature pf JOIN place_feature_value fv ON fv.place_feature_id=pf.place_feature_id JOIN recommendation_criterion c ON c.criterion_id=fv.criterion_id WHERE pf.place_id=t.place_id AND fv.feature_value=1 AND pf.recommendation_config_id=(SELECT recommendation_config_id FROM recommendation_config ORDER BY (status='ACTIVE') DESC,updated_at DESC,recommendation_config_id DESC LIMIT 1)),'[]'::jsonb))",
+            "places" => " || jsonb_build_object('videos',COALESCE((SELECT jsonb_agg(jsonb_build_object('videoId',video_id,'url','/api/admin/place-videos/'||video_id,'durationSeconds',duration_seconds,'width',width,'height',height) ORDER BY video_id) FROM place_video WHERE place_id=t.place_id),'[]'::jsonb),'video_ids',COALESCE((SELECT jsonb_agg(video_id ORDER BY video_id) FROM place_video WHERE place_id=t.place_id),'[]'::jsonb),'images',COALESCE((SELECT jsonb_agg(image_key ORDER BY place_image_id) FROM place_image WHERE place_id=t.place_id),'[]'::jsonb),'feature_codes',COALESCE((SELECT jsonb_agg(c.code ORDER BY c.criterion_id) FROM place_feature pf JOIN place_feature_value fv ON fv.place_feature_id=pf.place_feature_id JOIN recommendation_criterion c ON c.criterion_id=fv.criterion_id WHERE pf.place_id=t.place_id AND fv.feature_value=1 AND pf.recommendation_config_id=(SELECT recommendation_config_id FROM recommendation_config ORDER BY (status='ACTIVE') DESC,updated_at DESC,recommendation_config_id DESC LIMIT 1)),'[]'::jsonb))",
             "place-types" => " || jsonb_build_object('feature_codes',COALESCE((SELECT jsonb_agg(code ORDER BY code) FROM place_type_feature WHERE place_type_id=t.place_type_id),'[]'::jsonb))",
             "collections" => " || jsonb_build_object('card_ids',COALESCE((SELECT jsonb_agg(card_id) FROM collection_card WHERE collection_id=t.collection_id),'[]'::jsonb))",
             "users" => " || jsonb_build_object('journey_count',(SELECT count(*) FROM journey WHERE user_id=t.user_id),'discovered_count',(SELECT count(*) FROM user_discovered_place WHERE user_id=t.user_id),'card_count',(SELECT count(*) FROM public.card c WHERE c.status='ACTIVE' AND (EXISTS(SELECT 1 FROM public.user_card uc WHERE uc.user_id=t.user_id AND uc.card_id=c.card_id) OR EXISTS(SELECT 1 FROM public.user_discovered_place d WHERE d.user_id=t.user_id AND d.place_id=c.place_id))),'total_steps',(SELECT COALESCE(sum(step_count),0) FROM step_data WHERE user_id=t.user_id))",
@@ -248,6 +249,8 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
         if (key == "places" && Equals(values["status"], "ACTIVE") &&
             await Scalar("SELECT region_id FROM region WHERE region_id=$1 AND status='ACTIVE' FOR SHARE", values["region_id"]!) is null)
             throw new AdminValidation("Chỉ kích hoạt địa danh thuộc khu vực đang hoạt động.");
+        if (key == "cards" && await Scalar("SELECT card_id FROM card WHERE place_id=$1 AND card_id<>$2", values["place_id"]!, id ?? 0L) is not null)
+            throw new AdminValidation("Địa danh này đã có thẻ. Hãy chọn địa danh chưa có thẻ.");
         if (key == "cards" && Equals(values["status"], "ACTIVE"))
         {
             if (values["image_key"] is null) throw new AdminValidation("Thẻ đang hoạt động phải có hình ảnh.");
@@ -274,6 +277,7 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
             await Scalar("DELETE FROM place_image WHERE place_id=$1", savedId);
             foreach (var image in images) await Scalar("INSERT INTO place_image(place_id,image_key) VALUES($1,$2) RETURNING place_image_id", savedId, image);
             await AdminPlaceFeatures.Save(conn, tx, savedId, body, ct);
+            await PlaceVideos.SaveAsync(conn, tx, savedId, actorId, body, ct);
         }
         if (key == "place-types") await AdminPlaceFeatures.SaveType(conn, tx, savedId, body, ct);
         if (key == "collections")
@@ -301,7 +305,7 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
               'regions',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',region_id,'name',name,'status',status) ORDER BY region_id ASC) FROM region),'[]'),
               'types',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',place_type_id,'name',name,'feature_codes',COALESCE((SELECT jsonb_agg(code ORDER BY code) FROM place_type_feature f WHERE f.place_type_id=t.place_type_id),'[]'::jsonb)) ORDER BY name) FROM place_type t),'[]'),
               'features',COALESCE((SELECT jsonb_agg(jsonb_build_object('code',code,'name',name,'description',description) ORDER BY criterion_id) FROM recommendation_criterion WHERE code LIKE 'kind\_\_%' ESCAPE '\' OR code LIKE 'landform\_\_%' ESCAPE '\' OR code LIKE 'ecosystem\_\_%' ESCAPE '\' OR code LIKE 'theme\_\_%' ESCAPE '\'),'[]'),
-              'places',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',place_id,'name',name,'latitude',latitude,'longitude',longitude,'status',status,'region_id',region_id,'image_key',(SELECT image_key FROM place_image i WHERE i.place_id=p.place_id ORDER BY place_image_id LIMIT 1)) ORDER BY name) FROM place p),'[]'),
+              'places',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',place_id,'name',name,'latitude',latitude,'longitude',longitude,'status',status,'region_id',region_id,'card_id',(SELECT card_id FROM card WHERE place_id=p.place_id),'image_key',(SELECT image_key FROM place_image i WHERE i.place_id=p.place_id ORDER BY place_image_id LIMIT 1)) ORDER BY name) FROM place p),'[]'),
               'cards',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',card_id,'name',name,'status',status) ORDER BY name) FROM card),'[]'),
               'items',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',item_id,'name',name,'status',status) ORDER BY name) FROM item),'[]')
             )::text

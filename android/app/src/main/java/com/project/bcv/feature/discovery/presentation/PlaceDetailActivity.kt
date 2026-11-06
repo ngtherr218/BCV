@@ -158,7 +158,8 @@ class PlaceDetailActivity : AppCompatActivity() {
         // A discovered place opens its content page; a locked one stays the destination picker.
         lockedContent.visibility = if (place.isDiscovered) View.GONE else View.VISIBLE
         unlockedContent.visibility = if (place.isDiscovered) View.VISIBLE else View.GONE
-        bottomBar.visibility = lockedContent.visibility
+        bottomBar.visibility = View.VISIBLE
+        selectButton.visibility = lockedContent.visibility
         topTitle.text = if (place.isDiscovered) "Nội dung địa danh" else "Chọn điểm đến"
         if (place.isDiscovered) {
             showUnlocked(place)
@@ -193,6 +194,15 @@ class PlaceDetailActivity : AppCompatActivity() {
     }
 
     private fun showUnlocked(place: ExplorePlaceDetail) = with(binding) {
+        officialVideos.removeAllViews()
+        officialVideos.visibility = if (place.videos.isEmpty()) View.GONE else View.VISIBLE
+        place.videos.forEachIndexed { index, video ->
+            officialVideos.addView(android.widget.Button(this@PlaceDetailActivity).apply {
+                text = "▶ Video địa danh " + (index + 1) + " · " + video.durationSeconds.toInt() + " giây"
+                setOnClickListener { startActivity(android.content.Intent(this@PlaceDetailActivity, PlaceVideoActivity::class.java)
+                    .putExtra("place_id", place.id).putExtra("video_id", video.id)) }
+            })
+        }
         unlockedName.text = place.name
         regionText.text = place.regionName
         regionText.visibility = if (place.regionName.isNullOrBlank()) View.GONE else View.VISIBLE

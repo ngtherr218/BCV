@@ -88,6 +88,7 @@ public static class AdminEndpoints
             await repo.Delete(resource, id, ct);
             return Results.NoContent();
         });
+        PlaceVideos.MapEndpoints(group, app);
         // ?purpose=place|card picks the storage folder (places/, cards/), never the users' avatars/.
         group.MapPost("/images", async (HttpContext http, string? purpose, IImageStorage storage, CancellationToken ct) =>
         {

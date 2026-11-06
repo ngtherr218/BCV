@@ -19,9 +19,11 @@ public sealed record ExploreMapPlace(long PlaceId, string Name, decimal Latitude
 /// ImageUrl stays the first photo for older clients. ImageUrls (every PLACE_IMAGE row)
 /// is only listed once the place is discovered, like the text content.
 /// </summary>
+public sealed record ExplorePlaceVideo(long VideoId,string Url,double DurationSeconds,int Width,int Height);
+
 public sealed record ExplorePlaceDetail(long PlaceId, string Name, string PlaceType, string? ImageUrl,
     bool IsDiscovered, decimal DistanceKm, int RequiredSteps, string? Introduction, string? Highlights,
-    string RegionName, IReadOnlyList<string> ImageUrls, decimal? Rating = null, int? RatingCount = null);
+    string RegionName, IReadOnlyList<string> ImageUrls, decimal? Rating = null, int? RatingCount = null, IReadOnlyList<ExplorePlaceVideo>? Videos = null);
 
 public sealed record ExploreSnapshot(ExploreLocation? Location, ExploreJourney? Journey,
     IReadOnlyList<ExploreMapPlace> Places);

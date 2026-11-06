@@ -44,7 +44,9 @@ data class ExplorePlaceDetail(val id: Long, val name: String, val placeType: Str
     val imageUrl: String?, val isDiscovered: Boolean, val distanceKm: Double,
     val requiredSteps: Int, val introduction: String?, val highlights: String?,
     val regionName: String? = null, val imageUrls: List<String> = emptyList(),
-    val rating: Double? = null, val ratingCount: Int? = null)
+    val rating: Double? = null, val ratingCount: Int? = null, val videos: List<PlaceVideo> = emptyList())
+
+data class PlaceVideo(val id: Long, val url: String, val durationSeconds: Double)
 
 data class ExploreSnapshot(val location: ExploreLocation?, val journey: ExploreJourney?,
     val places: List<ExploreMapPlace>)

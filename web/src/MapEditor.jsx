@@ -5,13 +5,31 @@ import { MapPin, Plus, Search, Navigation, Pencil, X } from 'lucide-react';
 import { api, number } from './api';
 import { Badge, ErrorBox, Loading } from './components';
 import { matchPinRegion } from './pinRegion';
+import { showMapPhotos } from './placeOptions';
 
 export default function MapEditor({ edit, detail, revision }) {
   const container=useRef(null);const map=useRef(null);const markers=useRef([]);const chosen=useRef(null);const [places,setPlaces]=useState(null);const [regions,setRegions]=useState([]);const [pinLocation,setPinLocation]=useState(null);const [error,setError]=useState('');const [mapError,setMapError]=useState('');const [q,setQ]=useState('');const [selected,setSelected]=useState(null);const [pin,setPin]=useState(null);const [mode,setMode]=useState(false);const modeRef=useRef(false);const selectedRef=useRef(null);
   useEffect(()=>{modeRef.current=mode;},[mode]);useEffect(()=>{selectedRef.current=selected;},[selected]);
   useEffect(()=>{let alive=true;api('/lookups').then(data=>{if(alive){setPlaces(data.places);setRegions(data.regions||[]);}}).catch(e=>{if(alive)setError(e.message);});return()=>{alive=false;};},[revision]);
   useEffect(()=>{if(!container.current)return;if(!__GOONG_MAP_KEY__){setMapError('Chưa có Goong Maptiles Key. Thêm VITE_GOONG_MAPTILES_KEY vào web/.env.local rồi khởi động lại Vite.');return;}let instance;try{instance=new maplibregl.Map({container:container.current,style:`https://tiles.goong.io/assets/goong_map_web.json?api_key=${__GOONG_MAP_KEY__}`,center:[106.1,16.2],zoom:4.7,maxZoom:18});map.current=instance;instance.addControl(new maplibregl.NavigationControl(),'top-right');instance.on('error',()=>setMapError('Không tải được một phần bản đồ. Kiểm tra kết nối Internet và hạn mức Goong; bạn vẫn có thể chỉnh tọa độ bằng biểu mẫu.'));instance.on('load',()=>setMapError(''));instance.on('click',e=>{if(!modeRef.current)return;const point={longitude:Number(e.lngLat.lng.toFixed(6)),latitude:Number(e.lngLat.lat.toFixed(6))};setPin(point);if(chosen.current)chosen.current.remove();chosen.current=new maplibregl.Marker({color:'#de8050',draggable:true}).setLngLat(e.lngLat).addTo(instance);chosen.current.on('dragend',()=>{const p=chosen.current.getLngLat();setPin({longitude:Number(p.lng.toFixed(6)),latitude:Number(p.lat.toFixed(6))});});});}catch{setMapError('Trình duyệt chưa hỗ trợ WebGL. Dùng danh sách bên trái để chỉnh tọa độ.');}return()=>{chosen.current?.remove();instance?.remove();map.current=null;};},[places !== null]);
-  useEffect(()=>{if(!map.current||!places)return;markers.current.forEach(m=>m.remove());markers.current=places.filter(p=>p.name.toLocaleLowerCase('vi').includes(q.toLocaleLowerCase('vi'))).map(place=>{const button=document.createElement('button');button.className='map-marker';button.type='button';button.setAttribute('aria-label',place.name);button.title=place.name;if(place.image_key){const image=document.createElement('img');image.src=place.image_key;image.alt='';image.loading='lazy';image.decoding='async';button.classList.add('map-marker-photo');image.onerror=()=>{image.remove();button.classList.remove('map-marker-photo');};button.appendChild(image);}button.addEventListener('click',e=>{e.stopPropagation();setSelected(place);map.current.flyTo({center:[place.longitude,place.latitude],zoom:10});});return new maplibregl.Marker({element:button}).setLngLat([place.longitude,place.latitude]).addTo(map.current);});return()=>{markers.current.forEach(m=>m.remove());};},[places,q]);
+  useEffect(()=>{
+    const instance=map.current;if(!instance||!places)return;
+    markers.current.forEach(m=>m.remove());
+    markers.current=places.filter(p=>p.name.toLocaleLowerCase('vi').includes(q.toLocaleLowerCase('vi'))).map(place=>{
+      const button=document.createElement('button');button.className='map-marker';button.type='button';button.setAttribute('aria-label',place.name);button.title=place.name;
+      if(place.image_key){const image=document.createElement('img');image.dataset.src=place.image_key;image.alt='';image.hidden=true;image.decoding='async';image.onerror=()=>{image.dataset.failed='true';image.hidden=true;button.classList.remove('map-marker-photo');};button.appendChild(image);}
+      button.addEventListener('click',e=>{e.stopPropagation();setSelected(place);instance.flyTo({center:[place.longitude,place.latitude],zoom:12});});
+      return new maplibregl.Marker({element:button}).setLngLat([place.longitude,place.latitude]).addTo(instance);
+    });
+    const refresh=()=>{const show=showMapPhotos(instance.getZoom());const bounds=instance.getBounds();markers.current.forEach(marker=>{
+      const button=marker.getElement(),image=button.querySelector('img');if(!image)return;
+      const visible=show&&bounds.contains(marker.getLngLat())&&image.dataset.failed!=='true';
+      if(visible&&!image.getAttribute('src'))image.src=image.dataset.src;
+      image.hidden=!visible;button.classList.toggle('map-marker-photo',visible);
+    });};
+    refresh();instance.on('zoom',refresh);instance.on('moveend',refresh);
+    return()=>{instance.off('zoom',refresh);instance.off('moveend',refresh);markers.current.forEach(m=>m.remove());};
+  },[places,q]);
   useEffect(()=>{
     if(!pin){setPinLocation(null);return;}
     let alive=true;
@@ -25,7 +43,7 @@ export default function MapEditor({ edit, detail, revision }) {
     });
     return()=>{alive=false;};
   },[pin,regions]);
-  function choose(place){setSelected(place);setPin(null);chosen.current?.remove();map.current?.flyTo({center:[place.longitude,place.latitude],zoom:10});}
+  function choose(place){setSelected(place);setPin(null);chosen.current?.remove();map.current?.flyTo({center:[place.longitude,place.latitude],zoom:12});}
   function reset(){setSelected(null);setPin(null);setMode(false);chosen.current?.remove();map.current?.flyTo({center:[106.1,16.2],zoom:4.7});}
   if(error)return <ErrorBox message={error}/>;if(!places)return <Loading/>;
   const pinResolved=pin&&pinLocation?.point===pin;

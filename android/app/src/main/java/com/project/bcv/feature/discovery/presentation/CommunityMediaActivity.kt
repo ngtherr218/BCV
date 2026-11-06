@@ -69,7 +69,7 @@ class CommunityMediaActivity : AppCompatActivity() {
         status.text = if (items.length() == 0) "Chưa có nội dung. Bạn có thể gửi ảnh/video đầu tiên." else "${items.length()} nội dung"
         for (i in 0 until items.length()) {
             val item = items.getJSONObject(i)
-            val state = when (item.getString("status")) { "APPROVED" -> "Đã duyệt"; "REJECTED" -> "Từ chối"; "FLAGGED" -> "Tạm ẩn để kiểm tra"; "REMOVED" -> "Đã gỡ"; else -> "Chờ duyệt" }
+            val state = when (item.getString("status")) { "APPROVED" -> "Đã duyệt"; "REJECTED" -> "Từ chối"; "FLAGGED" -> "Tạm ẩn để kiểm tra"; "REMOVED" -> "Đã gỡ"; "EXPIRED" -> "Hết hạn"; else -> "Chờ duyệt" }
             list.addView(TextView(this).apply {
                 text = "${item.getString("author")} · $state\n${item.getString("caption")}\n${item.optString("reviewNote").takeUnless { it == "null" }.orEmpty()}"
                 textSize = 16f

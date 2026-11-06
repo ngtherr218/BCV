@@ -371,6 +371,7 @@ class GoongExploreMap(
     private fun loadPlacePhotos() {
         if (!styleLoaded) return
         val active = map ?: return
+        if (active.cameraPosition.zoom < PHOTO_MIN_ZOOM) return
         val style = active.style ?: return
         val places = snapshot?.places ?: return
         places.filter { place ->
@@ -423,10 +424,19 @@ class GoongExploreMap(
     private fun installPlaceLayers(style: Style) {
         placeSource = GeoJsonSource(PLACE_SOURCE, EMPTY_COLLECTION)
         style.addSource(placeSource!!)
+        style.addLayer(CircleLayer("place-overview-dots", PLACE_SOURCE)
+            .withFilter(Expression.eq(Expression.get("isDiscovered"), Expression.literal(false)))
+            .withProperties(circleColor(0xFFC8463D.toInt()), circleRadius(4f), circleStrokeColor(0xFFFFFFFF.toInt()), circleStrokeWidth(1f))
+            .apply { maxZoom = PHOTO_MIN_ZOOM })
+        style.addLayer(CircleLayer(EXPLORED_DOT_LAYER, PLACE_SOURCE)
+            .withFilter(Expression.eq(Expression.get("isDiscovered"), Expression.literal(true)))
+            .withProperties(circleColor(0xFFEE8F3A.toInt()), circleRadius(4f), circleStrokeColor(0xFFFFFFFF.toInt()), circleStrokeWidth(1f))
+            .apply { maxZoom = PHOTO_MIN_ZOOM })
         style.addLayer(SymbolLayer("place-photo-layer", PLACE_SOURCE)
             .withFilter(Expression.eq(Expression.get("hasPhoto"), Expression.literal(true)))
             .withProperties(iconImage(Expression.get("thumbnail")), iconAllowOverlap(false),
-                iconSize(zoomScale(8f to .4f, 12f to .65f, 15f to 1f)), iconPadding(4f)))
+                iconSize(zoomScale(11f to .6f, 12f to .65f, 15f to 1f)), iconPadding(4f))
+            .apply { minZoom = PHOTO_MIN_ZOOM })
         // Marker sizes follow the zoom: full size at street level, small dots when zoomed out,
         // so places stop swelling over the map and each other.
         style.addImage(LOCKED_IMAGE, lockedDot())
@@ -437,17 +447,13 @@ class GoongExploreMap(
                 // Zoomed out, overlapping locked dots thin themselves out; up close every one shows.
                 iconAllowOverlap(Expression.step(Expression.zoom(), Expression.literal(false),
                     Expression.stop(13, true))),
-                iconPadding(1f)))
-        style.addLayer(CircleLayer(EXPLORED_DOT_LAYER, PLACE_SOURCE)
-            .withFilter(Expression.all(Expression.eq(Expression.get("isDiscovered"), Expression.literal(true)), Expression.eq(Expression.get("hasPhoto"), Expression.literal(false))))
-            .withProperties(circleColor(0xFFEE8F3A.toInt()), circleRadius(4f),
-                circleStrokeColor(0xFFFFFFFF.toInt()), circleStrokeWidth(1.5f))
-            .apply { maxZoom = EXPLORED_BADGE_MIN_ZOOM })
+                iconPadding(1f))
+            .apply { minZoom = PHOTO_MIN_ZOOM })
         style.addImage(EXPLORED_IMAGE, exploredBadge())
         // Explored badges draw above locked dots and never hide; the badge's bottom is the orange
         // dot, which sits exactly on the place at every scale.
         style.addLayer(SymbolLayer(EXPLORED_ICON_LAYER, PLACE_SOURCE)
-            .withFilter(Expression.eq(Expression.get("isDiscovered"), Expression.literal(true)))
+            .withFilter(Expression.all(Expression.eq(Expression.get("isDiscovered"), Expression.literal(true)), Expression.eq(Expression.get("hasPhoto"), Expression.literal(false))))
             .withProperties(iconImage(EXPLORED_IMAGE), iconAllowOverlap(true), iconIgnorePlacement(true),
                 iconAnchor(Property.ICON_ANCHOR_BOTTOM),
                 iconSize(zoomScale(11f to BADGE_SCALE_MIN, 13f to 0.75f, 15f to 1f)))
@@ -625,6 +631,7 @@ class GoongExploreMap(
         const val LOCKED_IMAGE = "bcv-locked-dot"
         const val EXPLORED_DOT_LAYER = "bcv-explored-dots"
         /** Below this zoom an explored place is a small orange dot instead of the house badge. */
+        const val PHOTO_MIN_ZOOM = 11f
         const val EXPLORED_BADGE_MIN_ZOOM = 11f
         const val BADGE_SCALE_MIN = 0.55f
         const val EXPLORED_ICON_LAYER = "bcv-explored-icons"
