@@ -11,11 +11,19 @@ public static class CommunityMediaEndpoints
     {
         using var stream = typeof(CommunityMediaEndpoints).Assembly.GetManifestResourceStream("Bcv.CommunityMediaMigration.sql")!;
         using var reader = new StreamReader(stream);
-        await using var command = db.CreateCommand(await reader.ReadToEndAsync());
-        await command.ExecuteNonQueryAsync();
+        await using var conn=await db.OpenConnectionAsync();
+        await using var tx=await conn.BeginTransactionAsync();
+        await using(var gate=new NpgsqlCommand("SELECT pg_advisory_xact_lock(7246319)",conn,tx)) await gate.ExecuteNonQueryAsync();
+        await using(var command=new NpgsqlCommand((await reader.ReadToEndAsync()).Replace("public.", ""),conn,tx)) await command.ExecuteNonQueryAsync();
+        using var moderationStream=typeof(CommunityMediaEndpoints).Assembly.GetManifestResourceStream("Bcv.MediaModerationMigration.sql")!;
+        using var moderationReader=new StreamReader(moderationStream);
+        await using(var migration=new NpgsqlCommand(await moderationReader.ReadToEndAsync(),conn,tx)) await migration.ExecuteNonQueryAsync();
+        await tx.CommitAsync();
     }
 
-    public sealed record Review(string Status, string? Note);
+    public sealed record Review(string Status, string? Note, string? ExpectedStatus = null);
+    public sealed record UploadAccess(bool Blocked, string? Note);
+    public sealed record ReportBody(string? Reason);
 
     public static void MapCommunityMedia(this WebApplication app)
     {
@@ -23,8 +31,8 @@ public static class CommunityMediaEndpoints
         app.MapGet("/api/places/{placeId:long}/thumbnail", async (long placeId, NpgsqlDataSource db, CancellationToken ct) =>
         {
             await using var command = db.CreateCommand("""
-                SELECT i.image_key FROM public.place_image i JOIN public.place p ON p.place_id=i.place_id
-                JOIN public.region r ON r.region_id=p.region_id
+                SELECT i.image_key FROM place_image i JOIN place p ON p.place_id=i.place_id
+                JOIN region r ON r.region_id=p.region_id
                 WHERE p.place_id=$1 AND p.status='ACTIVE' AND r.status='ACTIVE'
                 ORDER BY i.place_image_id LIMIT 1
                 """);
@@ -76,17 +84,26 @@ public static class CommunityMediaEndpoints
             }
             var bytes = memory.ToArray();
             if (!ValidHeader(mime!, bytes)) return Results.BadRequest(new { message = "Nội dung tệp không đúng định dạng." });
-            await using var command = db.CreateCommand("""
-                INSERT INTO public.community_media(user_id,place_id,caption,mime_type,media_data)
-                SELECT $1,p.place_id,$3,$4,$5 FROM public.place p WHERE p.place_id=$2 AND p.status='ACTIVE'
+            await using var uploadConnection=await db.OpenConnectionAsync(ct);
+            await using var uploadTransaction=await uploadConnection.BeginTransactionAsync(ct);
+            await using(var permission=new NpgsqlCommand("SELECT media_upload_blocked FROM app_user WHERE user_id=$1 AND status='ACTIVE' FOR SHARE",uploadConnection,uploadTransaction))
+            {
+                permission.Parameters.AddWithValue(user.UserId);
+                var blocked=await permission.ExecuteScalarAsync(ct);
+                if(blocked is not false)return Results.Json(new {message="Quyền gửi nội dung đã bị khóa hoặc tài khoản không còn hoạt động."},statusCode:403);
+            }
+            await using var command = new NpgsqlCommand("""
+                INSERT INTO community_media(user_id,place_id,caption,mime_type,media_data)
+                SELECT $1,p.place_id,$3,$4,$5 FROM place p WHERE p.place_id=$2 AND p.status='ACTIVE'
                 RETURNING media_id
-                """);
+                """,uploadConnection,uploadTransaction);
             command.Parameters.AddWithValue(user.UserId);
             command.Parameters.AddWithValue(placeId);
             command.Parameters.AddWithValue(caption?.Trim() ?? "");
             command.Parameters.AddWithValue(mime!);
             command.Parameters.AddWithValue(bytes);
             var id = await command.ExecuteScalarAsync(ct);
+            await uploadTransaction.CommitAsync(ct);
             return id is null ? Results.NotFound(new { message = "Không tìm thấy địa danh đang hoạt động." })
                 : Results.Ok(new { mediaId = (long)id, status = "PENDING", message = "Đã gửi. Nội dung đang chờ quản trị viên duyệt." });
         }).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(32 * 1024 * 1024));
@@ -95,7 +112,7 @@ public static class CommunityMediaEndpoints
             ISessionStore sessions, NpgsqlDataSource db, AdminRepository admins, CancellationToken ct) =>
         {
             var user = CurrentUser.Get(request, sessions);
-            await using var command = db.CreateCommand("SELECT user_id,mime_type,media_data,status FROM public.community_media WHERE media_id=$1");
+            await using var command = db.CreateCommand("SELECT user_id,mime_type,media_data,status FROM community_media WHERE media_id=$1");
             command.Parameters.AddWithValue(id);
             await using var reader = await command.ExecuteReaderAsync(ct);
             if (!await reader.ReadAsync(ct)) return Results.NotFound();
@@ -115,25 +132,31 @@ public static class CommunityMediaEndpoints
             if (!await repository.IsAdmin(user.UserId, context.HttpContext.RequestAborted)) return Results.StatusCode(403);
             context.HttpContext.Items["MediaAdmin"] = user.UserId;
             context.HttpContext.Response.Headers.CacheControl = "no-store";
-            return await next(context);
+            try { return await next(context); }
+            catch(AdminValidation ex) {return Results.BadRequest(new {message=ex.Message});}
+            catch(KeyNotFoundException ex) {return Results.NotFound(new {message=ex.Message});}
         });
-        admin.MapGet("", async (string? status, NpgsqlDataSource db, CancellationToken ct) =>
-            Results.Ok(new { items = await List(db, null, 0, true, status ?? "PENDING", ct) }));
-        admin.MapPost("/{id:long}/review", async (long id, Review body, HttpContext http, NpgsqlDataSource db, CancellationToken ct) =>
+        admin.MapGet("", (string? status,string? q,string? kind,bool? reported,int? page,int? pageSize,NpgsqlDataSource db,CancellationToken ct) =>
+            MediaModeration.ListAsync(db,status,q,kind,reported??false,page??1,pageSize??12,ct));
+        admin.MapGet("/{id:long}/reports",(long id,NpgsqlDataSource db,CancellationToken ct)=>MediaModeration.ReportsAsync(db,id,ct));
+        admin.MapPost("/{id:long}/review", async (long id, Review body,HttpContext http,NpgsqlDataSource db,CancellationToken ct) =>
         {
-            if (body.Status is not ("APPROVED" or "REJECTED") || (body.Note?.Length ?? 0) > 500)
-                return Results.BadRequest(new { message = "Trạng thái hoặc lý do duyệt không hợp lệ." });
-            await using var command = db.CreateCommand("""
-                UPDATE public.community_media SET status=$2,review_note=$3,reviewed_by=$4,reviewed_at=CURRENT_TIMESTAMP
-                WHERE media_id=$1 AND status='PENDING' RETURNING media_id
-                """);
-            command.Parameters.AddWithValue(id);
-            command.Parameters.AddWithValue(body.Status);
-            command.Parameters.AddWithValue(body.Note?.Trim() ?? "");
-            command.Parameters.AddWithValue((long)http.Items["MediaAdmin"]!);
-            return await command.ExecuteScalarAsync(ct) is null
-                ? Results.Conflict(new { message = "Nội dung không tồn tại hoặc đã được duyệt. Hãy tải lại." })
-                : Results.Ok(new { success = true });
+            await MediaModeration.ReviewAsync(db,id,body.Status,body.Note,body.ExpectedStatus,(long)http.Items["MediaAdmin"]!,ct);
+            return Results.Ok(new {success=true});
+        });
+        admin.MapPost("/users/{userId:long}/upload-access",async(long userId,UploadAccess body,HttpContext http,NpgsqlDataSource db,CancellationToken ct)=>
+        {
+            await MediaModeration.SetUploadAccessAsync(db,userId,body.Blocked,body.Note,(long)http.Items["MediaAdmin"]!,ct);
+            return Results.Ok(new {success=true});
+        });
+        app.MapPost("/api/community-media/{id:long}/reports",async(long id,ReportBody body,HttpRequest request,ISessionStore sessions,NpgsqlDataSource db,IConfiguration config,CancellationToken ct)=>
+        {
+            var user=CurrentUser.Get(request,sessions);if(user is null)return Results.Unauthorized();
+            try {
+                await MediaModeration.ReportAsync(db,id,user.UserId,body.Reason,config.GetValue<int?>("CommunityMedia:ReportThreshold")??3,ct);
+                return Results.Ok(new {success=true});
+            } catch(AdminValidation ex){return Results.BadRequest(new {message=ex.Message});}
+              catch(KeyNotFoundException ex){return Results.NotFound(new {message=ex.Message});}
         });
     }
 
@@ -141,7 +164,7 @@ public static class CommunityMediaEndpoints
     {
         await using var command = db.CreateCommand("""
             SELECT m.media_id,m.place_id,p.name,u.full_name,m.caption,m.mime_type,m.status,m.review_note,m.created_at
-            FROM public.community_media m JOIN public.place p ON p.place_id=m.place_id JOIN public.app_user u ON u.user_id=m.user_id
+            FROM community_media m JOIN place p ON p.place_id=m.place_id JOIN app_user u ON u.user_id=m.user_id
             WHERE ($1::bigint IS NULL OR m.place_id=$1) AND ($3 OR m.status='APPROVED' OR m.user_id=$2)
                 AND ($4='' OR m.status=$4)
             ORDER BY m.created_at DESC,m.media_id DESC LIMIT 100

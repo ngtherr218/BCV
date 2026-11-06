@@ -10,6 +10,7 @@
 !db/021_versioned_recommendations.sql
 !db/022_community_media.sql
 !db/023_place_type_features.sql
+!db/024_media_moderation.sql
 **/node_modules
 **/dist
 **/bin

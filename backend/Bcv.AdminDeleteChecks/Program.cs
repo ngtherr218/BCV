@@ -54,6 +54,7 @@ try
     var repo = new AdminRepository(isolated, new TestSessions());
     await PlaceTypeFeatureSchema.EnsureAsync(isolated);
     await FeatureInheritanceChecks.Run(isolated, repo);
+    await ModerationChecks.Run(isolated);
     void Assert(bool condition, string message) { if (!condition) throw new Exception(message); }
     async Task<long> Count(string table) { await using var cmd = isolated.CreateCommand($"SELECT count(*) FROM {table}"); return (long)(await cmd.ExecuteScalarAsync())!; }
     async Task Blocked(string resource, bool hasStatus)

@@ -10,5 +10,6 @@
     <EmbeddedResource Include="../../db/021_versioned_recommendations.sql" LogicalName="Bcv.RecommendationMigration.sql" />
     <EmbeddedResource Include="../../db/022_community_media.sql" LogicalName="Bcv.CommunityMediaMigration.sql" />
     <EmbeddedResource Include="../../db/023_place_type_features.sql" LogicalName="Bcv.PlaceTypeFeatureMigration.sql" />
+    <EmbeddedResource Include="../../db/024_media_moderation.sql" LogicalName="Bcv.MediaModerationMigration.sql" />
   </ItemGroup>
 </Project>

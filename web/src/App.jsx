@@ -7,7 +7,7 @@ import DetailDrawer from './DetailDrawer.jsx';
 import DeleteDialog from './DeleteDialog.jsx';
 const MediaModeration = lazy(()=>import('./MediaModeration.jsx'));
 const MapEditor = lazy(()=>import('./MapEditor.jsx'));
-const titleFor = key => catalog[key]?.title || ({dashboard:'Bảng điều khiển',map:'Bản đồ địa danh',media:'Duyệt ảnh/video',system:'Thông tin hệ thống'}[key]);
+const titleFor = key => catalog[key]?.title || ({dashboard:'Bảng điều khiển',map:'Bản đồ địa danh',media:'Kiểm duyệt nội dung',system:'Thông tin hệ thống'}[key]);
 function useRoute(){ const [route,setRoute]=useState(location.hash.slice(1)||'dashboard');useEffect(()=>{const change=()=>setRoute(location.hash.slice(1)||'dashboard');window.addEventListener('hashchange',change);return()=>window.removeEventListener('hashchange',change);},[]);return [titleFor(route)?route:'dashboard',key=>{location.hash=key;}]; }
 
 function Login({ signedIn }) {

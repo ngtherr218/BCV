@@ -5,8 +5,20 @@ using Bcv.Api.Modules.Discovery.Domain;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Configuration;
 using Npgsql;
+using Bcv.Api.Modules.Account.Application;
 
 void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
+var interestRepository = new InterestFixture();
+var interestService = new InterestService(interestRepository);
+foreach (var ids in new[] { new long[] {201}, new long[] {201,202,203} })
+    Check((await interestService.SaveAsync(1, ids, default)).Count == ids.Length, "Rejected 1–3 interests");
+foreach (var ids in new[] { Array.Empty<long>(), new long[] {201,202,203,204}, new long[] {201,202,203,204,205,206}, new long[] {201,201} })
+{
+    var before = interestRepository.Saves;
+    try { await interestService.SaveAsync(1, ids, default); throw new Exception("Invalid interest selection accepted"); }
+    catch (InterestException) { Check(interestRepository.Saves == before, "Invalid interests reached persistence"); }
+}
+Console.WriteLine("PASS: interests accept 1–3 groups, reject 0/4/6/duplicate selections before persistence.");
 var geocoderConfiguration = new ConfigurationBuilder().AddInMemoryCollection(
     new Dictionary<string, string?> { ["Goong:ApiKey"] = "test-key" }).Build();
 var handler = new GeocodeStub();
@@ -85,4 +97,11 @@ sealed class GeocodeStub : HttpMessageHandler
         RequestUri = request.RequestUri!.OriginalString;
         return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(Payload) });
     }
+}
+
+sealed class InterestFixture : IInterestRepository
+{
+    public int Saves { get; private set; }
+    public Task<InterestSnapshot> LoadAsync(long userId, CancellationToken ct) => Task.FromResult(new InterestSnapshot([], []));
+    public Task<IReadOnlyList<long>> SaveAsync(long userId, IReadOnlyList<long> ids, CancellationToken ct) { Saves++; return Task.FromResult(ids); }
 }

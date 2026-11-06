@@ -96,7 +96,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
                 android:lineSpacingExtra="4dp"
-                android:text="Chọn từ 1 đến 6 nhóm sở thích.\nBạn có thể đổi lựa chọn sau trong Hồ sơ."
+                android:text="Chọn từ 1 đến 3 trong 6 nhóm sở thích.\nBạn có thể đổi lựa chọn sau trong Hồ sơ."
                 android:textColor="#798E7E"
                 android:textSize="15sp" />
 

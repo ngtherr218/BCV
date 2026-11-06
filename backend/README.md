@@ -211,3 +211,17 @@ Migration `db/023_place_type_features.sql` được nhúng trong API và tự ch
 - Chỉ có đặc trưng chưa đảm bảo xuất hiện trong Top 3: các điều kiện trạng thái, khoảng cách, lịch sử khám phá và điểm xếp hạng vẫn áp dụng.
 
 Kiểm thử local: `./backend/test-admin-delete.ps1` (đã bao gồm kế thừa đặc trưng, cập nhật nhiều địa danh, tùy chỉnh và rollback). Test web: `node --test web/tests/place-feature-defaults.test.mjs`.
+
+## Kiểm duyệt nội dung cộng đồng
+
+Trang **Kiểm duyệt nội dung** (`#media`) có các bộ lọc trạng thái, ảnh/video, địa danh/người gửi/chú thích, báo cáo chưa xử lý và phân trang. Các chỉ số thể hiện số chờ duyệt, đã duyệt, có báo cáo và dung lượng tệp đang lưu (không phải phần trăm hạn mức lưu trữ).
+
+- Duyệt sau khi tải được bản xem trước. Từ chối/gỡ/khôi phục/khóa quyền gửi đều có dialog xác nhận; lý do là bắt buộc, trừ lần duyệt mới.
+- `PENDING → APPROVED/REJECTED`; `APPROVED → REMOVED`; `FLAGGED → APPROVED/REMOVED`; `REMOVED → APPROVED`. Nội dung APPROVED có báo cáo mở có thể giữ công khai và đóng báo cáo sau khi kiểm tra.
+- Gỡ là ngừng công khai; tệp vẫn được giữ để quản trị viên xem và khôi phục. Chưa triển khai chính sách xóa tệp theo thời hạn/NFR-10.
+- Kết quả kiểm duyệt và thay đổi quyền gửi tạo thông báo cho người gửi trong cùng transaction. Điều kiện nhiệm vụ `MEDIA_APPROVED` chỉ tăng một lần khi duyệt đầu tiên, không tăng lại khi khôi phục.
+- Khóa quyền gửi không khóa toàn bộ tài khoản; API upload kiểm tra quyền này trực tiếp tại backend.
+- API `POST /api/community-media/{id}/reports` nhận `{ reason }`: không tự báo cáo, không báo cáo trùng; mặc định 3 báo cáo mở từ các tài khoản khác nhau sẽ tạm ẩn. Đổi ngưỡng bằng `CommunityMedia__ReportThreshold` (1–100). API đã có; nút báo cáo trên Android chưa được bổ sung trong đợt thay đổi web này.
+- Các API quản trị: `GET /api/admin/community-media?status=&q=&kind=image|video&reported=true&page=1&pageSize=12`; `GET /api/admin/community-media/{id}/reports`; `POST /api/admin/community-media/{id}/review` với `{status,note,expectedStatus}`; `POST /api/admin/community-media/users/{id}/upload-access` với `{blocked,note}`. Tất cả yêu cầu tài khoản ADMIN đang hoạt động.
+- Migration `db/024_media_moderation.sql` được nhúng và tự chạy khi backend khởi động. Tạo thêm bảng `media_report`, cột `app_user.media_upload_blocked`, `community_media.first_approved_at` và trạng thái FLAGGED/REMOVED. Sau khi áp dụng đầy đủ các migration hiện có, schema có 31 bảng.
+- Kiểm thử bằng `./backend/test-admin-delete.ps1`: bao gồm HTTP authentication/authorization, từ chối thiếu lý do, báo cáo/ẩn/khôi phục, quyền gửi, thông báo và chống cộng lặp nhiệm vụ; sử dụng schema PostgreSQL local riêng và tự dọn.

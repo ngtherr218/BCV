@@ -171,7 +171,7 @@ class InterestsActivity : AppCompatActivity() {
                 card.findViewById<TextView>(R.id.placeTypeName).text = placeType.name
                 card.setOnClickListener {
                     if (!model.toggle(placeType.id)) {
-                        Snackbar.make(binding.root, "Chỉ được chọn tối đa 6 nhóm sở thích.", Snackbar.LENGTH_SHORT).show()
+                        Snackbar.make(binding.root, "Chỉ được chọn tối đa 3 nhóm sở thích.", Snackbar.LENGTH_SHORT).show()
                     }
                 }
                 row.addView(card, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
