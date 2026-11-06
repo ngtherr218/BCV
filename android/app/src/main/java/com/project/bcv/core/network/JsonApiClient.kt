@@ -22,7 +22,10 @@ class JsonApiClient(context: Context, private val baseUrl: String) {
 
     fun postBytes(path: String, bytes: ByteArray, mime: String, token: String) = request("POST", path, null, token, bytes, mime)
 
-    private fun request(method: String, path: String, body: JSONObject?, token: String?, bytes: ByteArray? = null, mime: String? = null): JSONObject {
+    fun postStream(path: String, mime: String, token: String, length: Long, maxBytes: Long, open: () -> java.io.InputStream): JSONObject =
+        open().use { input -> request("POST", path, null, token, mime = mime, input = input, inputLength = length, maxInputBytes = maxBytes) }
+
+    private fun request(method: String, path: String, body: JSONObject?, token: String?, bytes: ByteArray? = null, mime: String? = null, input: java.io.InputStream? = null, inputLength: Long = -1, maxInputBytes: Long = Long.MAX_VALUE): JSONObject {
         val url = URL(baseUrl.trimEnd('/') + "/" + path)
         val wifi = if (useWifiForLocalApi) connectivityManager.allNetworks.firstOrNull { network ->
             connectivityManager.getNetworkCapabilities(network)
@@ -33,7 +36,7 @@ class JsonApiClient(context: Context, private val baseUrl: String) {
             connection.requestMethod = method
             connection.connectTimeout = 15_000
             // Render Free can take around a minute to wake after inactivity.
-            connection.readTimeout = 90_000
+            connection.readTimeout = if (bytes != null || input != null) 300_000 else 90_000
             connection.setRequestProperty("Accept", "application/json")
             if (token != null) connection.setRequestProperty("Authorization", "Bearer $token")
             if (bytes != null) {
@@ -41,6 +44,22 @@ class JsonApiClient(context: Context, private val baseUrl: String) {
                 connection.doOutput = true
                 connection.setFixedLengthStreamingMode(bytes.size)
                 connection.outputStream.use { it.write(bytes) }
+            }
+            if (input != null) {
+                connection.setRequestProperty("Content-Type", mime)
+                connection.doOutput = true
+                if (inputLength >= 0) connection.setFixedLengthStreamingMode(inputLength) else connection.setChunkedStreamingMode(81920)
+                connection.outputStream.use { output ->
+                    val buffer = ByteArray(81920)
+                    var total = 0L
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        require(total <= maxInputBytes) { "Tệp vượt quá dung lượng cho phép." }
+                        output.write(buffer, 0, count)
+                    }
+                }
             }
             if (body != null) {
                 connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")

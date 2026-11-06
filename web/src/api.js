@@ -4,12 +4,13 @@ export const session = {
   set(value) { value ? sessionStorage.setItem(KEY, JSON.stringify(value)) : sessionStorage.removeItem(KEY); },
 };
 export async function api(path, options = {}) {
+  const {timeoutMs = 30000, ...requestOptions} = options;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const token = session.get()?.token;
   try {
     const response = await fetch(path.startsWith('/api/') ? path : `/api/admin${path}`, {
-      ...options, signal: controller.signal,
+      ...requestOptions, signal: controller.signal,
       headers: { ...(options.body && typeof options.body === 'string' ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers },
     });
     const data = await response.json().catch(() => null);

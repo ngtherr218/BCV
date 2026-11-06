@@ -12,5 +12,6 @@
     <EmbeddedResource Include="../../db/023_place_type_features.sql" LogicalName="Bcv.PlaceTypeFeatureMigration.sql" />
     <EmbeddedResource Include="../../db/024_media_moderation.sql" LogicalName="Bcv.MediaModerationMigration.sql" />
     <EmbeddedResource Include="../../db/025_place_videos.sql" LogicalName="Bcv.PlaceVideoMigration.sql" />
+    <EmbeddedResource Include="../../db/026_video_limits.sql" LogicalName="Bcv.VideoLimitsMigration.sql" />
   </ItemGroup>
 </Project>

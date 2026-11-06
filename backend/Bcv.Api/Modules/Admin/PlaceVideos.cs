@@ -8,7 +8,7 @@ namespace Bcv.Api.Modules.Admin;
 
 public static class PlaceVideos
 {
-    public const int MaxBytes=15*1024*1024;
+    public const int MaxBytes=100*1024*1024;
     public sealed record Metadata(double Duration,int Width,int Height);
     private sealed record Box(string Type,int Start,int End);
     private static IEnumerable<Box> Boxes(byte[] bytes,int start,int end)
@@ -26,7 +26,7 @@ public static class PlaceVideos
     }
     public static Metadata Inspect(byte[] bytes)
     {
-        if(bytes.Length<12||bytes.Length>MaxBytes)throw new AdminValidation("Video MP4 tối đa 15 MB.");
+        if(bytes.Length<12||bytes.Length>MaxBytes)throw new AdminValidation("Video MP4 tối đa 100 MB.");
         var root=Boxes(bytes,0,bytes.Length).ToArray();
         if(!root.Any(b=>b.Type=="ftyp"))throw new AdminValidation("Chỉ hỗ trợ tệp MP4.");
         if(!root.Any(b=>b.Type=="mdat"&&b.End>b.Start))throw new AdminValidation("MP4 không có dữ liệu video.");
@@ -40,7 +40,7 @@ public static class PlaceVideos
         var scale=BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(header.Start+timeOffset,4));
         var duration=version==1?BinaryPrimitives.ReadUInt64BigEndian(bytes.AsSpan(header.Start+durationOffset,8)):BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(header.Start+durationOffset,4));
         var seconds=scale==0?0:(double)duration/scale;
-        if(seconds<=0||seconds>30)throw new AdminValidation("Video phải có thời lượng từ trên 0 đến 30 giây.");
+        if(seconds<=0||seconds>60)throw new AdminValidation("Video phải có thời lượng từ trên 0 đến 60 giây.");
         foreach(var track in children.Where(b=>b.Type=="trak"))
         {
             var parts=Boxes(bytes,track.Start,track.End).ToArray();var mdia=parts.FirstOrDefault(b=>b.Type=="mdia");var tkhd=parts.FirstOrDefault(b=>b.Type=="tkhd");
@@ -51,7 +51,7 @@ public static class PlaceVideos
             var widthOffset=bytes[tkhd.Start]==1?88:76;
             if(tkhd.End-tkhd.Start<widthOffset+8)throw new AdminValidation("Không đọc được kích thước video.");
             var width=(int)(BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(tkhd.Start+widthOffset,4))>>16);var height=(int)(BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(tkhd.Start+widthOffset+4,4))>>16);
-            if(width<=0||height<=0||Math.Min(width,height)>720||Math.Max(width,height)>1280)throw new AdminValidation("Video tối đa 720p (1280×720 hoặc 720×1280).");
+            if(width<=0||height<=0||Math.Min(width,height)>1080||Math.Max(width,height)>1920)throw new AdminValidation("Video tối đa 1080p (1920×1080 hoặc 1080×1920).");
             return new(seconds,width,height);
         }
         throw new AdminValidation("MP4 không có luồng video được hỗ trợ.");
@@ -80,11 +80,13 @@ public static class PlaceVideos
     {
         admin.MapPost("/place-videos",async(HttpContext http,NpgsqlDataSource db,CancellationToken ct)=>
         {
+            var bodyLimit=http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+            if(bodyLimit is {IsReadOnly:false})bodyLimit.MaxRequestBodySize=MaxBytes;
             if(http.Request.ContentType?.Split(';')[0]!="video/mp4")throw new AdminValidation("Chỉ chấp nhận video MP4.");
-            if(http.Request.ContentLength>MaxBytes)throw new AdminValidation("Video tối đa 15 MB.");
-            using var memory=new MemoryStream();var buffer=new byte[81920];int read;
-            while((read=await http.Request.Body.ReadAsync(buffer,ct))>0){if(memory.Length+read>MaxBytes)throw new AdminValidation("Video tối đa 15 MB.");await memory.WriteAsync(buffer.AsMemory(0,read),ct);}
-            var bytes=memory.ToArray();var metadata=Inspect(bytes);
+            if(http.Request.ContentLength>MaxBytes)throw new AdminValidation("Video tối đa 100 MB.");
+            using var memory=new MemoryStream(http.Request.ContentLength is >0?(int)http.Request.ContentLength.Value:0);var buffer=new byte[81920];int read;
+            while((read=await http.Request.Body.ReadAsync(buffer,ct))>0){if(memory.Length+read>MaxBytes)throw new AdminValidation("Video tối đa 100 MB.");await memory.WriteAsync(buffer.AsMemory(0,read),ct);}
+            var bytes=memory.Length==memory.Capacity?memory.GetBuffer():memory.ToArray();var metadata=Inspect(bytes);
             await using var cmd=db.CreateCommand("INSERT INTO place_video(created_by,video_data,duration_seconds,width,height) VALUES($1,$2,$3,$4,$5) RETURNING video_id");
             cmd.Parameters.AddWithValue((long)http.Items["AdminId"]!);cmd.Parameters.AddWithValue(bytes);cmd.Parameters.AddWithValue(metadata.Duration);cmd.Parameters.AddWithValue(metadata.Width);cmd.Parameters.AddWithValue(metadata.Height);
             var id=(long)(await cmd.ExecuteScalarAsync(ct))!;

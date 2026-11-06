@@ -229,7 +229,7 @@ Trang **Kiểm duyệt nội dung** (`#media`) có các bộ lọc trạng thái
 ## Video địa danh và quy tắc theo phụ lục chức năng
 
 - Migration 025 tự chạy cùng khởi tạo module media. Thêm bảng place_video, cho phép dọn dữ liệu tệp cộng đồng nhưng giữ metadata và kết quả báo cáo ACCEPTED/DISMISSED. Migration 024 cũng chấp nhận EXPIRED để khởi động lại an toàn sau khi có dữ liệu hết hạn.
-- Web thêm/sửa địa danh cho tải video MP4, tối đa 15 MB, 30 giây, 720p. Cả trình duyệt và backend kiểm tra thông tin video. Backend đọc cấu trúc MP4; tệp không có metadata/thời lượng hoặc luồng video hợp lệ bị từ chối. Chưa có tính năng tự chuyển mã/nén video hoặc hỗ trợ mọi biến thể MP4 phân mảnh.
+- Web thêm/sửa địa danh cho tải video MP4, tối đa 100 MB, 60 giây, 1080p. Cả trình duyệt và backend kiểm tra thông tin video. Backend đọc cấu trúc MP4; tệp không có metadata/thời lượng hoặc luồng video hợp lệ bị từ chối. Chưa có tính năng tự chuyển mã/nén video hoặc hỗ trợ mọi biến thể MP4 phân mảnh.
 - Video tải trước được giữ tạm theo tài khoản quản trị; video_ids chỉ được gắn khi lưu địa danh trong cùng transaction. Tệp chưa được gắn sau 24 giờ được dọn. Video đã gắn bị loại khỏi biểu mẫu sẽ bị xóa khi lưu thành công.
 - Tổng video chính thức + video cộng đồng đang APPROVED của một địa danh không vượt 5. Khóa hàng địa danh đồng bộ kiểm tra này giữa duyệt và sửa địa danh.
 - Android chỉ nhận danh sách và phát video chính thức khi đã khám phá địa danh; API kiểm tra quyền và hỗ trợ Range/seek. Nút cộng đồng được giữ hiển thị cho cả trang đã khám phá.
@@ -237,3 +237,11 @@ Trang **Kiểm duyệt nội dung** (`#media`) có các bộ lọc trạng thái
 - Báo cáo sau khi gỡ: ACCEPTED; báo cáo bị bác/khôi phục: DISMISSED. Không thể khóa quyền gửi của ADMIN. Có thể quản lý quyền gửi từ chi tiết người dùng.
 - Bản đồ web và Android chỉ hiện ảnh từ zoom 11; phía dưới dùng chấm. Web không tải thumbnail trước ngưỡng này.
 - Danh sách địa danh khi thêm thẻ loại bỏ mọi địa danh đã có thẻ, kể cả thẻ DRAFT/INACTIVE. Khi sửa thẻ, vẫn giữ lựa chọn địa danh hiện tại; backend và ràng buộc duy nhất tiếp tục chặn tạo trùng.
+
+## Giới hạn video 100 MB / 1080p / 60 giây
+
+- Migration 026 cập nhật constraint thời lượng của video đã lưu lên 60 giây; không xóa dữ liệu và không thêm bảng.
+- Web quản trị nhận MP4 tối đa 100 MiB (100×1024×1024 byte), 60 giây, 1920×1080 hoặc 1080×1920. Video cộng đồng MP4/WebM dùng cùng giới hạn kích thước/thời lượng/độ phân giải; ảnh vẫn tối đa 10 MB.
+- Backend đọc metadata MP4/WebM, từ chối tệp không xác định được thời lượng/luồng video. Không tự nâng chất lượng, kéo dài hoặc chuyển mã tệp.
+- Các endpoint raw upload nâng giới hạn request body tương ứng để không bị chặn tại giới hạn mặc định 30 MB của Kestrel. Web dùng timeout upload 5 phút. Android gửi theo luồng, không nạp toàn bộ tệp lớn vào RAM.
+- Bộ test local có upload HTTP 31 MB, biên 60 giây/1080p (ngang/dọc), chặn trên 100 MB, 61 giây và 4K, cùng kiểm tra migration lặp lại khi đã có video 60 giây.

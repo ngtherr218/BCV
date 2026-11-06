@@ -8,8 +8,8 @@ function metadata(file){return new Promise((resolve,reject)=>{
   const finish=(error,value)=>{if(done)return;done=true;video.onloadedmetadata=null;video.onerror=null;clearTimeout(timer);video.removeAttribute('src');video.load();URL.revokeObjectURL(url);error?reject(error):resolve(value);};
   const timer=setTimeout(()=>finish(new Error('Không đọc được thông tin video.')),15000);
   video.onloadedmetadata=()=>{const duration=video.duration,width=video.videoWidth,height=video.videoHeight;
-    if(!Number.isFinite(duration)||duration<=0||duration>30)return finish(new Error('Video tối đa 30 giây.'));
-    if(width<=0||height<=0||Math.min(width,height)>720||Math.max(width,height)>1280)return finish(new Error('Video tối đa 720p (1280×720 hoặc 720×1280).'));
+    if(!Number.isFinite(duration)||duration<=0||duration>60)return finish(new Error('Video tối đa 60 giây.'));
+    if(width<=0||height<=0||Math.min(width,height)>1080||Math.max(width,height)>1920)return finish(new Error('Video tối đa 1080p (1920×1080 hoặc 1080×1920).'));
     finish(null,{duration,width,height});};video.onerror=()=>finish(new Error('Không phát được tệp MP4 này.'));video.preload='metadata';video.src=url;
 });}
 function Preview({video}){
@@ -23,10 +23,10 @@ function Preview({video}){
 export default function PlaceVideosField({value=[],change,readOnly=false,onBusy}){
   const [busy,setBusy]=useState(false),[error,setError]=useState('');
   async function upload(event){const file=event.target.files[0];if(!file)return;setBusy(true);onBusy?.(true);setError('');try{
-    if(file.type!=='video/mp4'||file.size>15*1024*1024)throw Error('Chọn video MP4 không quá 15 MB.');
-    await metadata(file);const video=await api('/place-videos',{method:'POST',headers:{'Content-Type':'video/mp4'},body:file});change([...value,video]);
+    if(file.type!=='video/mp4'||file.size>100*1024*1024)throw Error('Chọn video MP4 không quá 100 MB.');
+    await metadata(file);const video=await api('/place-videos',{method:'POST',headers:{'Content-Type':'video/mp4'},body:file,timeoutMs:300000});change([...value,video]);
   }catch(e){setError(e.message);}finally{setBusy(false);onBusy?.(false);event.target.value='';}}
-  return <div className="place-videos-field">{!readOnly&&<p className="form-hint">MP4 · tối đa 15 MB, 30 giây, 720p. Mỗi địa danh tối đa 5 video công khai, tính cả video cộng đồng đã duyệt. Video được gắn khi lưu địa danh.</p>}
+  return <div className="place-videos-field">{!readOnly&&<p className="form-hint">MP4 · tối đa 100 MB, 60 giây, 1080p. Mỗi địa danh tối đa 5 video công khai, tính cả video cộng đồng đã duyệt. Video được gắn khi lưu địa danh.</p>}
     {value.map((video,index)=><article className="place-video-entry" key={video.videoId}><div className="place-video-heading"><strong>Video {index+1} · {Math.round(video.durationSeconds)} giây · {video.width}×{video.height}</strong>{!readOnly&&<button type="button" className="icon-button" disabled={busy} aria-label={`Bỏ video ${index+1}`} onClick={()=>change(value.filter(v=>v.videoId!==video.videoId))}><X size={16}/></button>}</div><Preview video={video}/></article>)}
     {!value.length&&readOnly&&<p>Chưa có video.</p>}{!readOnly&&value.length<5&&<label className={`upload-button ${busy?'disabled':''}`}><input type="file" accept="video/mp4" disabled={busy} onChange={upload}/><Upload size={17}/>{busy?'Đang tải video…':'Tải video từ máy tính'}</label>}{error&&<p className="field-error" role="alert">{error}</p>}
   </div>;

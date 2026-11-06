@@ -21,6 +21,9 @@ public static class CommunityMediaEndpoints
         using var videoStream=typeof(CommunityMediaEndpoints).Assembly.GetManifestResourceStream("Bcv.PlaceVideoMigration.sql")!;
         using var videoReader=new StreamReader(videoStream);
         await using(var migration=new NpgsqlCommand(await videoReader.ReadToEndAsync(),conn,tx))await migration.ExecuteNonQueryAsync();
+        using var limitsStream=typeof(CommunityMediaEndpoints).Assembly.GetManifestResourceStream("Bcv.VideoLimitsMigration.sql")!;
+        using var limitsReader=new StreamReader(limitsStream);
+        await using(var migration=new NpgsqlCommand(await limitsReader.ReadToEndAsync(),conn,tx))await migration.ExecuteNonQueryAsync();
         await tx.CommitAsync();
     }
 
@@ -72,12 +75,14 @@ public static class CommunityMediaEndpoints
             if (user is null) return Results.Unauthorized();
             if ((caption?.Length ?? 0) > 500) return Results.BadRequest(new { message = "Mô tả tối đa 500 ký tự." });
             var mime = request.ContentType?.Split(';')[0].Trim().ToLowerInvariant();
+            var bodyLimit=request.HttpContext.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+            if(bodyLimit is {IsReadOnly:false})bodyLimit.MaxRequestBodySize=PlaceVideos.MaxBytes;
             var image = mime is "image/jpeg" or "image/png" or "image/webp";
             if (!image && mime is not ("video/mp4" or "video/webm"))
                 return Results.BadRequest(new { message = "Chọn ảnh JPEG/PNG/WebP hoặc video MP4/WebM." });
-            var limit = (image ? 10 : 30) * 1024 * 1024;
-            if (request.ContentLength > limit) return Results.BadRequest(new { message = "Ảnh tối đa 10 MB; video tối đa 30 MB." });
-            await using var memory = new MemoryStream();
+            var limit = image ? 10 * 1024 * 1024 : PlaceVideos.MaxBytes;
+            if (request.ContentLength > limit) return Results.BadRequest(new { message = "Ảnh tối đa 10 MB; video tối đa 100 MB." });
+            await using var memory = new MemoryStream(request.ContentLength is >0?(int)request.ContentLength.Value:0);
             var buffer = new byte[81920];
             int count;
             while ((count = await request.Body.ReadAsync(buffer, ct)) > 0)
@@ -85,8 +90,13 @@ public static class CommunityMediaEndpoints
                 if (memory.Length + count > limit) return Results.BadRequest(new { message = "Tệp vượt quá kích thước cho phép." });
                 await memory.WriteAsync(buffer.AsMemory(0, count), ct);
             }
-            var bytes = memory.ToArray();
+            var bytes = memory.Length==memory.Capacity?memory.GetBuffer():memory.ToArray();
             if (!ValidHeader(mime!, bytes)) return Results.BadRequest(new { message = "Nội dung tệp không đúng định dạng." });
+            if(!image)
+            {
+                try { _ = mime=="video/webm" ? WebmMetadata.Inspect(bytes) : PlaceVideos.Inspect(bytes); }
+                catch(AdminValidation error){return Results.BadRequest(new{message=error.Message});}
+            }
             await using var uploadConnection=await db.OpenConnectionAsync(ct);
             await using var uploadTransaction=await uploadConnection.BeginTransactionAsync(ct);
             await using(var permission=new NpgsqlCommand("SELECT media_upload_blocked FROM app_user WHERE user_id=$1 AND status='ACTIVE' FOR SHARE",uploadConnection,uploadTransaction))
@@ -109,7 +119,7 @@ public static class CommunityMediaEndpoints
             await uploadTransaction.CommitAsync(ct);
             return id is null ? Results.NotFound(new { message = "Không tìm thấy địa danh đang hoạt động." })
                 : Results.Ok(new { mediaId = (long)id, status = "PENDING", message = "Đã gửi. Nội dung đang chờ quản trị viên duyệt." });
-        }).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(32 * 1024 * 1024));
+        }).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(PlaceVideos.MaxBytes));
 
         app.MapGet("/api/community-media/{id:long}/content", async (long id, HttpRequest request,
             ISessionStore sessions, NpgsqlDataSource db, AdminRepository admins, CancellationToken ct) =>

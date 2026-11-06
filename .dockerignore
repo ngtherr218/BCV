@@ -12,6 +12,7 @@
 !db/023_place_type_features.sql
 !db/024_media_moderation.sql
 !db/025_place_videos.sql
+!db/026_video_limits.sql
 **/node_modules
 **/dist
 **/bin

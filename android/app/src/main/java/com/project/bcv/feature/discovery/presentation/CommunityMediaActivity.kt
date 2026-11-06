@@ -15,7 +15,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 import java.net.URLEncoder
 
 class CommunityMediaActivity : AppCompatActivity() {
@@ -39,7 +38,7 @@ class CommunityMediaActivity : AppCompatActivity() {
         }
         root.addView(Button(this).apply { text = "‹ Quay lại"; setOnClickListener { finish() } })
         root.addView(TextView(this).apply { text = "Ảnh và video cộng đồng"; textSize = 23f })
-        root.addView(TextView(this).apply { text = "Nội dung bạn gửi chỉ công khai sau khi quản trị viên duyệt. Ảnh JPEG/PNG/WebP ≤ 10 MB; video MP4/WebM ≤ 30 MB." })
+        root.addView(TextView(this).apply { text = "Nội dung bạn gửi chỉ công khai sau khi quản trị viên duyệt. Ảnh JPEG/PNG/WebP ≤ 10 MB; video MP4/WebM ≤ 100 MB, 60 giây, 1080p." })
         caption = EditText(this).apply { hint = "Mô tả (tối đa 500 ký tự)"; filters = arrayOf(android.text.InputFilter.LengthFilter(500)) }
         root.addView(caption)
         upload = Button(this).apply { text = "Chọn ảnh hoặc video để gửi"; setOnClickListener { picker.launch(arrayOf("image/*", "video/*")) } }
@@ -101,18 +100,23 @@ class CommunityMediaActivity : AppCompatActivity() {
                 withContext(Dispatchers.IO) {
                     val mime = contentResolver.getType(uri) ?: error("Không xác định được định dạng tệp.")
                     require(mime in setOf("image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm")) { "Chọn ảnh JPEG/PNG/WebP hoặc video MP4/WebM." }
-                    val limit = (if (mime.startsWith("image/")) 10 else 30) * 1024 * 1024
-                    val bytes = ByteArrayOutputStream()
-                    contentResolver.openInputStream(uri)?.use { source ->
-                        val buffer = ByteArray(81920)
-                        while (true) {
-                            val count = source.read(buffer)
-                            if (count < 0) break
-                            require(bytes.size() + count <= limit) { "Tệp quá lớn: ảnh tối đa 10 MB, video tối đa 30 MB." }
-                            bytes.write(buffer, 0, count)
-                        }
-                    } ?: error("Không đọc được tệp.")
-                    client().postBytes("api/places/$placeId/media?caption=${URLEncoder.encode(text, "UTF-8")}", bytes.toByteArray(), mime, token())
+                    if (mime.startsWith("video/")) {
+                        val retriever = android.media.MediaMetadataRetriever()
+                        try {
+                            retriever.setDataSource(this@CommunityMediaActivity, uri)
+                            val duration = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                            val width = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
+                            val height = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
+                            require(duration in 1..60000) { "Video tối đa 60 giây." }
+                            require(width > 0 && height > 0 && minOf(width, height) <= 1080 && maxOf(width, height) <= 1920) { "Video tối đa 1080p." }
+                        } finally { retriever.release() }
+                    }
+                    val limit = (if (mime.startsWith("image/")) 10 else 100) * 1024 * 1024
+                    val length = contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
+                    require(length <= limit) { "Tệp quá lớn: ảnh tối đa 10 MB, video tối đa 100 MB." }
+                    client().postStream("api/places/" + placeId + "/media?caption=" + URLEncoder.encode(text, "UTF-8"), mime, token(), length, limit.toLong()) {
+                        contentResolver.openInputStream(uri) ?: error("Không đọc được tệp.")
+                    }
                 }
                 Toast.makeText(this@CommunityMediaActivity, "Đã gửi nội dung, đang chờ duyệt.", Toast.LENGTH_LONG).show()
                 caption.text.clear()
