@@ -12,12 +12,12 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.lifecycle.ViewModelProvider
 import com.project.bcv.R
 import com.project.bcv.core.di.QuestModule
 import com.project.bcv.core.ui.BottomNav
 import com.project.bcv.core.ui.NavTab
 import com.project.bcv.core.ui.Skeleton
+import com.project.bcv.core.ui.TabViewModels
 import com.project.bcv.databinding.ActivityQuestBinding
 import com.project.bcv.databinding.ItemQuestBinding
 import com.project.bcv.feature.account.auth.data.local.SessionPreferences
@@ -37,8 +37,9 @@ class QuestActivity : AppCompatActivity() {
     private lateinit var model: QuestViewModel
     private var weekly = false
     private var leaving = false
-    private var resumedOnce = false
     private var shown: QuestOverview? = null
+    private var renderedQuests: List<Quest>? = null
+    private var restoredScroll = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,7 +56,9 @@ class QuestActivity : AppCompatActivity() {
             BottomNav.applyBottomInset(binding.bottomNavigation, bars.bottom)
             insets
         }
-        weekly = savedInstanceState?.getBoolean(WEEKLY_KEY) ?: false
+        model = TabViewModels.provider(applicationContext, QuestViewModelFactory(QuestModule.repository(this)))[QuestViewModel::class.java]
+        weekly = savedInstanceState?.getBoolean(WEEKLY_KEY) ?: model.weeklySelected
+        model.weeklySelected = weekly
 
         BottomNav.select(binding.bottomNavigation, NavTab.QUEST)
         BottomNav.skipTransition(this, opening = true)
@@ -69,7 +72,7 @@ class QuestActivity : AppCompatActivity() {
         binding.bottomNavigation.tabCollection.setOnClickListener {
             leave(BottomNav.intent(this, CollectionActivity::class.java, NavTab.QUEST))
         }
-        binding.bottomNavigation.tabQuest.setOnClickListener { model.load() }
+        binding.bottomNavigation.tabQuest.setOnClickListener { model.refreshIfNeeded() }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = leave()
         })
@@ -81,15 +84,17 @@ class QuestActivity : AppCompatActivity() {
         }
         styleSegments()
 
-        model = ViewModelProvider(this, QuestViewModelFactory(QuestModule.repository(this)))[QuestViewModel::class.java]
         model.state.observe(this, ::render)
     }
 
     override fun onResume() {
         super.onResume()
-        // Steps synced or a journey finished on another tab change progress; refresh on return.
-        if (resumedOnce) model.load()
-        resumedOnce = true
+        model.refreshIfNeeded()
+    }
+
+    override fun onPause() {
+        (binding.root.getChildAt(0) as? android.widget.ScrollView)?.let { model.scrollY = it.scrollY }
+        super.onPause()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -135,10 +140,20 @@ class QuestActivity : AppCompatActivity() {
             }
             is QuestUiState.Loaded -> {
                 val time = SimpleDateFormat("HH:mm", Locale.forLanguageTag("vi-VN")).format(Date(state.overview.updatedAtMillis))
-                status(title = "Tiến độ đã cập nhật",
+                if (state.refreshError != null) {
+                    status(failed = true, title = "Chưa cập nhật được", body = state.refreshError)
+                    retryButton.visibility = View.VISIBLE
+                } else status(title = "Tiến độ đã cập nhật",
                     body = "Cập nhật lúc $time từ bước chân và địa danh đã xác nhận.")
                 shown = state.overview
                 showQuests()
+                if (!restoredScroll) {
+                    restoredScroll = true
+                    val scrollY = model.scrollY
+                    (binding.root.getChildAt(0) as? android.widget.ScrollView)?.let { scroll ->
+                        scroll.post { scroll.scrollTo(0, scrollY) }
+                    }
+                }
             }
         }
     }
@@ -166,6 +181,7 @@ class QuestActivity : AppCompatActivity() {
     private fun selectCycle(weekly: Boolean) {
         if (this.weekly == weekly) return
         this.weekly = weekly
+        model.weeklySelected = weekly
         styleSegments()
         showQuests()
     }
@@ -187,6 +203,8 @@ class QuestActivity : AppCompatActivity() {
         val quests = if (weekly) overview.weekly else overview.daily
         sectionCount.text = "${quests.size} nhiệm vụ"
         questList.visibility = View.VISIBLE
+        if (renderedQuests == quests) return@with
+        renderedQuests = quests
         questList.removeAllViews()
         quests.forEach { questList.addView(questCard(it).root) }
     }

@@ -13,7 +13,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.snackbar.Snackbar
 import com.project.bcv.core.di.CollectionModule
@@ -21,6 +20,7 @@ import com.project.bcv.core.ui.BottomNav
 import com.project.bcv.core.ui.NavTab
 import com.project.bcv.core.ui.RemoteImages
 import com.project.bcv.core.ui.Skeleton
+import com.project.bcv.core.ui.TabViewModels
 import com.project.bcv.databinding.ActivityCollectionBinding
 import com.project.bcv.databinding.ItemCollectionCardBinding
 import com.project.bcv.feature.account.auth.data.local.SessionPreferences
@@ -36,8 +36,8 @@ class CollectionActivity : AppCompatActivity() {
     private lateinit var binding: ActivityCollectionBinding
     private lateinit var model: CollectionViewModel
     private var leaving = false
-    private var resumedOnce = false
     private var shownOverview: CollectionOverview? = null
+    private var restoredScroll = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -65,7 +65,7 @@ class CollectionActivity : AppCompatActivity() {
         binding.bottomNavigation.tabJourney.setOnClickListener {
             leave(Intent(BottomNav.intent(this, JourneyActivity::class.java, NavTab.COLLECTION)))
         }
-        binding.bottomNavigation.tabCollection.setOnClickListener { model.load() }
+        binding.bottomNavigation.tabCollection.setOnClickListener { model.refreshIfNeeded() }
         binding.bottomNavigation.tabQuest.setOnClickListener {
             leave(BottomNav.intent(this, QuestActivity::class.java, NavTab.COLLECTION), toRight = false)
         }
@@ -74,16 +74,19 @@ class CollectionActivity : AppCompatActivity() {
             override fun handleOnBackPressed() = leave()
         })
 
-        model = ViewModelProvider(this, CollectionViewModelFactory(CollectionModule.repository(this)))[
+        model = TabViewModels.provider(applicationContext, CollectionViewModelFactory(CollectionModule.repository(this)))[
             CollectionViewModel::class.java]
         model.state.observe(this, ::render)
     }
 
     override fun onResume() {
         super.onResume()
-        // A journey finished elsewhere may have earned a card while this tab was in the back stack.
-        if (resumedOnce) model.load()
-        resumedOnce = true
+        model.refreshIfNeeded()
+    }
+
+    override fun onPause() {
+        (binding.root.getChildAt(0) as? android.widget.ScrollView)?.let { model.scrollY = it.scrollY }
+        super.onPause()
     }
 
     override fun finish() {
@@ -122,7 +125,18 @@ class CollectionActivity : AppCompatActivity() {
                 startActivity(Intent(this@CollectionActivity, AccountActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
             }
-            is CollectionUiState.Loaded -> showOverview(state.overview)
+            is CollectionUiState.Loaded -> {
+                showOverview(state.overview)
+                if (state.refreshError != null) showMessage(state.refreshError, retry = true)
+                else if (state.overview.collections.isNotEmpty()) messageState.visibility = View.GONE
+                if (!restoredScroll) {
+                    restoredScroll = true
+                    val scrollY = model.scrollY
+                    (binding.root.getChildAt(0) as? android.widget.ScrollView)?.let { scroll ->
+                        scroll.post { scroll.scrollTo(0, scrollY) }
+                    }
+                }
+            }
         }
     }
 

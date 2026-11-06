@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import com.project.bcv.BuildConfig
+import com.project.bcv.core.ui.AppDataChanges
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -71,7 +72,12 @@ class JsonApiClient(context: Context, private val baseUrl: String) {
             val content = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
             val json = if (content.isBlank()) JSONObject() else runCatching { JSONObject(content) }.getOrNull()
             if (status in 200..299) {
-                return json ?: throw ApiFailure("BAD_RESPONSE", "Máy chủ trả về dữ liệu không hợp lệ. Vui lòng thử lại.")
+                val result = json ?: throw ApiFailure("BAD_RESPONSE", "Máy chủ trả về dữ liệu không hợp lệ. Vui lòng thử lại.")
+                val endpoint = path.trimStart('/').substringBefore('?')
+                if (method in setOf("POST", "PUT", "DELETE") && endpoint !in AUTH_REQUESTS) {
+                    AppDataChanges.changed()
+                }
+                return result
             }
             val code = json?.optString("code").orEmpty()
             // A bare 401 means the token was rejected; a 401 with a code (e.g. INVALID_CREDENTIALS) is a domain error.
@@ -106,5 +112,10 @@ class JsonApiClient(context: Context, private val baseUrl: String) {
         return parts[0] == 10 ||
             (parts[0] == 172 && parts[1] in 16..31) ||
             (parts[0] == 192 && parts[1] == 168)
+    }
+
+    private companion object {
+        val AUTH_REQUESTS = setOf("api/account/login", "api/account/register",
+            "api/account/password-reset/request", "api/account/password-reset/verify")
     }
 }

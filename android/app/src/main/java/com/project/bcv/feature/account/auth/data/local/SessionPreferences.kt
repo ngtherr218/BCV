@@ -3,6 +3,8 @@ package com.project.bcv.feature.account.auth.data.local
 import android.content.Context
 import com.project.bcv.BuildConfig
 import com.project.bcv.core.network.BackendScope
+import com.project.bcv.core.ui.AppDataChanges
+import com.project.bcv.core.ui.TabViewModels
 
 class SessionPreferences(context: Context, namespace: String = BackendScope.preferenceFile("bcv_session", BuildConfig.API_BASE_URL)) {
     private val appContext = context.applicationContext
@@ -20,11 +22,16 @@ class SessionPreferences(context: Context, namespace: String = BackendScope.pref
     var token: String?
         get() = preferences.getString("token", null)
         set(value) {
-            val changed = token != value
+            val previousToken = token
+            val changed = previousToken != value
             preferences.edit().apply {
                 if (changed || value == null) { remove("ready_for_home"); remove("user_id") }
                 if (value == null) remove("token") else putString("token", value)
             }.apply()
+            if (changed || value == null) {
+                TabViewModels.clearSession(previousToken)
+                AppDataChanges.changed()
+            }
             if (value == null) com.project.bcv.feature.discovery.data.JourneyStepService.stop(appContext)
         }
 }

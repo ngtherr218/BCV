@@ -18,6 +18,7 @@ import java.io.IOException
 class StepSimulationTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private fun main(action: () -> Unit) = instrumentation.runOnMainSync(action)
+    private fun preferences() = StepTestPreferences(instrumentation.targetContext)
     private fun until(condition: () -> Boolean) {
         val deadline = System.currentTimeMillis() + 8000
         while (!condition() && System.currentTimeMillis() < deadline) Thread.sleep(25)
@@ -52,6 +53,35 @@ class StepSimulationTest {
         assertEquals(1, repo.calls)
         assertEquals(300L, repo.lastTarget)
         assertEquals(600, model.state.value?.snapshot?.journey?.recordedSteps)
+        assertTrue(preferences().isTestJourney(repo.tripId))
+    }
+    @Test fun failedPreflightLoadDoesNotDisableRealSteps() = scenario { model, repo ->
+        repo.failLoad = true
+        main { model.sendTestSteps(100) }
+        until { model.state.value?.stage == ExploreStage.SYNC_FAILED && model.stepTest.value?.busy == false }
+        assertFalse(preferences().isTestJourney(repo.tripId))
+        assertNull(preferences().pendingTotal(repo.tripId))
+        assertEquals(0, repo.calls)
+    }
+    @Test fun missingSourceStepsDoesNotDisableRealSteps() = scenario { model, repo ->
+        repo.omitSourceSteps = true
+        main { model.sendTestSteps(100) }
+        until { model.stepTest.value?.message?.contains("sourceSteps") == true && model.stepTest.value?.busy == false }
+        assertFalse(preferences().isTestJourney(repo.tripId))
+        assertNull(preferences().pendingTotal(repo.tripId))
+        assertEquals(0, repo.calls)
+    }
+    @Test fun failedPreflightPreservesAnExistingUncertainBatch() = scenario { model, repo ->
+        repo.failAfterCommit = true
+        main { model.sendTestSteps(100) }
+        until { repo.calls == 1 && model.stepTest.value?.busy == false }
+        assertEquals(300L, preferences().pendingTotal(repo.tripId))
+        repo.failLoad = true
+        main { model.sendTestSteps(100) }
+        until { model.stepTest.value?.message == "Preflight unavailable" && model.stepTest.value?.busy == false }
+        assertTrue(preferences().isTestJourney(repo.tripId))
+        assertEquals(300L, preferences().pendingTotal(repo.tripId))
+        assertEquals(1, repo.calls)
     }
     @Test fun timeoutAfterServerCommitDoesNotAddBatchTwice() = scenario { model, repo ->
         repo.failAfterCommit = true
@@ -81,9 +111,14 @@ class StepSimulationTest {
         @Volatile var calls = 0
         @Volatile var lastTarget = 0L
         @Volatile var failAfterCommit = false
+        @Volatile var failLoad = false
+        @Volatile var omitSourceSteps = false
         @Volatile private var journey = ExploreJourney(tripId, "Test destination", Coordinates(21.01,105.81),
             10000, 400, "IN_PROGRESS", 1, sourceSteps = 200)
-        override fun load() = ExploreSnapshot(null, journey, emptyList())
+        override fun load(): ExploreSnapshot {
+            if (failLoad) throw IOException("Preflight unavailable")
+            return ExploreSnapshot(null, if (omitSourceSteps) journey.copy(sourceSteps = null) else journey, emptyList())
+        }
         override fun syncSteps(journeyId: Long, cumulativeSteps: Long): ExploreSnapshot {
             Thread.sleep(50)
             calls++

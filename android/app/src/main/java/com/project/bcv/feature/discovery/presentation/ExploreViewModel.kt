@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.project.bcv.core.network.ApiFailure
+import com.project.bcv.core.ui.TabRefresh
 import com.project.bcv.BuildConfig
 import com.project.bcv.feature.discovery.data.StepTestPreferences
 import com.project.bcv.feature.discovery.domain.ExploreRepository
@@ -49,6 +50,9 @@ class ExploreViewModel(
     val address: LiveData<String?> = mutableAddress
     private var addressFor: Coordinates? = null
     private var autoSyncing = false
+    private var loading = false
+    private var pendingRefresh = false
+    private val freshness = TabRefresh()
     /** Last cumulative total sent automatically, per journey, so unchanged totals are not sent again. */
     private var autoSentTotal: Pair<Long, Long>? = null
     private val mutableStepTest = MutableLiveData(StepTestUiState())
@@ -59,30 +63,41 @@ class ExploreViewModel(
 
     private companion object { const val TAG = "ExploreViewModel" }
 
-    fun load() {
+    fun refreshIfNeeded() = load(force = false)
+
+    fun load(force: Boolean = true) {
         val current = mutableState.value ?: ExploreUiState()
-        if (current.stage == ExploreStage.RESTORING || current.stage == ExploreStage.SYNCING) return
-        mutableState.value = current.copy(
-            stage = if (current.snapshot == null) ExploreStage.LOADING else ExploreStage.RESTORING,
-            message = null
-        )
+        if (loading || current.stage == ExploreStage.SYNCING || autoSyncing) {
+            if (force) { pendingRefresh = true; freshness.invalidate() }
+            return
+        }
+        if (!freshness.shouldRefresh(current.snapshot != null, force)) return
+        loading = true
+        // Refresh quietly: a tab return must not replace already visible progress with a loader.
+        if (current.snapshot == null) mutableState.value = current.copy(stage = ExploreStage.LOADING, message = null)
         viewModelScope.launch {
             try {
                 val snapshot = withContext(Dispatchers.IO) { repository.load() }
-                mutableState.value = ExploreUiState(snapshot.stage(), snapshot)
+                freshness.loaded()
+                val next = if (snapshot == current.snapshot && current.stage in setOf(ExploreStage.ACTIVE, ExploreStage.NO_NEW_STEPS))
+                    current.copy(message = null) else ExploreUiState(snapshot.stage(), snapshot)
+                if (next != mutableState.value) mutableState.value = next
                 captureDeviceSteps()
                 lookupAddress(snapshot)
                 checkPermission()
-                autoSyncSteps()
             } catch (error: ApiFailure) {
                 if (error.code == "UNAUTHORIZED") sessionExpired() else failLoad(error.message)
             } catch (error: IOException) {
                 Log.w(TAG, "Explore load could not reach the API", error)
                 failLoad("Không kết nối được máy chủ. Kiểm tra Wi-Fi rồi thử lại.")
             } catch (error: Exception) {
+                if (error is CancellationException) throw error
                 Log.e(TAG, "Explore load failed", error)
                 failLoad("Chưa tải được dữ liệu khám phá. Vui lòng thử lại.")
+            } finally {
+                loading = false
             }
+            if (pendingRefresh) drainRefresh() else autoSyncSteps()
         }
     }
 
@@ -129,7 +144,7 @@ class ExploreViewModel(
         val current = mutableState.value ?: return
         val journey = current.snapshot?.journey ?: return
         if (isTestJourney(journey.id)) { load(); return }
-        if (journey.status != "IN_PROGRESS" || current.stage == ExploreStage.SYNCING) return
+        if (loading || autoSyncing || journey.status != "IN_PROGRESS" || current.stage == ExploreStage.SYNCING) return
         mutableState.value = current.copy(stage = ExploreStage.SYNCING, message = null)
         viewModelScope.launch {
             try {
@@ -155,6 +170,8 @@ class ExploreViewModel(
             } catch (_: Exception) {
                 mutableState.value = current.copy(stage = ExploreStage.SYNC_FAILED,
                     message = "Chưa đồng bộ được bước chân. Vui lòng thử lại.")
+            } finally {
+                drainRefresh()
             }
         }
     }
@@ -166,15 +183,16 @@ class ExploreViewModel(
     fun autoSyncSteps() {
         val current = mutableState.value ?: return
         val journey = current.snapshot?.journey ?: return
-        if (isTestJourney(journey.id) || autoSyncing || journey.status != "IN_PROGRESS" || current.stage !in
+        if (loading || isTestJourney(journey.id) || autoSyncing || journey.status != "IN_PROGRESS" || current.stage !in
             setOf(ExploreStage.ACTIVE, ExploreStage.NO_NEW_STEPS, ExploreStage.SYNC_FAILED)) return
         autoSyncing = true
         viewModelScope.launch {
             try {
                 if (!steps.hasPermission()) return@launch
                 val total = steps.totalStepsSince(journey.id, journey.startedAtEpochSeconds)
-                val sent = autoSentTotal?.takeIf { it.first == journey.id }?.second
-                if (sent != null && total <= sent) return@launch
+                val sent = maxOf(journey.sourceSteps ?: -1L,
+                    autoSentTotal?.takeIf { it.first == journey.id }?.second ?: -1L)
+                if (total <= sent) return@launch
                 val snapshot = withContext(Dispatchers.IO) { repository.syncSteps(journey.id, total) }
                 autoSentTotal = journey.id to total
                 val latest = mutableState.value ?: return@launch
@@ -197,6 +215,7 @@ class ExploreViewModel(
                 Log.w(TAG, "Automatic step sync failed", error)
             } finally {
                 autoSyncing = false
+                drainRefresh()
             }
         }
     }
@@ -238,13 +257,12 @@ class ExploreViewModel(
     private suspend fun submitTestSteps(amount: Int): Boolean {
         val current = mutableState.value ?: return false
         val journey = current.snapshot?.journey
-        if (amount !in 1..100_000 || journey?.status != "IN_PROGRESS" || autoSyncing ||
+        if (loading || amount !in 1..100_000 || journey?.status != "IN_PROGRESS" || autoSyncing ||
             current.stage in setOf(ExploreStage.SYNCING, ExploreStage.RESTORING)) {
             mutableStepTest.value = (mutableStepTest.value ?: StepTestUiState()).copy(
                 message = "Cần hành trình đang đi và không có yêu cầu đồng bộ khác; nhập 1–100.000 bước.")
             return false
         }
-        stepTests.useTestSteps(journey.id)
         mutableState.value = current.copy(stage = ExploreStage.SYNCING, message = null)
         mutableStepTest.value = (mutableStepTest.value ?: StepTestUiState()).copy(busy = true)
         try {
@@ -256,6 +274,7 @@ class ExploreViewModel(
             // Reuse an uncertain request after timeouts/restarts; never add the same batch twice.
             val pending = stepTests.pendingTotal(journey.id)
             if (pending != null && sourceTotal >= pending) {
+                stepTests.useTestSteps(journey.id)
                 stepTests.acknowledge(journey.id)
                 mutableState.value = ExploreUiState(fresh.stage(), fresh)
                 lookupAddress(fresh)
@@ -267,6 +286,8 @@ class ExploreViewModel(
             val target = pending ?: (sourceTotal + amount)
             require(target <= 50_000_000L) { "Tổng bước vượt giới hạn 50 triệu của hành trình." }
             withContext(Dispatchers.IO) { stepTests.prepare(journey.id, target) }
+            // A failed preflight must not disable real sensor tracking for this journey.
+            stepTests.useTestSteps(journey.id)
             val confirmed = withContext(Dispatchers.IO) { repository.syncSteps(journey.id, target) }
             require((confirmed.journey?.sourceSteps ?: -1L) >= target) { "Máy chủ chưa xác nhận đủ bước; có thể gửi lại cùng yêu cầu." }
             stepTests.acknowledge(journey.id)
@@ -289,7 +310,14 @@ class ExploreViewModel(
             return false
         } finally {
             mutableStepTest.value = (mutableStepTest.value ?: StepTestUiState()).copy(busy = false)
+            drainRefresh()
         }
+    }
+
+    private fun drainRefresh() {
+        if (!pendingRefresh || loading || autoSyncing || mutableState.value?.stage == ExploreStage.SYNCING) return
+        pendingRefresh = false
+        load()
     }
 
     private fun lookupAddress(snapshot: ExploreSnapshot) {

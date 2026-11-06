@@ -4,6 +4,8 @@ import android.content.Intent
 import com.project.bcv.feature.discovery.presentation.PlaceDetailActivity
 import android.content.res.ColorStateList
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
@@ -17,6 +19,7 @@ import com.project.bcv.R
 import com.project.bcv.core.di.ExploreModule
 import com.project.bcv.core.ui.BottomNav
 import com.project.bcv.core.ui.NavTab
+import com.project.bcv.core.ui.TabViewModels
 import com.project.bcv.feature.collection.presentation.CollectionActivity
 import com.project.bcv.feature.questitem.quest.presentation.QuestActivity
 import com.project.bcv.core.ui.ScreenMotion
@@ -26,6 +29,7 @@ import com.project.bcv.databinding.ActivityJourneyBinding
 import com.project.bcv.feature.account.auth.data.local.SessionPreferences
 import com.project.bcv.feature.account.auth.presentation.AccountActivity
 import com.project.bcv.feature.discovery.domain.ExploreJourney
+import com.project.bcv.feature.discovery.data.StepTestPreferences
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -35,8 +39,19 @@ class JourneyActivity : AppCompatActivity() {
     private lateinit var binding: ActivityJourneyBinding
     private lateinit var model: JourneyViewModel
     private lateinit var routeMap: JourneyRouteMap
-    private var resumedOnce = false
     private var shownJourney: ExploreJourney? = null
+    private val refreshHandler = Handler(Looper.getMainLooper())
+    private val refreshProgress = object : Runnable {
+        override fun run() {
+            val state = model.state.value
+            if (state is JourneyUiState.Failed ||
+                (state is JourneyUiState.Loaded && state.snapshot.journey?.status == "IN_PROGRESS")) {
+                model.refreshIfNeeded()
+                model.syncDeviceSteps()
+            }
+            refreshHandler.postDelayed(this, STEP_SYNC_INTERVAL_MS)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,7 +72,8 @@ class JourneyActivity : AppCompatActivity() {
         routeMap = JourneyRouteMap(this, savedInstanceState, binding.mapHost)
         binding.progressBar.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> layoutProgress() }
 
-        model = ViewModelProvider(this, JourneyViewModelFactory(ExploreModule.repository(this), ExploreModule.stepSource(this)))[
+        model = TabViewModels.provider(applicationContext, JourneyViewModelFactory(ExploreModule.repository(applicationContext), ExploreModule.stepSource(applicationContext),
+            StepTestPreferences(this)))[
             JourneyViewModel::class.java]
         model.state.observe(this, ::render)
 
@@ -77,7 +93,7 @@ class JourneyActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = closeTab()
         })
-        binding.bottomNavigation.tabJourney.setOnClickListener { model.load() }
+        binding.bottomNavigation.tabJourney.setOnClickListener { model.refreshIfNeeded() }
         binding.bottomNavigation.tabCollection.setOnClickListener { openTabToRight(CollectionActivity::class.java) }
         binding.bottomNavigation.tabQuest.setOnClickListener { openTabToRight(QuestActivity::class.java) }
     }
@@ -111,18 +127,23 @@ class JourneyActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         routeMap.onResume()
-        // Progress may have been synced on Explore while this screen was in the back stack.
-        if (resumedOnce) model.load()
-        resumedOnce = true
+        model.refreshIfNeeded()
+        model.syncDeviceSteps()
+        binding.contentScroll.post { binding.contentScroll.scrollTo(0, model.scrollY) }
+        refreshHandler.removeCallbacks(refreshProgress)
+        refreshHandler.postDelayed(refreshProgress, STEP_SYNC_INTERVAL_MS)
     }
-    override fun onPause() { routeMap.onPause(); super.onPause() }
+    override fun onPause() {
+        model.scrollY = binding.contentScroll.scrollY
+        refreshHandler.removeCallbacks(refreshProgress); routeMap.onPause(); super.onPause()
+    }
     override fun onStop() { routeMap.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); routeMap.onLowMemory() }
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         routeMap.onSaveInstanceState(outState)
     }
-    override fun onDestroy() { routeMap.onDestroy(); super.onDestroy() }
+    override fun onDestroy() { refreshHandler.removeCallbacksAndMessages(null); routeMap.onDestroy(); super.onDestroy() }
 
     private fun render(state: JourneyUiState) = with(binding) {
         activeItemBanner.show((state as? JourneyUiState.Loaded)?.snapshot?.journey)
@@ -207,8 +228,9 @@ class JourneyActivity : AppCompatActivity() {
         stepsTotal.text = "/ ${format(journey.requiredSteps)} bước"
         percentValue.text = percent(journey.recordedSteps, journey.requiredSteps)
         remainingValue.text = format(remaining)
-        syncedText.text = "Đã đồng bộ · ${SimpleDateFormat("HH:mm", Locale.forLanguageTag("vi-VN"))
-            .format(Date(state.syncedAtMillis))}"
+        val checkedAt = SimpleDateFormat("HH:mm", Locale.forLanguageTag("vi-VN")).format(Date(state.syncedAtMillis))
+        syncedText.text = if (state.stepsSynced) "Đã đồng bộ bước · $checkedAt"
+            else "Đã tải tiến độ · $checkedAt" + (state.syncMessage?.let { "\n$it" } ?: "")
         progressCard.contentDescription = "Tiến độ hành trình: đã đi ${stepsCount.text} trên " +
             "${format(journey.requiredSteps)} bước, ${percentValue.text}, còn ${remainingValue.text} bước. " +
             syncedText.text
@@ -267,6 +289,7 @@ class JourneyActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val STEP_SYNC_INTERVAL_MS = 5_000L
         /** Result extra: Khám phá should frame the current journey (or the virtual location). */
         const val EXTRA_FOCUS_MAP = "focus_map"
     }

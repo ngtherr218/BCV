@@ -34,6 +34,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.project.bcv.core.ui.BottomNav
 import com.project.bcv.core.ui.NavTab
+import com.project.bcv.core.ui.TabViewModels
+import com.project.bcv.core.ui.TabRefresh
 import com.project.bcv.core.ui.ScreenMotion
 import com.project.bcv.databinding.ActivityExploreBinding
 import com.project.bcv.feature.account.auth.presentation.AccountActivity
@@ -68,7 +70,9 @@ class ExploreActivity : AppCompatActivity() {
     private var shownStepsJourneyId: Long? = null
     /** Set while Hành trình is open, so coming back slides this tab in from the left. */
     private var returningFromTab = false
-    private var resumedOnce = false
+    private val avatarFreshness = TabRefresh()
+    private var avatarLoaded = false
+    private var shownAvatar: String? = null
     /** Set when Hành trình's map card was tapped: frame the journey (or virtual location) on return. */
     private var focusMapOnReturn = false
     private val journeyLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -157,7 +161,7 @@ class ExploreActivity : AppCompatActivity() {
         goongMap.attach(binding.mapHost)
         scheduleMapTimeout()
 
-        model = ViewModelProvider(this, ExploreViewModelFactory(
+        model = TabViewModels.provider(applicationContext, ExploreViewModelFactory(
             ExploreModule.repository(this), ExploreModule.stepSource(this), ExploreModule.addressLookup(), com.project.bcv.feature.discovery.data.StepTestPreferences(this)
         ))[ExploreViewModel::class.java]
         notificationBell = com.project.bcv.feature.statsnotify.notifications.presentation.NotificationBell(
@@ -195,7 +199,7 @@ class ExploreActivity : AppCompatActivity() {
         binding.notificationsButton.setOnClickListener { startActivity(Intent(this, NotificationsActivity::class.java)) }
         binding.profileButton.setOnClickListener { startActivity(Intent(this, ProfileActivity::class.java)) }
         BottomNav.select(binding.bottomNavigation, NavTab.EXPLORE)
-        binding.bottomNavigation.tabExplore.setOnClickListener { model.load() }
+        binding.bottomNavigation.tabExplore.setOnClickListener { model.refreshIfNeeded() }
         binding.bottomNavigation.tabJourney.setOnClickListener { openJourney() }
         binding.bottomNavigation.tabCollection.setOnClickListener {
             startActivity(BottomNav.intent(this, CollectionActivity::class.java, NavTab.EXPLORE))
@@ -207,7 +211,7 @@ class ExploreActivity : AppCompatActivity() {
             BottomNav.skipTransition(this, opening = true)
             returningFromTab = true
         }
-        if (model.state.value?.snapshot == null) model.load()
+        model.refreshIfNeeded()
         stepsPermissionAsked = savedInstanceState?.getBoolean(STEPS_PERMISSION_ASKED_KEY) ?: false
         activityPermissionAsked = savedInstanceState?.getBoolean("activityPermissionAsked") ?: false
         notificationPermissionAsked = savedInstanceState?.getBoolean("notificationPermissionAsked") ?: false
@@ -270,10 +274,8 @@ class ExploreActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         goongMap.onResume()
-        // A directly opened item screen can equip shoes without switching tabs.
-        if (resumedOnce && !returningFromTab) model.load()
-        resumedOnce = true
-        // Refreshed on every return so a photo changed in Hồ sơ shows here at once.
+        // Mutations invalidate the cached tab; a normal return keeps its existing content.
+        model.refreshIfNeeded()
         loadProfileAvatar()
         if (::model.isInitialized) {
             model.checkPermission()
@@ -284,8 +286,6 @@ class ExploreActivity : AppCompatActivity() {
         if (returningFromTab) {
             returningFromTab = false
             BottomNav.enter(BottomNav.contentOf(binding.root, binding.bottomNavigation), fromRight = false)
-            // Other tabs can change what this screen shows (a flight ticket moves the virtual location).
-            model.load()
         }
         if (focusMapOnReturn) {
             focusMapOnReturn = false
@@ -306,10 +306,13 @@ class ExploreActivity : AppCompatActivity() {
     }
     override fun onDestroy() { handler.removeCallbacksAndMessages(null); stepsAnimator?.cancel(); goongMap.onDestroy(); super.onDestroy() }
 
-    /** Sends new steps on its own every minute while this screen shows (see ExploreViewModel.autoSyncSteps). */
+    /** Checks for new steps every five seconds while visible; unchanged totals are not posted. */
     private val autoSync = object : Runnable {
         override fun run() {
-            if (::model.isInitialized) model.autoSyncSteps()
+            if (::model.isInitialized) {
+                model.refreshIfNeeded()
+                model.autoSyncSteps()
+            }
             handler.postDelayed(this, AUTO_SYNC_INTERVAL_MS)
         }
     }
@@ -575,10 +578,15 @@ class ExploreActivity : AppCompatActivity() {
 
     /** Shows the user's avatar on the profile button; without one (or on any error) the person icon stays. */
     private fun loadProfileAvatar() {
+        if (!avatarFreshness.shouldRefresh(avatarLoaded)) return
         lifecycleScope.launch {
             val avatar = try {
                 withContext(Dispatchers.IO) { ProfileModule.repository(this@ExploreActivity).profile().avatar }
             } catch (_: Exception) { return@launch }
+            avatarFreshness.loaded()
+            if (avatarLoaded && avatar == shownAvatar) return@launch
+            avatarLoaded = true
+            shownAvatar = avatar
             val bitmap = Avatars.immediate(avatar) ?: avatar?.let { Avatars.load(it) }
             binding.profileAvatar.setImageBitmap(bitmap)
             binding.profileAvatar.visibility = if (bitmap == null) View.GONE else View.VISIBLE
@@ -652,6 +660,6 @@ class ExploreActivity : AppCompatActivity() {
     private companion object {
         const val SHEET_STATE_KEY = "explore_sheet_state"
         const val STEPS_PERMISSION_ASKED_KEY = "explore_steps_permission_asked"
-        const val AUTO_SYNC_INTERVAL_MS = 60_000L
+        const val AUTO_SYNC_INTERVAL_MS = 5_000L
     }
 }
