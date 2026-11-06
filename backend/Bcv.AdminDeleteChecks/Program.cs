@@ -29,11 +29,20 @@ try
         foreach (var table in tables) await Setup($"CREATE TABLE {schema}.{Q(table)} (LIKE public.{Q(table)} INCLUDING ALL)");
         foreach (var fk in foreignKeys)
             await Setup($"ALTER TABLE {schema}.{Q(fk.Table)} ADD CONSTRAINT {Q(fk.Name)} {fk.Definition.Replace("REFERENCES public.", $"REFERENCES {schema}.")}");
+        // Older local databases may not yet have migration 021. Upgrade only the disposable schema.
+        await Setup("ALTER TABLE recommendation_config ADD COLUMN IF NOT EXISTS settings jsonb; CREATE TABLE IF NOT EXISTS recommendation_rating_snapshot(recommendation_config_id bigint REFERENCES recommendation_config,place_id bigint REFERENCES place,rating numeric(3,2),rating_count integer,PRIMARY KEY(recommendation_config_id,place_id))");
         await Setup("""
+            INSERT INTO recommendation_config(recommendation_config_id,version,distance_limit,cluster_count,status,settings) OVERRIDING SYSTEM VALUE
+              VALUES(-910001,'delete-check',10000,15,'DRAFT','{}');
+            INSERT INTO recommendation_criterion(criterion_id,code,name,status) OVERRIDING SYSTEM VALUE VALUES(-910001,'delete-check','Delete check','ACTIVE');
             INSERT INTO region(region_id,name,status) OVERRIDING SYSTEM VALUE VALUES(-910001,'Delete check region','DRAFT');
             INSERT INTO place_type(place_type_id,name) OVERRIDING SYSTEM VALUE VALUES(-910001,'Delete check type');
             INSERT INTO place(place_id,region_id,place_type_id,name,latitude,longitude,status) OVERRIDING SYSTEM VALUE VALUES(-910001,-910001,-910001,'Delete check place',21,105,'DRAFT');
             INSERT INTO card(card_id,place_id,name,status) OVERRIDING SYSTEM VALUE VALUES(-910001,-910001,'Delete check card','DRAFT');
+            INSERT INTO place_image(place_image_id,place_id,image_key) OVERRIDING SYSTEM VALUE VALUES(-910001,-910001,'https://example.invalid/check.jpg');
+            INSERT INTO place_feature(place_feature_id,place_id,recommendation_config_id,cluster_number) OVERRIDING SYSTEM VALUE VALUES(-910001,-910001,-910001,0);
+            INSERT INTO place_feature_value VALUES(-910001,-910001,1);
+            INSERT INTO recommendation_rating_snapshot VALUES(-910001,-910001,4,1);
             INSERT INTO collection(collection_id,name,status) OVERRIDING SYSTEM VALUE VALUES(-910001,'Delete check collection','DRAFT');
             INSERT INTO collection_card(collection_card_id,collection_id,card_id) OVERRIDING SYSTEM VALUE VALUES(-910001,-910001,-910001);
             INSERT INTO quest(quest_id,name,quest_type,condition_type,target_value,cycle_type,status) OVERRIDING SYSTEM VALUE VALUES(-910001,'Delete check quest','DAILY','STEP_COUNT',1,'DAILY','DRAFT');
@@ -56,6 +65,11 @@ try
     }
     foreach(var resource in new[]{"regions","places","cards","collections"}) await Blocked(resource,true);
     await Blocked("place-types",false);
+    Assert(await Count("place_image")==1 && await Count("place_feature")==1 && await Count("place_feature_value")==1 && await Count("recommendation_rating_snapshot")==1,"Blocked deletion removed owned data");
+    await using(var cmd=isolated.CreateCommand("DROP TABLE recommendation_rating_snapshot")) await cmd.ExecuteNonQueryAsync();
+    await Blocked("places",true);
+    Console.WriteLine("PASS missing optional snapshot table does not bypass business references");
+    await using(var cmd=isolated.CreateCommand("CREATE TABLE recommendation_rating_snapshot(recommendation_config_id bigint REFERENCES recommendation_config,place_id bigint REFERENCES place,rating numeric(3,2),rating_count integer,PRIMARY KEY(recommendation_config_id,place_id)); INSERT INTO recommendation_rating_snapshot VALUES(-910001,-910001,4,1)")) await cmd.ExecuteNonQueryAsync();
     Assert(await Count("collection_card")==1,"Membership cascaded away");
     // Test ON DELETE SET NULL and CASCADE explicitly, including references outside public.
     await using(var cmd=isolated.CreateCommand("CREATE TABLE quest_link(id bigint PRIMARY KEY,quest_id bigint REFERENCES quest(quest_id) ON DELETE SET NULL); INSERT INTO quest_link VALUES(1,-910001); CREATE TABLE region_link(id bigint PRIMARY KEY,region_id bigint REFERENCES region(region_id) ON DELETE CASCADE); INSERT INTO region_link VALUES(1,-910001)")) await cmd.ExecuteNonQueryAsync();
@@ -79,6 +93,12 @@ try
         await repo.Delete(resource,-910001,default);
         Assert(await Count(AdminCatalog.Resources[resource].Table)==0,"Unlinked record not deleted: " + resource);
         Console.WriteLine("PASS unlinked eligibility + actual DELETE: " + resource);
+        if(resource=="places")
+        {
+            foreach(var table in new[]{"place_image","place_feature","place_feature_value","recommendation_rating_snapshot"})
+                Assert(await Count(table)==0,"Owned data not cleaned: " + table);
+            Console.WriteLine("PASS place with only images/features/snapshots is deletable; owned rows cleaned atomically");
+        }
     }
     // Region now only has the CASCADE link. It must still be protected.
     await Blocked("regions",true);
