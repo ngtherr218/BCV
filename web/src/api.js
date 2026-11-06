@@ -26,7 +26,26 @@ export async function api(path, options = {}) {
   } finally { clearTimeout(timeout); }
 }
 export const number = value => new Intl.NumberFormat('vi-VN').format(value || 0);
-export const date = value => value ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value.endsWith?.('Z') ? value : `${value}Z`)) : '—';
+const dateFormatter = new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium', timeStyle: 'short' });
+export function date(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  let parsed;
+  if (value instanceof Date) parsed = value;
+  else if (typeof value === 'number') parsed = new Date(value);
+  else if (typeof value === 'string') {
+    let text = value.trim();
+    if (!text) return '—';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) text += 'T00:00:00Z';
+    else {
+      text = text.replace(/^(\d{4}-\d{2}-\d{2})\s+/, '$1T');
+      // PostgreSQL JSON includes an explicit offset. Naive API timestamps retain the UTC convention.
+      if (/T\d{2}:\d{2}/.test(text) && /[+-]\d{2}$/.test(text)) text += ':00';
+      if (!/(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(text)) text += 'Z';
+    }
+    parsed = new Date(text);
+  } else return '—';
+  return Number.isFinite(parsed.getTime()) ? dateFormatter.format(parsed) : '—';
+}
 export function downloadCSV(rows, columns, file) {
   const escape = value => { let text = String(value ?? ''); if (/^[=+@\-\t\r]/.test(text)) text = "'" + text; return `"${text.replaceAll('"', '""')}"`; };
   const csv = '\ufeff' + [columns.map(c => escape(c.label)), ...rows.map(row => columns.map(c => escape(row[c.key])))].map(row => row.join(',')).join('\r\n');
