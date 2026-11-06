@@ -26,6 +26,8 @@ static class ModerationChecks
             SELECT n,'Moderation fixture '||n,'moderation-'||n||'@example.invalid','unused',CASE WHEN n=950005 THEN 'ADMIN' ELSE 'USER' END,'ACTIVE' FROM generate_series(950001,950005) n;
             INSERT INTO quest(quest_id,name,quest_type,condition_type,target_value,cycle_type,status) OVERRIDING SYSTEM VALUE VALUES(950001,'Media fixture','DAILY','MEDIA_APPROVED',1,'DAILY','ACTIVE');
             UPDATE place SET status='ACTIVE' WHERE place_id=910001;
+            UPDATE region SET status='ACTIVE' WHERE region_id=910001;
+            INSERT INTO user_discovered_place(user_id,place_id) SELECT n,910001 FROM generate_series(950001,950004) n;
             INSERT INTO community_media(media_id,user_id,place_id,mime_type,media_data) OVERRIDING SYSTEM VALUE VALUES(950001,950001,910001,'image/png',decode('89504e470d0a1a0a00000000','hex'));
             INSERT INTO community_media(media_id,user_id,place_id,mime_type,media_data) OVERRIDING SYSTEM VALUE VALUES(950002,950001,910001,'image/png',decode('89504e470d0a1a0a00000000','hex'));
             INSERT INTO place(place_id,region_id,place_type_id,name,latitude,longitude,status) OVERRIDING SYSTEM VALUE VALUES(950020,910001,910001,'Other place media fixture',21,105,'ACTIVE');
@@ -46,6 +48,9 @@ static class ModerationChecks
             });
             PlaceVideos.MapEndpoints(videoAdmin,app);await app.StartAsync();
             using var client=new HttpClient{BaseAddress=new Uri(app.Urls.Single())};
+            await MediaAccessChecks.Run(db,client);
+            await PhotoQuestChecks.Run(db);
+            client.DefaultRequestHeaders.Authorization=null;
             void Token(string? token){client.DefaultRequestHeaders.Authorization=token is null?null:new AuthenticationHeaderValue("Bearer",token);}
             async Task Send(string url,object body,HttpStatusCode expected){using var response=await client.PostAsJsonAsync(url,body);Check(response.StatusCode==expected,$"{url}: {response.StatusCode}, expected {expected}: {await response.Content.ReadAsStringAsync()}");}
             using(var r=await client.GetAsync("/api/admin/community-media"))Check(r.StatusCode==HttpStatusCode.Unauthorized,"Anonymous admin access");
@@ -83,7 +88,8 @@ static class ModerationChecks
             await Send("/api/community-media/950001/reports",new{reason="Vi phạm được xác nhận"},HttpStatusCode.OK);
             await Send("/api/admin/community-media/950001/review",new{status="REMOVED",note="Cần gỡ",expectedStatus="APPROVED"},HttpStatusCode.OK);
             Check(await Scalar("SELECT count(*) FROM media_report WHERE media_id=950001 AND status='ACCEPTED'")==1,"Removing reported content must accept its report");
-            Token(null);using(var r=await client.GetAsync("/api/community-media/950001/content"))Check(r.StatusCode==HttpStatusCode.NotFound,"Removed content still public");
+            Token(null);using(var r=await client.GetAsync("/api/community-media/950001/content"))Check(r.StatusCode==HttpStatusCode.Unauthorized,"Anonymous removed-content access was accepted");
+            Token("950001");using(var r=await client.GetAsync("/api/community-media/950001/content"))Check(r.StatusCode==HttpStatusCode.NotFound,"Removed file remained available to owner");
             Token("950005");await Send("/api/admin/community-media/950001/review",new{status="APPROVED",note="Đã xử lý",expectedStatus="REMOVED"},HttpStatusCode.BadRequest);
             Check(await Scalar("SELECT progress_value FROM quest_progress WHERE user_id=950001 AND quest_id=950001")==1,"Removed restore repeated task credit");
             Console.WriteLine("PASS report uniqueness/self-report protection, threshold auto-hide, report queue, restore/remove visibility and no repeated task credit");
@@ -113,7 +119,7 @@ static class ModerationChecks
         }
         finally
         {
-            await Exec("DELETE FROM media_report; DELETE FROM community_media WHERE user_id BETWEEN 950001 AND 950005; DELETE FROM place WHERE place_id=950020; DELETE FROM notification WHERE user_id BETWEEN 950001 AND 950005; DELETE FROM quest_progress WHERE quest_id=950001; DELETE FROM quest WHERE quest_id=950001; DELETE FROM app_user WHERE user_id BETWEEN 950001 AND 950005; UPDATE place SET status='DRAFT' WHERE place_id=910001");
+            await Exec("DELETE FROM media_report; DELETE FROM community_media WHERE user_id BETWEEN 950001 AND 950005; DELETE FROM notification WHERE user_id BETWEEN 950001 AND 950005; DELETE FROM quest_progress WHERE quest_id=950001; DELETE FROM quest WHERE quest_id=950001; DELETE FROM user_discovered_place WHERE user_id BETWEEN 950001 AND 950005; DELETE FROM place WHERE place_id=950020; DELETE FROM app_user WHERE user_id BETWEEN 950001 AND 950005; UPDATE place SET status='DRAFT' WHERE place_id=910001; UPDATE region SET status='DRAFT' WHERE region_id=910001");
         }
     }
     sealed class ModerationSessions:ISessionStore

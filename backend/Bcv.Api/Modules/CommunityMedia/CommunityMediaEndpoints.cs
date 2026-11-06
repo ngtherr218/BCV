@@ -65,7 +65,8 @@ public static class CommunityMediaEndpoints
             var user = CurrentUser.Get(request, sessions);
             if (user is null) return Results.Unauthorized();
             request.HttpContext.Response.Headers.CacheControl = "no-store";
-            return Results.Ok(new { items = await List(db, placeId, user.UserId, false, approvedOnly==true?"APPROVED":"", ct) });
+            if (!await CanUsePlace(db, placeId, user.UserId, ct)) return PlaceUnavailable();
+            return Results.Ok(new { items = await List(db, placeId, user.UserId, approvedOnly == true, ct) });
         });
 
         app.MapPost("/api/places/{placeId:long}/media", async (long placeId, string? caption,
@@ -92,10 +93,10 @@ public static class CommunityMediaEndpoints
             }
             var bytes = memory.Length==memory.Capacity?memory.GetBuffer():memory.ToArray();
             if (!ValidHeader(mime!, bytes)) return Results.BadRequest(new { message = "Nội dung tệp không đúng định dạng." });
-            if(!image)
+            if (!image)
             {
-                try { _ = mime=="video/webm" ? WebmMetadata.Inspect(bytes) : PlaceVideos.Inspect(bytes); }
-                catch(AdminValidation error){return Results.BadRequest(new{message=error.Message});}
+                try { _ = mime == "video/webm" ? WebmMetadata.Inspect(bytes) : PlaceVideos.Inspect(bytes); }
+                catch (AdminValidation error) { return Results.BadRequest(new { message = error.Message }); }
             }
             await using var uploadConnection=await db.OpenConnectionAsync(ct);
             await using var uploadTransaction=await uploadConnection.BeginTransactionAsync(ct);
@@ -104,6 +105,17 @@ public static class CommunityMediaEndpoints
                 permission.Parameters.AddWithValue(user.UserId);
                 var blocked=await permission.ExecuteScalarAsync(ct);
                 if(blocked is not false)return Results.Json(new {message="Quyền gửi nội dung đã bị khóa hoặc tài khoản không còn hoạt động."},statusCode:403);
+            }
+            // Keep the discovery and visibility decision valid until the upload commits.
+            await using (var place = new NpgsqlCommand("""
+                SELECT p.place_id FROM place p JOIN region r USING(region_id)
+                JOIN user_discovered_place d ON d.place_id=p.place_id AND d.user_id=$2
+                WHERE p.place_id=$1 AND p.status='ACTIVE' AND r.status='ACTIVE'
+                FOR SHARE OF p,r,d
+                """, uploadConnection, uploadTransaction))
+            {
+                place.Parameters.AddWithValue(placeId); place.Parameters.AddWithValue(user.UserId);
+                if (await place.ExecuteScalarAsync(ct) is null) return PlaceUnavailable();
             }
             await using var command = new NpgsqlCommand("""
                 INSERT INTO community_media(user_id,place_id,caption,mime_type,media_data)
@@ -122,19 +134,28 @@ public static class CommunityMediaEndpoints
         }).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(PlaceVideos.MaxBytes));
 
         app.MapGet("/api/community-media/{id:long}/content", async (long id, HttpRequest request,
-            ISessionStore sessions, NpgsqlDataSource db, AdminRepository admins, CancellationToken ct) =>
+            ISessionStore sessions, NpgsqlDataSource db, CancellationToken ct) =>
         {
             var user = CurrentUser.Get(request, sessions);
-            await using var command = db.CreateCommand("SELECT user_id,mime_type,media_data,status FROM community_media WHERE media_id=$1");
+            if (user is null) return Results.Unauthorized();
+            // Administrators must still be able to moderate files after a place is hidden.
+            // All other viewers, including the owner, need an active, discovered place.
+            await using var command = db.CreateCommand("""
+                SELECT m.mime_type,m.media_data FROM community_media m
+                JOIN place p ON p.place_id=m.place_id JOIN region r USING(region_id)
+                JOIN app_user viewer ON viewer.user_id=$2 AND viewer.status='ACTIVE'
+                WHERE m.media_id=$1 AND m.media_data IS NOT NULL AND
+                  (viewer.role='ADMIN' OR (p.status='ACTIVE' AND r.status='ACTIVE'
+                    AND EXISTS(SELECT 1 FROM user_discovered_place d WHERE d.place_id=p.place_id AND d.user_id=$2)
+                    AND (m.status='APPROVED' OR m.user_id=$2)))
+                """);
             command.Parameters.AddWithValue(id);
+            command.Parameters.AddWithValue(user.UserId);
             await using var reader = await command.ExecuteReaderAsync(ct);
             if (!await reader.ReadAsync(ct)) return Results.NotFound();
-            if (reader.IsDBNull(2)) return Results.NotFound();
-            if (reader.GetString(3) != "APPROVED" && (user is null ||
-                user.UserId != reader.GetInt64(0) && !await admins.IsAdmin(user.UserId, ct))) return Results.NotFound();
             request.HttpContext.Response.Headers.CacheControl = "private, no-store";
             request.HttpContext.Response.Headers["X-Content-Type-Options"] = "nosniff";
-            return Results.File(reader.GetFieldValue<byte[]>(2), reader.GetString(1), enableRangeProcessing: true);
+            return Results.File(reader.GetFieldValue<byte[]>(1), reader.GetString(0), enableRangeProcessing: true);
         });
 
         var admin = app.MapGroup("/api/admin/community-media");
@@ -174,26 +195,48 @@ public static class CommunityMediaEndpoints
         });
     }
 
-    private static async Task<List<object>> List(NpgsqlDataSource db, long? placeId, long userId, bool admin, string status, CancellationToken ct)
+    private static IResult PlaceUnavailable() => Results.NotFound(new {
+        code = "PLACE_NOT_AVAILABLE", message = "Chỉ xem và gửi nội dung tại địa danh đã khám phá, còn hoạt động." });
+
+    private static async Task<bool> CanUsePlace(NpgsqlDataSource db, long placeId, long userId, CancellationToken ct)
     {
         await using var command = db.CreateCommand("""
-            SELECT m.media_id,m.place_id,p.name,u.full_name,m.caption,m.mime_type,m.status,m.review_note,m.created_at
+            SELECT EXISTS(SELECT 1 FROM place p JOIN region r USING(region_id)
+              JOIN user_discovered_place d ON d.place_id=p.place_id AND d.user_id=$2
+              JOIN app_user u ON u.user_id=d.user_id AND u.status='ACTIVE'
+              WHERE p.place_id=$1 AND p.status='ACTIVE' AND r.status='ACTIVE')
+            """);
+        command.Parameters.AddWithValue(placeId); command.Parameters.AddWithValue(userId);
+        return (bool)(await command.ExecuteScalarAsync(ct))!;
+    }
+
+    private static async Task<List<object>> List(NpgsqlDataSource db, long placeId, long userId, bool approvedOnly, CancellationToken ct)
+    {
+        await using var command = db.CreateCommand("""
+            SELECT m.media_id,m.place_id,p.name,u.full_name,m.caption,m.mime_type,m.status,m.review_note,m.created_at,
+                m.user_id=$2 AS is_owner,m.media_data IS NOT NULL AS content_available,
+                m.status='APPROVED' AND m.user_id<>$2 AND m.media_data IS NOT NULL
+                  AND NOT EXISTS(SELECT 1 FROM media_report report WHERE report.media_id=m.media_id AND report.reporter_id=$2) AS can_report
             FROM community_media m JOIN place p ON p.place_id=m.place_id JOIN app_user u ON u.user_id=m.user_id
-            WHERE ($1::bigint IS NULL OR m.place_id=$1) AND ($3 OR m.status='APPROVED' OR m.user_id=$2)
-                AND ($4='' OR m.status=$4)
+            JOIN region r ON r.region_id=p.region_id
+            WHERE m.place_id=$1 AND (m.status='APPROVED' OR m.user_id=$2)
+                AND (NOT $3 OR m.status='APPROVED')
+                AND p.status='ACTIVE' AND r.status='ACTIVE'
+                AND EXISTS(SELECT 1 FROM user_discovered_place d JOIN app_user viewer ON viewer.user_id=d.user_id
+                    WHERE d.place_id=p.place_id AND d.user_id=$2 AND viewer.status='ACTIVE')
             ORDER BY COALESCE(m.reviewed_at,m.created_at) DESC,m.media_id DESC LIMIT 100
             """);
-        command.Parameters.AddWithValue(NpgsqlTypes.NpgsqlDbType.Bigint, (object?)placeId ?? DBNull.Value);
+        command.Parameters.AddWithValue(placeId);
         command.Parameters.AddWithValue(userId);
-        command.Parameters.AddWithValue(admin);
-        command.Parameters.AddWithValue(status);
+        command.Parameters.AddWithValue(approvedOnly);
         var items = new List<object>();
         await using var reader = await command.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct)) items.Add(new {
             mediaId = reader.GetInt64(0), placeId = reader.GetInt64(1), placeName = reader.GetString(2),
             author = reader.GetString(3), caption = reader.GetString(4), mimeType = reader.GetString(5),
             status = reader.GetString(6), reviewNote = reader.IsDBNull(7) ? null : reader.GetString(7),
-            createdAt = reader.GetDateTime(8), contentUrl = $"/api/community-media/{reader.GetInt64(0)}/content"
+            createdAt = reader.GetDateTime(8), contentUrl = $"/api/community-media/{reader.GetInt64(0)}/content",
+            isOwner = reader.GetBoolean(9), contentAvailable = reader.GetBoolean(10), canReport = reader.GetBoolean(11)
         });
         return items;
     }

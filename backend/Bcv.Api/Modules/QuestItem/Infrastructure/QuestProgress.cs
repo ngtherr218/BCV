@@ -13,6 +13,8 @@ public static class QuestProgress
     public const string StepCount = "STEP_COUNT";
     public const string DiscoverPlace = "DISCOVER_PLACE";
     public const string CompleteJourney = "COMPLETE_JOURNEY";
+    public const string MediaApproved = "MEDIA_APPROVED";
+    public const string PhotoApproved = "PHOTO_APPROVED";
 
     public static async Task RecordAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
         long userId, string conditionType, int amount, CancellationToken ct)

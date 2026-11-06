@@ -14,11 +14,11 @@ function metadata(file){return new Promise((resolve,reject)=>{
 });}
 function Preview({video}){
   const [open,setOpen]=useState(false),[url,setUrl]=useState(''),[error,setError]=useState('');
-  useEffect(()=>{if(!open)return;const controller=new AbortController();let local;
-    fetch(video.url,{signal:controller.signal,headers:{Authorization:`Bearer ${session.get()?.token}`}}).then(async r=>{if(!r.ok)throw Error('Không tải được video.');return r.blob();}).then(blob=>{if(!controller.signal.aborted){local=URL.createObjectURL(blob);setUrl(local);}}).catch(e=>{if(e.name!=='AbortError')setError(e.message);});
+  useEffect(()=>{setUrl('');setError('');if(!open)return;const controller=new AbortController();let local;
+    fetch(video.url,{signal:controller.signal,headers:{Authorization:`Bearer ${session.get()?.token}`}}).then(async r=>{if(!r.ok)throw Error('Không tải được video.');return r.blob();}).then(blob=>{if(!controller.signal.aborted){local=URL.createObjectURL(blob);setUrl(local);}}).catch(e=>{if(!controller.signal.aborted)setError(e.message);});
     return()=>{controller.abort();if(local)URL.revokeObjectURL(local);};
   },[open,video.url]);
-  return <><button type="button" className="button secondary small" onClick={()=>setOpen(!open)}><Video size={15}/>{open?'Đóng video':'Xem video'}</button>{open&&(url?<video className="place-video-preview" controls preload="metadata" src={url}/>:<p role="status">{error||'Đang tải video…'}</p>)}</>;
+  return <><button type="button" className="button secondary small" onClick={()=>{setUrl('');setError('');setOpen(!open);}}><Video size={15}/>{open?'Đóng video':'Xem video'}</button>{open&&(error?<p className="field-error" role="alert">{error}</p>:url?<video className="place-video-preview" controls preload="metadata" src={url} onError={()=>setError('Không phát được video.')}/>:<p role="status">Đang tải video…</p>)}</>;
 }
 export default function PlaceVideosField({value=[],change,readOnly=false,onBusy}){
   const [busy,setBusy]=useState(false),[error,setError]=useState('');

@@ -191,10 +191,10 @@ Cấu hình Goong REST API Key bằng `Goong__ApiKey`. Script `run-local.ps1` c�
 
 ## Ảnh/video cộng đồng và kiểm duyệt
 
-- Android: Chi tiết địa danh → Ảnh/video cộng đồng → chọn tệp và gửi.
+- Android: Mở khóa địa danh → Chi tiết → Ảnh/video cộng đồng → chọn tệp, nhập mô tả và gửi. Ảnh/video mới ở trạng thái `PENDING`.
 - Web quản trị: Duyệt ảnh/video → mở xem trước → Duyệt công khai hoặc Từ chối, kèm ghi chú.
-- Chỉ nội dung APPROVED được xem công khai. Người gửi xem được trạng thái nội dung của mình.
-- JPEG/PNG/WebP tối đa 10 MB; MP4/WebM tối đa 30 MB; mô tả tối đa 500 ký tự.
+- Chỉ người dùng đã đăng nhập và mở khóa địa danh đang `ACTIVE` trong khu vực `ACTIVE` được xem/gửi nội dung cộng đồng. Nội dung `APPROVED` hiện với những người dùng này; người gửi xem được nội dung và kết quả duyệt của mình. Quản trị viên đang hoạt động có thể xem tệp để kiểm duyệt, kể cả khi địa danh đã bị ẩn. Tệp không truy cập vô danh, các yêu cầu ảnh/video đều cần Bearer token.
+- JPEG/PNG/WebP tối đa 10 MB; video MP4/WebM tối đa 100 MiB, 60 giây và 1080p; mô tả tối đa 500 ký tự. Nội dung đã lưu vẫn được xem theo cùng quyền truy cập. Không tự nén hoặc chuyển mã tệp.
 - Migration db/022_community_media.sql được nhúng và chạy idempotent khi API khởi động. Tệp hiện lưu BYTEA trong PostgreSQL; không phụ thuộc ổ đĩa container.
 - Danh sách trả tối đa 100 mục mới nhất theo trạng thái.
 - API: GET/POST /api/places/{id}/media, GET /api/community-media/{id}/content, GET /api/admin/community-media, POST /api/admin/community-media/{id}/review.
@@ -219,9 +219,10 @@ Trang **Kiểm duyệt nội dung** (`#media`) có các bộ lọc trạng thái
 - Duyệt sau khi tải được bản xem trước. Từ chối/gỡ/khôi phục/khóa quyền gửi đều có dialog xác nhận; lý do là bắt buộc, trừ lần duyệt mới.
 - `PENDING → APPROVED/REJECTED`; `APPROVED → REMOVED`; `FLAGGED → APPROVED/REMOVED`. `REMOVED` là trạng thái kết thúc sau khi xóa tệp. Nội dung APPROVED có báo cáo mở có thể giữ công khai và đóng báo cáo sau khi kiểm tra.
 - Gỡ là ngừng công khai và xóa tệp vĩnh viễn; chỉ nội dung đang tạm ẩn do báo cáo mới có thể được khôi phục. Tệp bị từ chối được dọn sau 7 ngày.
-- Kết quả kiểm duyệt và thay đổi quyền gửi tạo thông báo cho người gửi trong cùng transaction. Điều kiện nhiệm vụ `MEDIA_APPROVED` chỉ tăng một lần khi duyệt đầu tiên, không tăng lại khi khôi phục.
+- Kết quả kiểm duyệt và thay đổi quyền gửi tạo thông báo cho người gửi trong cùng transaction. Điều kiện **Ảnh được duyệt** (`PHOTO_APPROVED`) chỉ tăng khi ảnh được duyệt lần đầu; video không tăng điều kiện này. Điều kiện cũ `MEDIA_APPROVED` vẫn tính cả ảnh/video để giữ các nhiệm vụ đã cấu hình. Duyệt lại/khôi phục không cộng lần hai; tiến độ được tính vào chu kỳ ngày/tuần tại thời điểm phê duyệt.
+- Quản trị tạo nhiệm vụ ở **Nhiệm vụ → Điều kiện hoàn thành → Ảnh được duyệt**, đặt mục tiêu (ví dụ 1 ảnh), chu kỳ, phần thưởng và trạng thái `ACTIVE`. Không tự thêm hay đổi phần thưởng của các nhiệm vụ đang sử dụng.
 - Khóa quyền gửi không khóa toàn bộ tài khoản; API upload kiểm tra quyền này trực tiếp tại backend.
-- API `POST /api/community-media/{id}/reports` nhận `{ reason }`: không tự báo cáo, không báo cáo trùng; mặc định 3 báo cáo mở từ các tài khoản khác nhau sẽ tạm ẩn. Đổi ngưỡng bằng `CommunityMedia__ReportThreshold` (1–100). API đã có; nút báo cáo trên Android chưa được bổ sung trong đợt thay đổi web này.
+- API `POST /api/community-media/{id}/reports` nhận `{ reason }`: người xem có quyền mở khóa có thể báo cáo nội dung đã duyệt của người khác; không tự báo cáo hoặc báo cáo trùng. Android có nút **Báo cáo** và ô nhập lý do. Mặc định 3 báo cáo mở từ các tài khoản khác nhau sẽ tạm ẩn. Đổi ngưỡng bằng `CommunityMedia__ReportThreshold` (1–100).
 - Các API quản trị: `GET /api/admin/community-media?status=&q=&kind=image|video&reported=true&page=1&pageSize=12`; `GET /api/admin/community-media/{id}/reports`; `POST /api/admin/community-media/{id}/review` với `{status,note,expectedStatus}`; `POST /api/admin/community-media/users/{id}/upload-access` với `{blocked,note}`. Tất cả yêu cầu tài khoản ADMIN đang hoạt động.
 - Migration `db/024_media_moderation.sql` được nhúng và tự chạy khi backend khởi động. Tạo thêm bảng `media_report`, cột `app_user.media_upload_blocked`, `community_media.first_approved_at` và trạng thái FLAGGED/REMOVED. Sau migration 024 có 31 bảng; migration 025 thêm `place_video`, tổng cộng 32 bảng.
 - Kiểm thử bằng `./backend/test-admin-delete.ps1`: bao gồm HTTP authentication/authorization, từ chối thiếu lý do, báo cáo/ẩn/khôi phục, quyền gửi, thông báo và chống cộng lặp nhiệm vụ; sử dụng schema PostgreSQL local riêng và tự dọn.
@@ -232,16 +233,16 @@ Trang **Kiểm duyệt nội dung** (`#media`) có các bộ lọc trạng thái
 - Web thêm/sửa địa danh cho tải video MP4, tối đa 100 MB, 60 giây, 1080p. Cả trình duyệt và backend kiểm tra thông tin video. Backend đọc cấu trúc MP4; tệp không có metadata/thời lượng hoặc luồng video hợp lệ bị từ chối. Chưa có tính năng tự chuyển mã/nén video hoặc hỗ trợ mọi biến thể MP4 phân mảnh.
 - Video tải trước được giữ tạm theo tài khoản quản trị; video_ids chỉ được gắn khi lưu địa danh trong cùng transaction. Tệp chưa được gắn sau 24 giờ được dọn. Video đã gắn bị loại khỏi biểu mẫu sẽ bị xóa khi lưu thành công.
 - Tổng video chính thức + video cộng đồng đang APPROVED của một địa danh không vượt 5. Khóa hàng địa danh đồng bộ kiểm tra này giữa duyệt và sửa địa danh.
-- Android chỉ nhận danh sách và phát video chính thức khi đã khám phá địa danh; API kiểm tra quyền và hỗ trợ Range/seek. Nút cộng đồng được giữ hiển thị cho cả trang đã khám phá.
+- Android chỉ nhận danh sách và phát video sau khi đã khám phá địa danh; API kiểm tra quyền và hỗ trợ Range/seek. Video chính thức và video cộng đồng đều phát trong app với Bearer token. Nút cộng đồng chỉ hiện tại địa danh đã mở khóa.
 - MediaMaintenance chạy khi khởi động và mỗi giờ: dọn tệp từ chối đến hạn 7 ngày, chuyển nội dung chờ quá 30 ngày sang EXPIRED, dọn video quản trị chưa gắn sau 24 giờ.
 - Báo cáo sau khi gỡ: ACCEPTED; báo cáo bị bác/khôi phục: DISMISSED. Không thể khóa quyền gửi của ADMIN. Có thể quản lý quyền gửi từ chi tiết người dùng.
-- Bản đồ web và Android chỉ hiện ảnh từ zoom 11; phía dưới dùng chấm. Web không tải thumbnail trước ngưỡng này.
+- Bản đồ web và Android chỉ hiện ảnh từ zoom 11; phía dưới dùng chấm. Marker Android giữ dấu phân biệt đã/chưa khám phá kể cả khi có ảnh thu nhỏ. Web không tải thumbnail trước ngưỡng này.
 - Danh sách địa danh khi thêm thẻ loại bỏ mọi địa danh đã có thẻ, kể cả thẻ DRAFT/INACTIVE. Khi sửa thẻ, vẫn giữ lựa chọn địa danh hiện tại; backend và ràng buộc duy nhất tiếp tục chặn tạo trùng.
 
 ## Giới hạn video 100 MB / 1080p / 60 giây
 
 - Migration 026 cập nhật constraint thời lượng của video đã lưu lên 60 giây; không xóa dữ liệu và không thêm bảng.
 - Web quản trị nhận MP4 tối đa 100 MiB (100×1024×1024 byte), 60 giây, 1920×1080 hoặc 1080×1920. Video cộng đồng MP4/WebM dùng cùng giới hạn kích thước/thời lượng/độ phân giải; ảnh vẫn tối đa 10 MB.
-- Backend đọc metadata MP4/WebM, từ chối tệp không xác định được thời lượng/luồng video. Không tự nâng chất lượng, kéo dài hoặc chuyển mã tệp.
+- Backend đọc metadata MP4/WebM, từ chối tệp không xác định được thời lượng/luồng video. WebM phải có Cluster chứa dữ liệu khung hình thuộc đúng track video; chỉ có metadata, block rỗng hoặc dữ liệu audio không đủ để được nhận. Đây là kiểm tra cấu trúc, không giải mã mọi frame để bảo đảm tệp phát được. Không tự nâng chất lượng, kéo dài hoặc chuyển mã tệp.
 - Các endpoint raw upload nâng giới hạn request body tương ứng để không bị chặn tại giới hạn mặc định 30 MB của Kestrel. Web dùng timeout upload 5 phút. Android gửi theo luồng, không nạp toàn bộ tệp lớn vào RAM.
 - Bộ test local có upload HTTP 31 MB, biên 60 giây/1080p (ngang/dọc), chặn trên 100 MB, 61 giây và 4K, cùng kiểm tra migration lặp lại khi đã có video 60 giây.

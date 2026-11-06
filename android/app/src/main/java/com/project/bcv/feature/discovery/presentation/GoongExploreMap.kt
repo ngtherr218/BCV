@@ -24,12 +24,16 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import com.project.bcv.BuildConfig
 import com.project.bcv.R
+import com.project.bcv.core.network.MediaUrlPolicy
+import com.project.bcv.core.ui.RemoteImages
+import com.project.bcv.feature.account.auth.data.local.SessionPreferences
 import com.project.bcv.core.map.GoongDirectionsClient
 import com.project.bcv.core.map.RoadRoute
 import com.project.bcv.core.map.MapZoomControls
 import com.project.bcv.feature.discovery.domain.ExploreMapPlace
 import com.project.bcv.feature.discovery.domain.ExploreJourney
 import com.project.bcv.feature.discovery.domain.ExploreSnapshot
+import com.project.bcv.feature.discovery.domain.PhotoLoadFailures
 import org.json.JSONArray
 import org.json.JSONObject
 import org.maplibre.android.MapLibre
@@ -86,8 +90,9 @@ class GoongExploreMap(
     private var map: MapLibreMap? = null
     private var snapshot: ExploreSnapshot? = null
     private val photoUrls = mutableMapOf<Long, String>()
+    private val photoDiscovered = mutableMapOf<Long, Boolean>()
     private val photoLoading = mutableSetOf<Long>()
-    private val photoFailed = mutableSetOf<String>()
+    private val photoFailed = PhotoLoadFailures()
     private val photoSlots = Semaphore(3)
     private var styleLoaded = false
     private var placeSource: GeoJsonSource? = null
@@ -186,6 +191,7 @@ class GoongExploreMap(
         routeSource = null
         active.setStyle("https://tiles.goong.io/assets/goong_map_web.json?api_key=$key") { style ->
             photoUrls.clear()
+            photoDiscovered.clear()
             photoFailed.clear()
             styleLoaded = true
             installRouteLayers(style)
@@ -376,47 +382,37 @@ class GoongExploreMap(
         val places = snapshot?.places ?: return
         places.filter { place ->
             val point = active.projection.toScreenLocation(LatLng(place.coordinates.latitude, place.coordinates.longitude))
-            place.imageUrl != null && photoUrls[place.id] != place.imageUrl && place.id !in photoLoading &&
-                place.imageUrl !in photoFailed && point.x in -50f..(mapView.width + 50f) && point.y in -50f..(mapView.height + 50f)
+            place.imageUrl != null && (photoUrls[place.id] != place.imageUrl || photoDiscovered[place.id] != place.isDiscovered) && place.id !in photoLoading &&
+                !photoFailed.contains(place.id, place.imageUrl, place.isDiscovered) && point.x in -50f..(mapView.width + 50f) && point.y in -50f..(mapView.height + 50f)
         }.take(30).forEach { place ->
             val url = place.imageUrl ?: return@forEach
             photoLoading.add(place.id)
             routeScope.launch {
                 try {
                     val bitmap = photoSlots.withPermit {
-                        if (url.startsWith("data:image/")) withContext(Dispatchers.IO) {
-                            runCatching {
-                                val bytes = android.util.Base64.decode(url.substringAfter(','), android.util.Base64.DEFAULT)
-                                android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size,
-                                    android.graphics.BitmapFactory.Options().apply { inSampleSize = 4 })
-                            }.getOrNull()
-                        } else com.project.bcv.core.ui.RemoteImages.load(url, 4)
+                        val privateUrl = MediaUrlPolicy.authenticatedUrl(BuildConfig.API_BASE_URL, url)
+                        if (privateUrl != null) SessionPreferences(mapView.context).token?.let {
+                            RemoteImages.loadAuthenticated(BuildConfig.API_BASE_URL, privateUrl, it, 4)
+                        } else RemoteImages.load(url, 4)
                     }
-                    if (bitmap == null) { photoFailed.add(url); return@launch }
+                    if (bitmap == null) { photoFailed.add(place.id, url, place.isDiscovered); return@launch }
                     if (active.style !== style) return@launch
+                    if (snapshot?.places?.firstOrNull { it.id == place.id }?.isDiscovered != place.isDiscovered) return@launch
                     if (photoUrls.size >= 100 && place.id !in photoUrls) {
                         val oldest = photoUrls.keys.first()
                         photoUrls.remove(oldest)
+                        photoDiscovered.remove(oldest)
                         style.removeImage("place-photo-$oldest")
                     }
-                    val size = (44 * density).toInt().coerceAtLeast(44)
-                    val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-                    val canvas = Canvas(output)
-                    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-                    paint.color = 0xFFC8463D.toInt()
-                    canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
-                    val radius = size / 2f - 3 * density
-                    val saved = canvas.save()
-                    val path = android.graphics.Path().apply { addCircle(size / 2f, size / 2f, radius, android.graphics.Path.Direction.CW) }
-                    canvas.clipPath(path)
-                    val side = minOf(bitmap.width, bitmap.height)
-                    val source = android.graphics.Rect((bitmap.width-side)/2,(bitmap.height-side)/2,(bitmap.width+side)/2,(bitmap.height+side)/2)
-                    canvas.drawBitmap(bitmap, source, android.graphics.RectF(0f,0f,size.toFloat(),size.toFloat()), paint)
-                    canvas.restoreToCount(saved)
+                    val output = PlacePhotoMarker.render(bitmap, place.isDiscovered, density)
                     style.addImage("place-photo-${place.id}", output)
                     photoUrls[place.id] = url
+                    photoDiscovered[place.id] = place.isDiscovered
                     placeSource?.setGeoJson(placesGeoJson(snapshot?.places.orEmpty()))
-                } finally { photoLoading.remove(place.id) }
+                } finally {
+                    photoLoading.remove(place.id)
+                    if (snapshot?.places?.firstOrNull { it.id == place.id }?.isDiscovered != place.isDiscovered) loadPlacePhotos()
+                }
             }
         }
     }
@@ -531,7 +527,7 @@ class GoongExploreMap(
                     .put("coordinates", JSONArray().put(place.coordinates.longitude)
                         .put(place.coordinates.latitude)))
                 .put("properties", JSONObject().put("placeId", place.id)
-                    .put("hasPhoto", photoUrls[place.id] == place.imageUrl && place.imageUrl != null)
+                    .put("hasPhoto", photoUrls[place.id] == place.imageUrl && photoDiscovered[place.id] == place.isDiscovered && place.imageUrl != null)
                     .put("thumbnail", "place-photo-${place.id}")
                     .put("isDiscovered", place.isDiscovered)))
         }

@@ -1,7 +1,6 @@
 package com.project.bcv.feature.discovery.presentation
 
 import android.app.Activity
-import android.graphics.BitmapFactory
 import android.graphics.Bitmap
 import android.graphics.RenderEffect
 import android.graphics.Shader
@@ -25,14 +24,14 @@ import com.google.android.material.snackbar.Snackbar
 import com.project.bcv.core.di.ExploreModule
 import com.project.bcv.core.ui.ScreenMotion
 import com.project.bcv.core.ui.Skeleton
+import com.project.bcv.core.ui.RemoteImages
+import com.project.bcv.core.network.MediaUrlPolicy
+import com.project.bcv.BuildConfig
+import com.project.bcv.feature.account.auth.data.local.SessionPreferences
 import com.project.bcv.R
 import com.project.bcv.databinding.ActivityPlaceDetailBinding
 import com.project.bcv.feature.discovery.domain.ExplorePlaceDetail
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.net.HttpURLConnection
-import java.net.URL
 import java.text.NumberFormat
 import java.util.Locale
 import kotlin.math.max
@@ -52,7 +51,9 @@ class PlaceDetailActivity : AppCompatActivity() {
     private var preparingPlaceId: Long? = null
     override fun onResume() {
         super.onResume()
-        if (::model.isInitialized && ::approvedMedia.isInitialized) model.state.value?.place?.let { approvedMedia.load(it.id) }
+        if (::model.isInitialized && ::approvedMedia.isInitialized) model.state.value?.place?.let {
+            if (it.isDiscovered) approvedMedia.load(it.id) else approvedMedia.clear()
+        }
     }
 
     /** Which placeholder is up: the map's hint first, then what the server says. */
@@ -69,6 +70,7 @@ class PlaceDetailActivity : AppCompatActivity() {
         setContentView(binding.root)
         approvedMedia = ApprovedPlaceMediaView(this)
         binding.approvedCommunity.addView(approvedMedia)
+        binding.communityMediaButton.visibility = View.GONE
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
@@ -132,6 +134,9 @@ class PlaceDetailActivity : AppCompatActivity() {
 
     private fun showLoading(error: String?) = with(binding) {
         approvedCommunity.visibility = View.GONE
+        communityMediaButton.visibility = View.GONE
+        approvedMedia.clear()
+        communityPlaceId = null
         loadingContent.visibility = View.VISIBLE
         lockedContent.visibility = View.GONE
         unlockedContent.visibility = View.GONE
@@ -155,7 +160,7 @@ class PlaceDetailActivity : AppCompatActivity() {
         showLoading(null)
         val firstUrl = (if (place.isDiscovered) place.imageUrls.firstOrNull() else null) ?: place.imageUrl
         lifecycleScope.launch {
-            firstUrl?.takeIf { it.startsWith("https://") }?.let { loadBitmap(it, sample = 2) }
+            firstUrl?.let { loadBitmap(it, sample = 2) }
             renderedPlaceId = place.id
             Skeleton.hide(binding.loadingSkeleton)
             binding.loadingContent.visibility = View.GONE
@@ -168,9 +173,16 @@ class PlaceDetailActivity : AppCompatActivity() {
         // A discovered place opens its content page; a locked one stays the destination picker.
         lockedContent.visibility = if (place.isDiscovered) View.GONE else View.VISIBLE
         unlockedContent.visibility = if (place.isDiscovered) View.VISIBLE else View.GONE
-        approvedCommunity.visibility = View.VISIBLE
-        if (communityPlaceId != place.id) { communityPlaceId = place.id; approvedMedia.load(place.id) }
+        approvedCommunity.visibility = if (place.isDiscovered) View.VISIBLE else View.GONE
+        if (place.isDiscovered && communityPlaceId != place.id) {
+            communityPlaceId = place.id
+            approvedMedia.load(place.id)
+        } else if (!place.isDiscovered) {
+            communityPlaceId = null
+            approvedMedia.clear()
+        }
         bottomBar.visibility = View.VISIBLE
+        communityMediaButton.visibility = if (place.isDiscovered) View.VISIBLE else View.GONE
         selectButton.visibility = lockedContent.visibility
         topTitle.text = if (place.isDiscovered) "Nội dung địa danh" else "Chọn điểm đến"
         if (place.isDiscovered) {
@@ -224,7 +236,9 @@ class PlaceDetailActivity : AppCompatActivity() {
         factText.text = fact
         placeTypeText.text = place.placeType
 
-        val urls = place.imageUrls.ifEmpty { listOfNotNull(place.imageUrl) }.filter { it.startsWith("https://") }
+        val urls = place.imageUrls.ifEmpty { listOfNotNull(place.imageUrl) }.filter {
+            RemoteImages.supports(it) || MediaUrlPolicy.authenticatedUrl(BuildConfig.API_BASE_URL, it) != null
+        }
         // Without a PLACE_IMAGE row there is no photo of this place; never stand in the app's hero art.
         galleryFrame.visibility = if (urls.isEmpty()) View.GONE else View.VISIBLE
         galleryCaptionRow.visibility = galleryFrame.visibility
@@ -299,25 +313,16 @@ class PlaceDetailActivity : AppCompatActivity() {
     private suspend fun loadBitmap(url: String, sample: Int): Bitmap? {
         val key = "$sample|$url"
         bitmaps[key]?.let { return it }
-        val bitmap = withContext(Dispatchers.IO) {
-            try {
-                val connection = URL(url).openConnection() as HttpURLConnection
-                connection.connectTimeout = 8_000
-                connection.readTimeout = 8_000
-                connection.setRequestProperty("User-Agent", "BCV Android App (educational demo)")
-                try {
-                    connection.inputStream.use {
-                        BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
-                    }
-                } finally { connection.disconnect() }
-            } catch (_: Exception) { null }
-        }
+        val protectedUrl = MediaUrlPolicy.authenticatedUrl(BuildConfig.API_BASE_URL, url)
+        val bitmap = if (protectedUrl != null) SessionPreferences(this).token?.let {
+            RemoteImages.loadAuthenticated(BuildConfig.API_BASE_URL, protectedUrl, it, sample)
+        } else RemoteImages.load(url, sample)
         if (bitmap != null) bitmaps[key] = bitmap
         return bitmap
     }
 
     private fun loadImage(url: String) {
-        if (!url.startsWith("https://")) return
+        if (!RemoteImages.supports(url) && MediaUrlPolicy.authenticatedUrl(BuildConfig.API_BASE_URL, url) == null) return
         bitmaps["2|$url"]?.let { showHeroBitmap(it); return }
         lifecycleScope.launch {
             val bitmap = loadBitmap(url, sample = 2)

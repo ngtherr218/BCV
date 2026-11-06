@@ -113,8 +113,6 @@ class GoongStartingMap(activity: Activity, savedState: Bundle?) {
     fun onDestroy() = mapView.onDestroy()
 
     companion object {
-        /** Quận Thanh Xuân, Hà Nội: shown before the user shares a real location. */
-        val DEFAULT_COORDINATES = Coordinates(20.9937, 105.8113)
         const val DEFAULT_ZOOM = 14.0
         const val CURRENT_ZOOM = 16.0
     }

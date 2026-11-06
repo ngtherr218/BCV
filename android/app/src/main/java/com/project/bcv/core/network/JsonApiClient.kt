@@ -75,7 +75,10 @@ class JsonApiClient(context: Context, private val baseUrl: String) {
             }
             val code = json?.optString("code").orEmpty()
             // A bare 401 means the token was rejected; a 401 with a code (e.g. INVALID_CREDENTIALS) is a domain error.
-            if (code.isEmpty()) throw statusFailure(status)
+            if (code.isEmpty()) {
+                val failure = statusFailure(status)
+                throw ApiFailure(failure.code, json?.optString("message")?.takeIf(String::isNotBlank) ?: failure.message)
+            }
             throw ApiFailure(
                 code,
                 json?.optString("message")?.takeIf(String::isNotBlank) ?: statusFailure(status).message,

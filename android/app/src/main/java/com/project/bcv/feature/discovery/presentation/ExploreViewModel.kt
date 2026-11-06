@@ -87,8 +87,7 @@ class ExploreViewModel(
     }
 
     /**
-     * Starts the Recording API whenever the screen shows, when the current journey uses it
-     * (no app records steps in Health Connect); steps are recorded only from then on.
+     * Starts the journey's background sensor tracking, including the fallback for Health Connect.
      */
     fun captureDeviceSteps() {
         val snapshot = mutableState.value?.snapshot ?: return
@@ -99,7 +98,7 @@ class ExploreViewModel(
         } }
     }
 
-    /** Calls [ask] when the Recording API is the only way to count walking and still needs permission. */
+    /** Calls [ask] when direct sensor tracking still needs physical-activity permission. */
     fun whenActivityPermissionNeeded(ask: () -> Unit) {
         if (mutableState.value?.snapshot?.journey?.id?.let(::isTestJourney) == true) return
         viewModelScope.launch { if (runCatching { steps.needsActivityPermission() }.getOrDefault(false)) ask() }

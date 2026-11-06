@@ -1,14 +1,37 @@
 import React,{useEffect,useState} from 'react';
 import { RefreshCw } from 'lucide-react';
-import { api,date } from './api';
+import { api,date,session } from './api';
 import { ErrorBox,Loading } from './components';
 
 function Media({item}){
-  const [failed,setFailed]=useState(false);
+  const image=item.mimeType.startsWith('image/');
+  const [requested,setRequested]=useState(false),[url,setUrl]=useState(''),[error,setError]=useState(''),[revision,setRevision]=useState(0);
+  useEffect(()=>{
+    setUrl('');setError('');
+    // A page can contain twelve 100 MB videos: load video bytes only when requested.
+    if(!image&&!requested)return;
+    const controller=new AbortController();let objectUrl;
+    async function load(){
+      try{
+        const token=session.get()?.token;
+        if(!token)throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+        const endpoint=new URL(item.contentUrl,window.location.origin);
+        if(endpoint.origin!==window.location.origin)throw new Error('Địa chỉ nội dung không hợp lệ.');
+        const response=await fetch(endpoint.href,{signal:controller.signal,redirect:'error',headers:{Authorization:`Bearer ${token}`}});
+        if(!response.ok)throw new Error('Không tải được nội dung. Tệp có thể đã bị gỡ hoặc phiên đăng nhập đã hết hạn.');
+        const blob=await response.blob();
+        if(controller.signal.aborted)return;
+        objectUrl=URL.createObjectURL(blob);setUrl(objectUrl);
+      }catch(failure){if(!controller.signal.aborted)setError(failure.message||'Không tải được nội dung.');}
+    }
+    load();
+    return()=>{controller.abort();if(objectUrl)URL.revokeObjectURL(objectUrl);};
+  },[item.contentUrl,image,requested,revision]);
   return <figure className="approved-media-card">
-    {failed?<p className="detail-image-error">Nội dung không còn khả dụng. Hãy tải lại danh sách.</p>:item.mimeType.startsWith('image/')?
-      <a href={item.contentUrl} target="_blank" rel="noopener noreferrer" aria-label={`Xem ảnh đầy đủ của ${item.author}`}><img src={item.contentUrl} alt={item.caption||`Ảnh tại ${item.placeName}`} loading="lazy" onError={()=>setFailed(true)}/></a>:
-      <video src={item.contentUrl} controls preload="metadata" aria-label={`Video của ${item.author}`} onError={()=>setFailed(true)}/>}
+    {error?<ErrorBox message={error} retry={()=>setRevision(value=>value+1)}/>:!image&&!requested?
+      <button type="button" className="button secondary" onClick={()=>setRequested(true)}>Xem video</button>:!url?<p role="status">Đang tải nội dung…</p>:image?
+      <a href={url} target="_blank" rel="noopener noreferrer" aria-label={`Xem ảnh đầy đủ của ${item.author}`}><img src={url} alt={item.caption||`Ảnh tại ${item.placeName}`} loading="lazy" onError={()=>setError('Không hiển thị được ảnh. Hãy thử tải lại.')}/></a>:
+      <video src={url} controls preload="metadata" aria-label={`Video của ${item.author}`} onError={()=>setError('Không phát được video. Hãy thử tải lại.')}/>}
     <figcaption><strong>{item.author}</strong><small>Duyệt lúc {date(item.reviewedAt)}</small>{item.caption&&<p>{item.caption}</p>}</figcaption>
   </figure>;
 }

@@ -25,13 +25,13 @@ public static class MediaModeration
         // Lock the parent first to serialize the video quota with official-video edits.
         await using(var gate=new NpgsqlCommand("SELECT place_id FROM place WHERE place_id=(SELECT place_id FROM community_media WHERE media_id=$1) FOR UPDATE",conn,tx))
         {gate.Parameters.AddWithValue(id);await gate.ExecuteScalarAsync(ct);}
-        long owner; string previous, place; bool first, video;long placeId;
-        await using (var cmd = new NpgsqlCommand("SELECT m.user_id,m.status,m.first_approved_at IS NULL,p.name,m.mime_type LIKE 'video/%',m.place_id FROM community_media m JOIN place p USING(place_id) WHERE m.media_id=$1 FOR UPDATE OF m", conn, tx))
+        long owner; string previous, place; bool first, video, photo;long placeId;
+        await using (var cmd = new NpgsqlCommand("SELECT m.user_id,m.status,m.first_approved_at IS NULL,p.name,m.mime_type LIKE 'video/%',m.place_id,m.mime_type LIKE 'image/%' FROM community_media m JOIN place p USING(place_id) WHERE m.media_id=$1 FOR UPDATE OF m", conn, tx))
         {
             cmd.Parameters.AddWithValue(id);
             await using var r = await cmd.ExecuteReaderAsync(ct);
             if (!await r.ReadAsync(ct)) throw new KeyNotFoundException("Không tìm thấy nội dung.");
-            owner=r.GetInt64(0); previous=r.GetString(1); first=r.GetBoolean(2); place=r.GetString(3);video=r.GetBoolean(4);placeId=r.GetInt64(5);
+            owner=r.GetInt64(0); previous=r.GetString(1); first=r.GetBoolean(2); place=r.GetString(3);video=r.GetBoolean(4);placeId=r.GetInt64(5);photo=r.GetBoolean(6);
         }
         if (expectedStatus is not null && previous != expectedStatus) throw new AdminValidation("Trạng thái đã thay đổi. Hãy tải lại trước khi xử lý.");
         var valid = status switch {
@@ -62,7 +62,12 @@ public static class MediaModeration
         { cmd.Parameters.AddWithValue(id); cmd.Parameters.AddWithValue(actor); cmd.Parameters.AddWithValue(status); await cmd.ExecuteNonQueryAsync(ct); }
         var title = status switch {"APPROVED"=>previous=="PENDING"?"Nội dung đã được duyệt":previous=="APPROVED"?"Báo cáo nội dung đã được xử lý":"Nội dung đã được khôi phục", "REJECTED"=>"Nội dung bị từ chối", _=>"Nội dung đã bị gỡ"};
         await Notify(conn,tx,owner,"MEDIA_"+status,title,$"Ảnh/video tại {place}. {reason}",ct);
-        if (status == "APPROVED" && first) await QuestProgress.RecordAsync(conn,tx,owner,"MEDIA_APPROVED",1,ct);
+        if (status == "APPROVED" && first)
+        {
+            // Keep existing mixed-media quests working; photo-only quests must never count a video.
+            await QuestProgress.RecordAsync(conn,tx,owner,QuestProgress.MediaApproved,1,ct);
+            if (photo) await QuestProgress.RecordAsync(conn,tx,owner,QuestProgress.PhotoApproved,1,ct);
+        }
         await tx.CommitAsync(ct);
     }
 
@@ -92,9 +97,18 @@ public static class MediaModeration
         await using var conn=await db.OpenConnectionAsync(ct);
         await using var tx=await conn.BeginTransactionAsync(ct);
         long owner; string state;
-        await using(var cmd=new NpgsqlCommand("SELECT user_id,status FROM community_media WHERE media_id=$1 FOR UPDATE",conn,tx))
+        await using(var cmd=new NpgsqlCommand("""
+            SELECT m.user_id,m.status FROM community_media m
+            JOIN place p ON p.place_id=m.place_id JOIN region r USING(region_id)
+            JOIN app_user viewer ON viewer.user_id=$2 AND viewer.status='ACTIVE'
+            WHERE m.media_id=$1 AND m.media_data IS NOT NULL AND
+              (viewer.role='ADMIN' OR (p.status='ACTIVE' AND r.status='ACTIVE'
+                AND EXISTS(SELECT 1 FROM user_discovered_place d WHERE d.place_id=p.place_id AND d.user_id=$2)
+                AND (m.status='APPROVED' OR m.user_id=$2)))
+            FOR UPDATE OF m
+            """,conn,tx))
         {
-            cmd.Parameters.AddWithValue(id);await using var r=await cmd.ExecuteReaderAsync(ct);
+            cmd.Parameters.AddWithValue(id);cmd.Parameters.AddWithValue(reporter);await using var r=await cmd.ExecuteReaderAsync(ct);
             if(!await r.ReadAsync(ct))throw new KeyNotFoundException("Không tìm thấy nội dung.");
             owner=r.GetInt64(0);state=r.GetString(1);
         }

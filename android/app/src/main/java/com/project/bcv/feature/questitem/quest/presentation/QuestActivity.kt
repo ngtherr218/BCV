@@ -199,11 +199,14 @@ class QuestActivity : AppCompatActivity() {
             "STEP_COUNT" -> "bước"
             "DISCOVER_PLACE" -> "địa danh"
             "COMPLETE_JOURNEY" -> "hành trình"
+            "PHOTO_APPROVED" -> "ảnh"
+            "MEDIA_APPROVED" -> "nội dung"
             else -> "lượt"
         }
         val (icon, iconTint, iconBox) = when (quest.conditionType) {
             "DISCOVER_PLACE" -> Triple(R.drawable.ic_travel_explore, 0xFF3C7DB0.toInt(), 0xFFE6EEF3.toInt())
             "COMPLETE_JOURNEY" -> Triple(R.drawable.ic_nav_route, 0xFFA0702E.toInt(), 0xFFF3EBDD.toInt())
+            "PHOTO_APPROVED", "MEDIA_APPROVED" -> Triple(R.drawable.ic_check_circle, teal, 0xFFE8F0E2.toInt())
             else -> Triple(R.drawable.ic_directions_walk, teal, 0xFFE8F0E2.toInt())
         }
         item.questIcon.setImageResource(icon)

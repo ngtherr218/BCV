@@ -27,11 +27,15 @@ static class PlaceVideoChecks
         var payload=children.SelectMany(x=>x).ToArray();
         return key.SkipWhile(x=>x==0).Concat(new[]{(byte)(0x80|payload.Length)}).Concat(payload).ToArray();
     }
-    static byte[] Webm(int seconds=60,int width=1920,int height=1080)
+    static byte[] Webm(int seconds=60,int width=1920,int height=1080,bool withCluster=true,bool blockGroup=false,byte[]? blockData=null)
     {
         var duration=new byte[8];BinaryPrimitives.WriteInt64BigEndian(duration,BitConverter.DoubleToInt64Bits(seconds*1000d));
         var w=new byte[2];var h=new byte[2];BinaryPrimitives.WriteUInt16BigEndian(w,(ushort)width);BinaryPrimitives.WriteUInt16BigEndian(h,(ushort)height);
-        return Ebml(0x1A45DFA3).Concat(Ebml(0x18538067,Ebml(0x1549A966,Ebml(0x4489,duration)),Ebml(0x1654AE6B,Ebml(0xAE,Ebml(0x83,new byte[]{1}),Ebml(0xE0,Ebml(0xB0,w),Ebml(0xBA,h)))))).ToArray();
+        // Synthetic container fixture: video track 1, a non-empty frame, no codec decoding.
+        var frame=blockData??new byte[]{0x81,0,0,0x80,0x10,0,0,0x9d,1,0x2a};
+        var block=blockGroup?Ebml(0xA0,Ebml(0xA1,frame)):Ebml(0xA3,frame);
+        var cluster=withCluster?Ebml(0x1F43B675,Ebml(0xE7,new byte[]{0}),block):Array.Empty<byte>();
+        return Ebml(0x1A45DFA3).Concat(Ebml(0x18538067,Ebml(0x1549A966,Ebml(0x4489,duration)),Ebml(0x1654AE6B,Ebml(0xAE,Ebml(0xD7,new byte[]{1}),Ebml(0x83,new byte[]{1}),Ebml(0xE0,Ebml(0xB0,w),Ebml(0xBA,h)))),cluster)).ToArray();
     }
     public static async Task Run(NpgsqlDataSource db,HttpClient client)
     {
@@ -46,7 +50,15 @@ static class PlaceVideoChecks
         Check(PlaceVideos.MaxBytes==100*1024*1024,"Wrong video byte limit");
         try{PlaceVideos.Inspect(new byte[PlaceVideos.MaxBytes+1]);throw new Exception("Video above 100 MB accepted");}catch(AdminValidation){}
         Check(WebmMetadata.Inspect(Webm()).Duration==60,"60s 1080p WebM rejected");
-        foreach(var invalid in new[]{Webm(61),Webm(60,3840,2160),Webm()[..12]})
+        Check(WebmMetadata.Inspect(Webm(blockGroup:true)).Duration==60,"WebM BlockGroup rejected");
+        foreach(var lace in new[]{new byte[]{0x81,0,0,0x82,1,1,1,2},new byte[]{0x81,0,0,0x84,1,1,2},new byte[]{0x81,0,0,0x86,1,0x81,1,2}})
+            Check(WebmMetadata.Inspect(Webm(blockData:lace)).Duration==60,"Valid laced WebM frames rejected");
+        foreach(var invalid in new[]{Webm(61),Webm(60,3840,2160),Webm()[..12],Webm(withCluster:false),
+            Webm(blockData:new byte[]{0x81,0,0,0x80}), // No frame bytes.
+            Webm(blockData:new byte[]{0x82,0,0,0x80,1}), // Block belongs to another track.
+            Webm(blockData:new byte[]{0x81,0,0,0x82,1,10,1}), // Xiph lace promises more data than present.
+            Webm(blockData:new byte[]{0x81,0,0,0x84,1,1}), // Fixed lace cannot contain two frames.
+            Webm(blockData:new byte[]{0x81,0,0,0x86,1,0x81})}) // EBML lace has no frame payload.
         {try{WebmMetadata.Inspect(invalid);throw new Exception("Invalid WebM accepted");}catch(AdminValidation){}}
         client.DefaultRequestHeaders.Authorization=new AuthenticationHeaderValue("Bearer","950005");
         var ids=new List<long>();
@@ -64,6 +76,7 @@ static class PlaceVideoChecks
         }
         try
         {
+            await Exec("INSERT INTO user_discovered_place(user_id,place_id) VALUES(950005,910001) ON CONFLICT DO NOTHING");
             await CommunityMediaEndpoints.EnsureAsync(db); // A second startup must accept existing 60-second rows.
             var large=Fixture(60,1920,1080);var mediaOffset=large.Length-9;
             Array.Resize(ref large,31*1024*1024);BinaryPrimitives.WriteUInt32BigEndian(large.AsSpan(mediaOffset),(uint)(large.Length-mediaOffset));
@@ -73,7 +86,7 @@ static class PlaceVideoChecks
                 using var response=await client.PostAsync("/api/admin/place-videos",content);
                 Check(response.IsSuccessStatusCode,"Upload above Kestrel's default 30 MB limit failed: "+await response.Content.ReadAsStringAsync());
             }
-            foreach(var pair in new[]{("video/mp4",Fixture(60,1920,1080),HttpStatusCode.OK),("video/mp4",Fixture(61),HttpStatusCode.BadRequest),("video/webm",Webm(),HttpStatusCode.OK),("video/webm",Webm(61),HttpStatusCode.BadRequest)})
+            foreach(var pair in new[]{("video/mp4",Fixture(60,1920,1080),HttpStatusCode.OK),("video/mp4",Fixture(61),HttpStatusCode.BadRequest),("video/webm",Webm(),HttpStatusCode.OK),("video/webm",Webm(61),HttpStatusCode.BadRequest),("video/webm",Webm(withCluster:false),HttpStatusCode.BadRequest)})
             {
                 using var content=new ByteArrayContent(pair.Item2);content.Headers.ContentType=new MediaTypeHeaderValue(pair.Item1);
                 using var response=await client.PostAsync("/api/places/910001/media",content);
@@ -87,6 +100,7 @@ static class PlaceVideoChecks
             using(var r=await client.PostAsJsonAsync("/api/admin/community-media/950010/review",new{status="APPROVED",expectedStatus="PENDING"}))Check(r.StatusCode==HttpStatusCode.BadRequest,"Sixth public video accepted");
             await Attach(950005,ids.Take(4).ToArray());
             using(var r=await client.PostAsJsonAsync("/api/admin/community-media/950010/review",new{status="APPROVED",expectedStatus="PENDING"}))Check(r.IsSuccessStatusCode,"Fifth combined video rejected");
+            await Exec("DELETE FROM user_discovered_place WHERE user_id=950001 AND place_id=910001");
             client.DefaultRequestHeaders.Authorization=new AuthenticationHeaderValue("Bearer","950001");
             using(var r=await client.GetAsync($"/api/explore/places/910001/videos/{ids[0]}"))Check(r.StatusCode==HttpStatusCode.NotFound,"Locked place video leaked");
             await Exec("UPDATE region SET status='ACTIVE' WHERE region_id=910001; INSERT INTO user_discovered_place(user_id,place_id) VALUES(950001,910001)");
@@ -108,7 +122,7 @@ static class PlaceVideoChecks
         finally
         {
             client.DefaultRequestHeaders.Range=null;client.DefaultRequestHeaders.Authorization=new AuthenticationHeaderValue("Bearer","950005");
-            await Exec("DELETE FROM place_video WHERE created_by=950005; DELETE FROM user_discovered_place WHERE user_id=950001; UPDATE region SET status='DRAFT' WHERE region_id=910001");
+            await Exec("DELETE FROM place_video WHERE created_by=950005; DELETE FROM user_discovered_place WHERE user_id IN (950001,950005); UPDATE region SET status='DRAFT' WHERE region_id=910001");
         }
     }
     sealed class NoSessions:Bcv.Api.Modules.Account.Application.ISessionStore

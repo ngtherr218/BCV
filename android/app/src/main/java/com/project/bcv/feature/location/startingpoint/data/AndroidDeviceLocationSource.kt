@@ -14,11 +14,13 @@ import android.os.Looper
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import com.project.bcv.feature.location.startingpoint.domain.Coordinates
+import com.project.bcv.feature.location.startingpoint.domain.CurrentLocationPolicy
 import com.project.bcv.feature.location.startingpoint.domain.DeviceLocationSource
+import com.project.bcv.feature.location.startingpoint.domain.LocationFix
 
 /**
- * Asks every enabled provider at once and takes the first fix. Some devices (e.g. Vivo without
- * GMS) never answer on the fused provider, so a recent or last known location is the fallback.
+ * Asks every enabled provider at once, including on devices without GMS. Cached positions are
+ * only a fallback and must still be fresh when delivered; they never bypass a current request.
  */
 class AndroidDeviceLocationSource(context: Context) : DeviceLocationSource {
     private val appContext = context.applicationContext
@@ -29,9 +31,10 @@ class AndroidDeviceLocationSource(context: Context) : DeviceLocationSource {
     private var timeout: Runnable? = null
     private var pending: ((Coordinates?) -> Unit)? = null
     private var settle: Runnable? = null
-    private var fallback: Location? = null
-    private var best: Location? = null
-    private var waiting = 0
+    private val cachedFixes = mutableListOf<LocationFix>()
+    private val currentFixes = mutableListOf<LocationFix>()
+    private val waitingProviders = mutableSetOf<String>()
+    private var generation = 0L
 
     override fun findCurrent(callback: (Coordinates?) -> Unit) {
         cancel()
@@ -45,28 +48,28 @@ class AndroidDeviceLocationSource(context: Context) : DeviceLocationSource {
             (fine || name != LocationManager.GPS_PROVIDER) &&
                 runCatching { manager.isProviderEnabled(name) }.getOrDefault(false)
         }
-        val lastKnown = lastKnown()
-        if (lastKnown != null && ageMillis(lastKnown) <= FRESH_MILLIS && isPrecise(lastKnown)) {
-            callback(lastKnown.toCoordinates())
-            return
-        }
         if (providers.isEmpty()) {
-            callback(lastKnown?.toCoordinates())
+            callback(null)
             return
         }
 
+        val requestGeneration = generation
         pending = callback
-        fallback = lastKnown
-        waiting = providers.size
-        timeout = Runnable { finish(fallback) }.also { handler.postDelayed(it, TIMEOUT_MILLIS) }
-        providers.forEach(::request)
+        providers.mapNotNullTo(cachedFixes) { provider ->
+            runCatching { manager.getLastKnownLocation(provider)?.toFix() }.getOrNull()
+        }
+        waitingProviders.addAll(providers)
+        timeout = Runnable { finish(requestGeneration) }
+            .also { handler.postDelayed(it, TIMEOUT_MILLIS) }
+        providers.forEach { request(it, requestGeneration) }
     }
 
     override fun cancel() {
+        generation++
         pending = null
-        fallback = null
-        best = null
-        waiting = 0
+        cachedFixes.clear()
+        currentFixes.clear()
+        waitingProviders.clear()
         timeout?.let(handler::removeCallbacks)
         timeout = null
         settle?.let(handler::removeCallbacks)
@@ -77,7 +80,8 @@ class AndroidDeviceLocationSource(context: Context) : DeviceLocationSource {
         listeners.clear()
     }
 
-    private fun request(provider: String) {
+    private fun request(provider: String, requestGeneration: Long) {
+        if (requestGeneration != generation || pending == null) return
         try {
             if (Build.VERSION.SDK_INT >= 31) {
                 val signal = CancellationSignal().also(signals::add)
@@ -85,58 +89,58 @@ class AndroidDeviceLocationSource(context: Context) : DeviceLocationSource {
                     .setQuality(LocationRequest.QUALITY_HIGH_ACCURACY)
                     .setDurationMillis(TIMEOUT_MILLIS)
                     .build()
-                manager.getCurrentLocation(provider, request, signal, appContext.mainExecutor, ::onResult)
+                manager.getCurrentLocation(provider, request, signal, appContext.mainExecutor) {
+                    onResult(requestGeneration, provider, it)
+                }
             } else if (Build.VERSION.SDK_INT >= 30) {
                 val signal = CancellationSignal().also(signals::add)
-                manager.getCurrentLocation(provider, signal, appContext.mainExecutor, ::onResult)
+                manager.getCurrentLocation(provider, signal, appContext.mainExecutor) {
+                    onResult(requestGeneration, provider, it)
+                }
             } else {
-                val listener = LocationListener(::onResult).also(listeners::add)
+                val listener = LocationListener {
+                    onResult(requestGeneration, provider, it)
+                }.also(listeners::add)
                 @Suppress("DEPRECATION")
                 manager.requestSingleUpdate(provider, listener, Looper.getMainLooper())
             }
         } catch (_: Exception) {
-            onResult(null)
+            onResult(requestGeneration, provider, null)
         }
     }
 
-    private fun onResult(location: Location?) {
-        if (pending == null) return
-        waiting--
-        if (location != null && (best?.let { location.accuracy < it.accuracy } != false)) best = location
-        val current = best
+    private fun onResult(requestGeneration: Long, provider: String, location: Location?) {
+        if (requestGeneration != generation || pending == null || !waitingProviders.remove(provider)) return
+        location?.toFix()?.let(currentFixes::add)
+        val current = CurrentLocationPolicy.best(currentFixes, SystemClock.elapsedRealtime())
         when {
-            current != null && isPrecise(current) -> finish(current)
-            waiting <= 0 -> finish(current ?: fallback)
+            current != null && CurrentLocationPolicy.precise(current) -> finish(requestGeneration)
+            waitingProviders.isEmpty() -> finish(requestGeneration)
             // A rough fix arrived first; give the other providers a moment to beat it.
             current != null && settle == null ->
-                settle = Runnable { finish(best) }.also { handler.postDelayed(it, SETTLE_MILLIS) }
+                settle = Runnable { finish(requestGeneration) }
+                    .also { handler.postDelayed(it, SETTLE_MILLIS) }
         }
     }
 
-    private fun finish(location: Location?) {
+    private fun finish(requestGeneration: Long) {
+        if (requestGeneration != generation) return
         val callback = pending ?: return
+        val fix = CurrentLocationPolicy.result(currentFixes, cachedFixes, SystemClock.elapsedRealtime())
         cancel()
-        callback(location?.toCoordinates())
+        callback(fix?.coordinates)
     }
-
-    private fun lastKnown(): Location? = manager.allProviders.mapNotNull { name ->
-        runCatching { manager.getLastKnownLocation(name) }.getOrNull()
-    }.minByOrNull(::ageMillis)
-
-    private fun isPrecise(location: Location) = location.hasAccuracy() && location.accuracy <= PRECISE_METERS
-
-    private fun ageMillis(location: Location): Long =
-        (SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos) / 1_000_000
 
     private fun granted(permission: String) =
         ContextCompat.checkSelfPermission(appContext, permission) == PackageManager.PERMISSION_GRANTED
 
-    private fun Location.toCoordinates() = Coordinates(latitude, longitude)
+    private fun Location.toFix() = LocationFix(
+        Coordinates(latitude, longitude), elapsedRealtimeNanos / 1_000_000,
+        accuracy.takeIf { hasAccuracy() }
+    )
 
     private companion object {
-        const val FRESH_MILLIS = 2 * 60_000L
         const val TIMEOUT_MILLIS = 20_000L
         const val SETTLE_MILLIS = 6_000L
-        const val PRECISE_METERS = 50f
     }
 }

@@ -67,16 +67,16 @@ interface ExploreRepository {
     fun syncSteps(journeyId: Long, cumulativeSteps: Long): ExploreSnapshot
 }
 
-/** Health Connect first; Recording API and direct sensors provide fallbacks. */
+/** Health Connect with direct device sensors as the fallback. */
 interface StepSource {
-    /** Steps can be read: Health Connect access, or the Recording API allowed as fallback. */
+    /** Steps can be read through Health Connect or an authorised device sensor. */
     suspend fun hasPermission(): Boolean
-    /** No app records steps in Health Connect and the Recording API still needs physical-activity access. */
+    /** The device sensor needs physical-activity access, including when used as a backup. */
     suspend fun needsActivityPermission(): Boolean
     /** Starts the journey's background hardware shadow; journeyId=0 stops tracking after confirmed completion. */
     suspend fun capture(journeyId: Long, startedAtEpochSeconds: Long = 0, destinationName: String = "")
     /** Steps since the journey started, cumulative, from the journey's source. */
     suspend fun totalStepsSince(journeyId: Long, startedAtEpochSeconds: Long): Long
-    /** Release listeners owned by this screen; Recording API subscriptions can continue in background. */
+    /** Release screen resources; the journey service owns background sensor tracking. */
     fun release() = Unit
 }

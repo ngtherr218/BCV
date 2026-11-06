@@ -44,7 +44,7 @@ bcvGoongApiKey=<Goong REST API Key>
 - **Chạy local:** ghi đè bằng `bcvApiBaseUrl=http://10.0.2.2:5081/` cho emulator, hoặc IP Wi-Fi máy tính cho điện thoại thật. Khi đó máy tính phải chạy backend và điện thoại cùng mạng; có thể dùng `127.0.0.1:5081` với `adb reverse` qua USB.
 - Giá trị được đóng vào app lúc build, nên **sửa xong phải build lại**.
 - Bản release nhận giá trị qua Gradle property, ví dụ `-PbcvApiBaseUrl=https://... -PbcvGoongMaptilesKey=...`, và cần URL HTTPS.
-- Phiên đăng nhập, bộ đếm cảm biến, Recording API và mốc đối chiếu bước được tách theo địa chỉ backend. Đổi từ local sang deploy không gửi token hoặc tổng bước của local sang database deploy; dữ liệu local được giữ để có thể quay lại cấu hình local. App yêu cầu đăng nhập bằng tài khoản thuộc database đang chọn.
+- Phiên đăng nhập, bộ đếm cảm biến và mốc đối chiếu bước được tách theo địa chỉ backend. Đổi từ local sang deploy không gửi token hoặc tổng bước của local sang database deploy; dữ liệu local được giữ để có thể quay lại cấu hình local. App yêu cầu đăng nhập bằng tài khoản thuộc database đang chọn.
 - Tài khoản tự điền cho kiểm thử chỉ dùng ở backend được chỉ định bởi `bcvPreviewLoginApiBaseUrl` (mặc định `http://127.0.0.1:5081/`). Chuyển sang Render không tự điền tài khoản local.
 
 ### Build và cài
@@ -72,7 +72,7 @@ Trong bản debug, bấm icon người đi bộ cạnh chữ **Khám phá** đ�
 2. **Chọn sở thích:** 1–3 trong 12 loại địa danh.
 3. **Mức vận động:** Ít vận động, Trung bình hoặc Năng động.
 4. **Health Connect:** cấp quyền đọc số bước; có thể chọn "Để sau".
-5. **Điểm xuất phát:** dùng điểm hệ thống đề xuất hoặc vị trí hiện tại. Backend chọn địa danh `ACTIVE` gần nhất trong bán kính 75 km. Mỗi tài khoản chỉ lưu điểm xuất phát một lần.
+5. **Điểm xuất phát:** dùng điểm hệ thống đề xuất hoặc vị trí hiện tại. Khi chọn vị trí hiện tại, app yêu cầu GPS mới và chỉ dùng tọa độ lưu đệm tối đa 30 giây làm dự phòng. Backend giữ đúng tọa độ GPS, dùng địa danh `ACTIVE` gần nhất trong bán kính 75 km để xác định vùng hỗ trợ. Mỗi tài khoản chỉ khởi tạo điểm xuất phát một lần; về sau hành trình tiếp tục từ vị trí ảo đã lưu. Khi test máy ảo, đặt GPS mô phỏng trong vùng dữ liệu Việt Nam; GPS mặc định ở Mỹ sẽ báo ngoài vùng hỗ trợ.
 6. **Khám phá:** bản đồ hiển thị vị trí ảo, hành trình đang đi và đường đi theo đường phố tới điểm đến. Icon người đi bộ quay mặt theo hướng đi. Số bước được tự động đồng bộ lên backend mỗi phút khi màn này mở (xem [Ghi nhận bước chân](#ghi-nhận-bước-chân)).
 7. **Gợi ý điểm đến:** 3 địa danh chưa mở khóa phù hợp nhất, kèm khoảng cách và số bước. Chọn một địa danh để bắt đầu; nếu đang có hành trình khác, app hỏi có chuyển sang hành trình mới không.
 8. **Hành trình:** tiến độ, bản đồ tuyến đường và lịch sử. Khi đã hoàn thành, bấm thẻ điểm đến để xem ảnh và nội dung địa danh vừa mở khóa.
@@ -87,23 +87,19 @@ Health Connect là nguồn bước chính, vì nó đã gộp mọi ứng dụng
 | Tình huống | Nguồn bước của hành trình |
 | --- | --- |
 | Trong 24 giờ qua có ứng dụng **khác BCV** ghi bước vào Health Connect | Tổng bước của Health Connect |
-| Không có ứng dụng nào ghi bước, máy có Google Play services **và** người dùng đã cho phép **Hoạt động thể chất** | Recording API của Google Play services (`RecordingStepCounter`), cộng với bước thử của BCV |
-| Không dùng được Recording API, hoặc nguồn đọc lỗi/quá hạn; máy có cảm biến và đã cấp quyền Hoạt động thể chất | Cảm biến trực tiếp `TYPE_STEP_COUNTER`, dự phòng `TYPE_STEP_DETECTOR` |
+| Health Connect không có dữ liệu bước, không khả dụng, hoặc nguồn đọc lỗi/quá hạn; máy có cảm biến và đã cấp quyền Hoạt động thể chất | Cảm biến trực tiếp `TYPE_STEP_COUNTER`, dự phòng `TYPE_STEP_DETECTOR` |
 | Chưa cấp quyền đọc và cũng chưa cho phép Hoạt động thể chất | Yêu cầu cấp quyền; giữ nguyên tiến độ đã lưu |
 
-- **Bước từ Recording API chỉ lưu trong app, không ghi vào Health Connect**, nên không bị đọc lại và cộng trùng. BCV chỉ ghi vào Health Connect bước thử (+2.000).
 - Quyền Hoạt động thể chất dùng cho cảm biến dự phòng và phát hiện nguồn Health Connect bị đứng, kể cả khi Health Connect đang hoạt động. Quyền thông báo giúp hiển thị trạng thái đếm bước nền; từ chối thông báo không tự cấp hoặc thay thế quyền cảm biến.
 - Khi đã có nguồn bước dùng được (kể cả cảm biến), mở lại Khám phá không tự bật hộp xin quyền Health Connect nữa. Người dùng vẫn có thể kết nối Health Connect trong Hồ sơ.
-- Recording API bắt đầu ghi khi app đăng ký lần đầu cho hành trình (lúc tạo hành trình hoặc mở màn Khám phá); bước đi trước đó không có.
-- Sau khi đăng ký, Google Play services tự đếm cả khi app tắt hay điện thoại khởi động lại, và giữ dữ liệu 10 ngày trên máy. Không mở app đồng bộ quá 10 ngày thì phần bước cũ hơn bị mất.
 - `JourneyStepService` là foreground service loại `health`, giữ cảm biến chạy khi chuyển ứng dụng, khóa màn hình hoặc vuốt Activity khỏi danh sách gần đây. Dịch vụ được mở lúc app đang hiển thị và đã có quyền Hoạt động thể chất, kèm thông báo "Bước Chân Việt đang đếm bước". Sensor listener thuộc dịch vụ, không bị dừng khi đóng một màn hình. Hành trình kết thúc hoặc đăng xuất thì dịch vụ dừng và bỏ mốc phần cứng để không tính khoảng đã ngừng theo dõi.
-- Khi dùng Health Connect/Recording, dịch vụ vẫn lưu bước cảm biến làm nguồn dự phòng nhưng không cộng vào tổng của nguồn chính. Nếu nguồn chính đứng ít nhất **120 giây**, trong khi cảm biến tăng ít nhất **20 bước**, lần đồng bộ tiếp theo chuyển sang cảm biến: giữ tổng đã xác nhận và cộng đúng phần cảm biến kể từ mốc nguồn chính cuối cùng tiến lên. Sau thời gian ở nền, nếu nguồn chính chỉ cập nhật một phần và còn thiếu ít nhất 20 bước so với cửa sổ cảm biến, dùng tổng lớn hơn của hai nguồn trong cửa sổ đó, không cộng hai nguồn với nhau. Lỗi hoặc quá hạn 5 giây cũng chuyển nguồn nếu có số đo cảm biến. Trạng thái được lưu trong `bcv_journey_step_state`, kể cả sau khi process được tạo lại.
+- Khi dùng Health Connect, dịch vụ vẫn lưu bước cảm biến làm nguồn dự phòng nhưng không cộng vào tổng của nguồn chính. Nếu nguồn chính đứng ít nhất **120 giây**, trong khi cảm biến tăng ít nhất **20 bước**, lần đồng bộ tiếp theo chuyển sang cảm biến: giữ tổng đã xác nhận và cộng đúng phần cảm biến kể từ mốc nguồn chính cuối cùng tiến lên. Sau thời gian ở nền, nếu nguồn chính chỉ cập nhật một phần và còn thiếu ít nhất 20 bước so với cửa sổ cảm biến, dùng tổng lớn hơn của hai nguồn trong cửa sổ đó, không cộng hai nguồn với nhau. Lỗi hoặc quá hạn 5 giây cũng chuyển nguồn nếu có số đo cảm biến. Trạng thái được lưu trong `bcv_journey_step_state`, kể cả sau khi process được tạo lại.
 - Sau khi chuyển sang cảm biến, hành trình giữ nguồn đó tới khi kết thúc. Health Connect cập nhật bù muộn không được cộng lần nữa; bước thử Health Connect cũng không cộng thêm ở chế độ này. Các ngưỡng 120 giây/20 bước là quy tắc dự phòng, không phải thông số học máy.
 - Dịch vụ chỉ đọc cảm biến, không đọc Health Connect trong nền và không xin quyền đọc sức khỏe nền. Bước được giữ trên máy khi offline; khi mở Khám phá hoặc Hành trình, app đối chiếu nguồn và đồng bộ với backend. Hành trình cũng đồng bộ khi được mở trực tiếp từ thông báo.
 - `TYPE_STEP_COUNTER` giữ tổng trong phần cứng và không cần giữ CPU thức liên tục. Chỉ máy dùng `TYPE_STEP_DETECTOR` không đánh thức CPU mới dùng partial wake lock có thời hạn, giải phóng khi dịch vụ dừng. Mốc vẫn xử lý an toàn trường hợp khởi động lại hoặc reset cảm biến.
 - Android vẫn dừng dịch vụ nếu người dùng chọn **Buộc dừng** hoặc dừng ứng dụng từ trình quản lý dịch vụ đang chạy. Khi đó cần mở lại app để tiếp tục; app không cố vượt quyết định dừng của người dùng và không tự khởi động dịch vụ sức khỏe sau khi bật máy.
 - **Tự động đồng bộ:** khi màn Khám phá đang mở, app tự gửi bước mới lúc mở màn và mỗi phút một lần (chỉ gửi khi tổng bước tăng), không hiện trạng thái "Đang đồng bộ" và lỗi thì giữ nguyên tiến độ để lần sau thử lại. Nút **Đồng bộ** vẫn dùng được để cập nhật ngay.
-- Nút "+2.000 bước thử" ghi bản ghi thử vào Health Connect; mỗi bản ghi bắt đầu sau bản ghi trước. Bước thử chỉ được tính khi hành trình đang dùng Health Connect/Recording, không dùng để tăng tổng của nguồn cảm biến đã chuyển sang.
+- Nút thử bước ở bản debug gửi tổng bước mô phỏng tới backend; không ghi dữ liệu vào Health Connect. Hành trình thử dừng cảm biến để tránh trộn với bước thực tế.
 
 Tham khảo Android: [foreground service loại health](https://developer.android.com/develop/background-work/services/fgs/service-types#health), [điều kiện khởi chạy dịch vụ](https://developer.android.com/develop/background-work/services/fgs/launch), [cảm biến đếm bước](https://developer.android.com/develop/sensors-and-location/sensors/sensors_motion#sensors-motion-stepcounter).
 
@@ -119,6 +115,23 @@ app/src/main/java/com/project/bcv/
 Mỗi tính năng chia `presentation` (Activity + ViewModel), `domain` (model, interface repository) và `data` (cài đặt repository, nguồn dữ liệu).
 
 ## Kiểm thử
+
+### Ảnh, video và nội dung cộng đồng
+
+- Sau khi mở khóa một địa danh, màn chi tiết có thư viện ảnh, video chính thức và nút **Ảnh/video cộng đồng**. Ảnh HTTPS và ảnh JPEG dạng data URI do web quản trị tải lên đều được hỗ trợ.
+- Chọn ảnh JPEG/PNG/WebP tối đa 10 MB hoặc video MP4/WebM tối đa 100 MB, 60 giây, 1080p; nhập mô tả tối đa 500 ký tự rồi gửi. App kiểm tra metadata và gửi tệp theo luồng, không giữ toàn bộ video trong bộ nhớ. Nội dung chỉ được hiển thị cho người xem khác sau khi quản trị viên duyệt. Màn cộng đồng cho xem trạng thái và lý do từ chối; dùng **Tải lại** để cập nhật sau khi duyệt.
+- Nội dung cộng đồng yêu cầu đăng nhập, mở khóa địa danh và địa danh/khu vực còn hoạt động. App gửi Bearer token khi tải ảnh/video, không chuyển token sang máy chủ ngoài. Video cộng đồng MP4/WebM và video chính thức MP4 đều phát trong app khi thiết bị hỗ trợ codec của tệp.
+- Người xem có thể **Báo cáo** nội dung đã duyệt của người khác và nhập lý do. Không báo cáo nội dung của chính mình hoặc gửi trùng.
+- Marker có ảnh vẫn phân biệt địa danh đã/chưa khám phá; các mức zoom thấp dùng chấm để tránh tải nhiều ảnh.
+- Nhiệm vụ **Ảnh được duyệt** chỉ cộng ảnh được duyệt lần đầu. Video và việc khôi phục nội dung không tăng điều kiện này. Quản trị cần tạo nhiệm vụ `ACTIVE` với điều kiện `PHOTO_APPROVED`; app dùng danh sách nhiệm vụ chung.
+
+App và web phải dùng cùng backend đã có các API media. Bản thử nghiệm chung với web Test có thể build bằng:
+
+```powershell
+.\gradlew.bat :app:assembleDebug -PbcvApiBaseUrl=https://bcv-admin-test.onrender.com/
+```
+
+Địa chỉ API được đóng vào APK. Tài khoản và phiên đăng nhập thuộc database/backend đã chọn; đổi máy chủ không tự chuyển dữ liệu tài khoản. Chỉ deploy backend có migration media trước khi kiểm tra đầy đủ bản APK này.
 
 Kiểm thử đơn vị cho khôi phục phiên (thành công, hết hạn, offline, onboarding và tái tạo màn hình) và bộ đếm cảm biến (mốc ban đầu, không cộng trùng, khởi động lại/reset):
 

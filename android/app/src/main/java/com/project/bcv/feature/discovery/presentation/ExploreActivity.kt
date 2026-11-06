@@ -242,8 +242,7 @@ class ExploreActivity : AppCompatActivity() {
     }
 
     /**
-     * Asks for Android's "physical activity" permission only when no app records steps in Health
-     * Connect, so the Recording API is the only way to count real walking (see RecordingStepCounter).
+     * Asks for physical-activity permission for direct sensor tracking and Health Connect fallback.
      */
     private fun requestActivityPermissionIfNeeded(force: Boolean = false) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
@@ -486,8 +485,6 @@ class ExploreActivity : AppCompatActivity() {
         val showProgress = journey != null && !mapFailed && state.stage !in setOf(
             ExploreStage.LOADING, ExploreStage.LOAD_FAILED)
         progressSection.visibility = if (showProgress) View.VISIBLE else View.GONE
-        startLocation.visibility = if (journey != null) View.VISIBLE else View.GONE
-        startLocation.text = journey?.let { "Xuất phát: ${it.startLabel}" }.orEmpty()
         // With progress shown the sheet follows the journey design: no description or footer line.
         sheetDescription.visibility = if (showProgress) View.GONE else View.VISIBLE
         sheetFooter.visibility = sheetDescription.visibility

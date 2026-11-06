@@ -81,11 +81,12 @@ class StartingPointViewModel(
         val current = mutableState.value ?: return
         val version = ++locationRequestVersion
         mutableState.value = current.copy(stage = StartingPointStage.LOCATING, message = null,
-            currentAddress = null)
+            current = null, currentCoordinates = null, currentAddress = null)
         deviceLocation.findCurrent { coordinates ->
             if (version != locationRequestVersion) return@findCurrent
             if (coordinates == null) {
-                mutableState.value = mutableState.value?.copy(stage = StartingPointStage.NO_FIX)
+                mutableState.value = mutableState.value?.copy(stage = StartingPointStage.NO_FIX,
+                    message = "Chưa nhận được vị trí mới. Hãy bật Vị trí/GPS trên thiết bị và thử lại ở nơi thoáng.")
                 return@findCurrent
             }
             mutableState.value = mutableState.value?.copy(currentCoordinates = coordinates)
@@ -145,7 +146,10 @@ class StartingPointViewModel(
             mutableState.value = current.copy(stage = StartingPointStage.NO_SUGGESTION)
             return
         }
-        if (source == StartingPointSource.CURRENT && current.currentCoordinates == null) {
+        if (source == StartingPointSource.CURRENT &&
+            (current.currentCoordinates == null || current.current == null ||
+                (current.stage != StartingPointStage.VALID_CURRENT &&
+                    !(current.stage == StartingPointStage.SAVE_FAILED && current.pendingSource == source)))) {
             mutableState.value = current.copy(stage = StartingPointStage.NO_FIX)
             return
         }

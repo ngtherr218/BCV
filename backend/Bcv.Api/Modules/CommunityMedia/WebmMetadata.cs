@@ -28,6 +28,53 @@ public static class WebmMetadata
         if(e.End-e.Start is <1 or >8)throw new AdminValidation("Thông tin WebM không hợp lệ.");
         ulong result=0;for(var i=e.Start;i<e.End;i++)result=(result<<8)|bytes[i];return result;
     }
+    private static bool HasVideoBlock(byte[] bytes,Element[] children,ulong trackNumber)
+    {
+        foreach(var cluster in children.Where(e=>e.Id==0x1F43B675))
+        foreach(var child in Elements(bytes,cluster.Start,cluster.End))
+        {
+            var blocks=child.Id==0xA3?new[]{child}:child.Id==0xA0
+                ?Elements(bytes,child.Start,child.End).Where(e=>e.Id==0xA1):Array.Empty<Element>();
+            foreach(var block in blocks)
+            {
+                var offset=block.Start;
+                var track=Read(bytes,ref offset,block.End,false,out _);
+                // A block contains a track VINT, timestamp (2 bytes), flags and frame data.
+                // Match the video track so an audio-only cluster cannot validate a video upload.
+                if(track!=trackNumber||block.End-offset<=3)continue;
+                offset+=2;
+                var lacing=bytes[offset++]&6;
+                if(lacing==0)return true;
+                var frames=bytes[offset++]+1;
+                if(frames<2)continue;
+                if(lacing==4)
+                {
+                    if(block.End>offset&&(block.End-offset)%frames==0)return true;
+                    continue;
+                }
+                long sizes=0,previous=0;
+                for(var frame=0;frame<frames-1;frame++)
+                {
+                    long size;
+                    if(lacing==2)
+                    {
+                        size=0;byte part;
+                        do {if(offset>=block.End)throw new AdminValidation("Dữ liệu khung hình WebM bị cắt.");part=bytes[offset++];size+=part;}while(part==255);
+                    }
+                    else
+                    {
+                        var start=offset;
+                        var encoded=Read(bytes,ref offset,block.End,false,out _);
+                        size=frame==0?(long)encoded:previous+(long)encoded-((1L<<(7*(offset-start)-1))-1);
+                    }
+                    if(size<=0)throw new AdminValidation("WebM có khung hình rỗng.");
+                    sizes+=size;previous=size;
+                }
+                if(sizes<block.End-offset)return true; // The final frame takes the remaining bytes.
+            }
+        }
+        return false;
+    }
     public static PlaceVideos.Metadata Inspect(byte[] bytes)
     {
         if(bytes.Length>PlaceVideos.MaxBytes)throw new AdminValidation("Video tối đa 100 MB.");
@@ -46,10 +93,13 @@ public static class WebmMetadata
         {
             var fields=Elements(bytes,entry.Start,entry.End).ToArray();var type=fields.FirstOrDefault(e=>e.Id==0x83);
             if(type is null||Unsigned(bytes,type)!=1)continue;
+            var number=fields.FirstOrDefault(e=>e.Id==0xD7);
+            if(number is null||Unsigned(bytes,number)==0)throw new AdminValidation("WebM thiếu mã luồng video.");
             var video=fields.FirstOrDefault(e=>e.Id==0xE0);if(video is null)continue;
             var dimensions=Elements(bytes,video.Start,video.End).ToArray();var w=dimensions.FirstOrDefault(e=>e.Id==0xB0);var h=dimensions.FirstOrDefault(e=>e.Id==0xBA);
             if(w is null||h is null)continue;var width=Unsigned(bytes,w);var height=Unsigned(bytes,h);
             if(width==0||height==0||Math.Min(width,height)>1080||Math.Max(width,height)>1920)throw new AdminValidation("Video tối đa 1080p (1920×1080 hoặc 1080×1920).");
+            if(!HasVideoBlock(bytes,children,Unsigned(bytes,number)))throw new AdminValidation("WebM không có dữ liệu khung hình video.");
             return new(seconds,(int)width,(int)height);
         }
         throw new AdminValidation("WebM không có luồng video hợp lệ.");

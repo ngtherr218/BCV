@@ -35,7 +35,7 @@ using (var scope = app.Services.CreateScope()) {
 Console.WriteLine("PASS: users/items deletion rejected before any database operation.");
 await app.StartAsync();
 using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
-foreach (var route in new[]{"/api/places/1/media","/api/admin/community-media"}) {
+foreach (var route in new[]{"/api/places/1/media","/api/community-media/1/content","/api/admin/community-media"}) {
     using var response = await client.GetAsync(route);
     Check(response.StatusCode == HttpStatusCode.Unauthorized, "Anonymous media access was not rejected");
 }
@@ -43,6 +43,8 @@ using (var response = await client.PostAsync("/api/places/1/media", new ByteArra
     Check(response.StatusCode == HttpStatusCode.Unauthorized, "Anonymous upload was not rejected");
 using (var response = await client.PostAsJsonAsync("/api/admin/community-media/1/review", new { status="APPROVED" }))
     Check(response.StatusCode == HttpStatusCode.Unauthorized, "Anonymous approval was not rejected");
+using (var response = await client.PostAsJsonAsync("/api/community-media/1/reports", new { reason="Report" }))
+    Check(response.StatusCode == HttpStatusCode.Unauthorized, "Anonymous report was not rejected");
 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "fixture");
 using (var response = await client.PostAsync("/api/places/1/media", new StringContent("<html>bad</html>")))
     Check(response.StatusCode == HttpStatusCode.BadRequest, "Unsupported upload MIME accepted");
@@ -50,6 +52,16 @@ using (var bytes = new ByteArrayContent(new byte[16])) {
     bytes.Headers.ContentType = new MediaTypeHeaderValue("image/jpeg");
     using var response = await client.PostAsync("/api/places/1/media", bytes);
     Check(response.StatusCode == HttpStatusCode.BadRequest, "Spoofed JPEG accepted");
+}
+using (var bytes = new ByteArrayContent(System.Text.Encoding.ASCII.GetBytes("0000ftypisom0"))) {
+    bytes.Headers.ContentType = new MediaTypeHeaderValue("video/mp4");
+    using var response = await client.PostAsync("/api/places/1/media", bytes);
+    Check(response.StatusCode == HttpStatusCode.BadRequest, "Header-only MP4 accepted");
+}
+using (var bytes = new ByteArrayContent(new byte[]{26,69,223,163,0,0,0,0,0,0,0,0})) {
+    bytes.Headers.ContentType = new MediaTypeHeaderValue("video/webm");
+    using var response = await client.PostAsync("/api/places/1/media", bytes);
+    Check(response.StatusCode == HttpStatusCode.BadRequest, "Malformed WebM upload accepted");
 }
 using (var bytes = new ByteArrayContent(new byte[16])) {
     bytes.Headers.ContentType = new MediaTypeHeaderValue("video/mp4");
