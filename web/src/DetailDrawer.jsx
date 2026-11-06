@@ -5,6 +5,7 @@ import { catalog, valueLabels } from './catalog';
 import { Badge, ErrorBox, Loading } from './components';
 import { useAnimatedDismiss } from './motion';
 import PlaceVideosField from './PlaceVideosField';
+import ApprovedPlaceMedia from './ApprovedPlaceMedia';
 import ModerationActionDialog from './ModerationActionDialog';
 
 const references = { regions:'regions', types:'place-types', places:'places', cards:'cards', items:'items' };
@@ -31,6 +32,7 @@ export default function DetailDrawer({ resource, recordId, close, edit, openRela
     <div className="drawer-body">{loading?<Loading/>:error?<ErrorBox message={error} retry={()=>setRetry(value=>value+1)}/>:data&&<div className="detail-content" key={`${resource}-${recordId}`}>
       {['places','cards'].includes(resource)&&<section className="detail-section detail-media"><h3>Hình ảnh <span>{images.length}</span></h3>{images.length?<div className="detail-gallery">{images.map((image,index)=><figure key={image}><img src={image} alt={`${data.name} · ảnh ${index+1}`} loading={index===0?'eager':'lazy'} onError={event=>{event.currentTarget.hidden=true;event.currentTarget.nextElementSibling.hidden=false;}}/><span hidden className="detail-image-error">Không tải được ảnh</span><figcaption>Ảnh {index+1}</figcaption></figure>)}</div>:<p className="detail-empty">Chưa có hình ảnh.</p>}</section>}
       {resource==='places'&&<section className="detail-section"><h3>Video địa danh</h3><PlaceVideosField value={data.videos||[]} readOnly/></section>}
+      {resource==='places'&&<ApprovedPlaceMedia key={recordId} placeId={recordId}/>}
       <div className="detail-summary"><span className="metric-icon mint"><config.icon size={24}/></span><div><h3>{data.name||data.full_name||`#${recordId}`}</h3><span>{config.title} · Mã #{recordId}</span></div>{data.status&&<Badge value={data.status}/>}</div>
       {resource==='users'&&<><dl className="detail-grid"><div><dt>Họ tên</dt><dd>{data.full_name}</dd></div><div><dt>Email</dt><dd>{data.email}</dd></div><div><dt>Vai trò</dt><dd>{valueLabels[data.role]||data.role}</dd></div><div><dt>Ngày tham gia</dt><dd>{date(data.created_at)}</dd></div></dl><div className="mini-metrics">{metrics.users.map(([key,label])=><div key={key}><strong>{number(data[key])}</strong><span>{label}</span></div>)}</div></>}
       {resource==='users'&&data.role!=='ADMIN'&&<section className="detail-section"><h3>Quyền gửi ảnh/video</h3><p>{data.media_upload_blocked?'Đang khóa quyền gửi':'Được phép gửi nội dung'}</p><button type="button" className="button secondary" onClick={()=>setUploadAction({item:{userId:data.user_id,author:data.full_name},blocked:!data.media_upload_blocked})}>{data.media_upload_blocked?'Mở quyền gửi':'Khóa quyền gửi'}</button>{accessMessage&&<p role="status">{accessMessage}</p>}</section>}

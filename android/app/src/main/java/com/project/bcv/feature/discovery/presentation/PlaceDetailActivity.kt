@@ -44,10 +44,17 @@ class PlaceDetailActivity : AppCompatActivity() {
     private var replaceDialogShown = false
     private var shownError: String? = null
     private var renderedPlaceId: Long? = null
+    private lateinit var approvedMedia: ApprovedPlaceMediaView
+    private var communityPlaceId: Long? = null
     private val bitmaps = mutableMapOf<String, Bitmap>()
     private var galleryUrls = emptyList<String>()
     private var galleryIndex = 0
     private var preparingPlaceId: Long? = null
+    override fun onResume() {
+        super.onResume()
+        if (::model.isInitialized && ::approvedMedia.isInitialized) model.state.value?.place?.let { approvedMedia.load(it.id) }
+    }
+
     /** Which placeholder is up: the map's hint first, then what the server says. */
     private var skeletonDiscovered = false
 
@@ -60,6 +67,8 @@ class PlaceDetailActivity : AppCompatActivity() {
         }
         binding = ActivityPlaceDetailBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        approvedMedia = ApprovedPlaceMediaView(this)
+        binding.approvedCommunity.addView(approvedMedia)
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
@@ -122,6 +131,7 @@ class PlaceDetailActivity : AppCompatActivity() {
     }
 
     private fun showLoading(error: String?) = with(binding) {
+        approvedCommunity.visibility = View.GONE
         loadingContent.visibility = View.VISIBLE
         lockedContent.visibility = View.GONE
         unlockedContent.visibility = View.GONE
@@ -158,6 +168,8 @@ class PlaceDetailActivity : AppCompatActivity() {
         // A discovered place opens its content page; a locked one stays the destination picker.
         lockedContent.visibility = if (place.isDiscovered) View.GONE else View.VISIBLE
         unlockedContent.visibility = if (place.isDiscovered) View.VISIBLE else View.GONE
+        approvedCommunity.visibility = View.VISIBLE
+        if (communityPlaceId != place.id) { communityPlaceId = place.id; approvedMedia.load(place.id) }
         bottomBar.visibility = View.VISIBLE
         selectButton.visibility = lockedContent.visibility
         topTitle.text = if (place.isDiscovered) "Nội dung địa danh" else "Chọn điểm đến"

@@ -59,13 +59,13 @@ public static class CommunityMediaEndpoints
             catch (FormatException) { return Results.NotFound(); }
         });
 
-        app.MapGet("/api/places/{placeId:long}/media", async (long placeId, HttpRequest request,
+        app.MapGet("/api/places/{placeId:long}/media", async (long placeId, bool? approvedOnly, HttpRequest request,
             ISessionStore sessions, NpgsqlDataSource db, CancellationToken ct) =>
         {
             var user = CurrentUser.Get(request, sessions);
             if (user is null) return Results.Unauthorized();
             request.HttpContext.Response.Headers.CacheControl = "no-store";
-            return Results.Ok(new { items = await List(db, placeId, user.UserId, false, "", ct) });
+            return Results.Ok(new { items = await List(db, placeId, user.UserId, false, approvedOnly==true?"APPROVED":"", ct) });
         });
 
         app.MapPost("/api/places/{placeId:long}/media", async (long placeId, string? caption,
@@ -150,8 +150,8 @@ public static class CommunityMediaEndpoints
             catch(AdminValidation ex) {return Results.BadRequest(new {message=ex.Message});}
             catch(KeyNotFoundException ex) {return Results.NotFound(new {message=ex.Message});}
         });
-        admin.MapGet("", (string? status,string? q,string? kind,bool? reported,int? page,int? pageSize,NpgsqlDataSource db,CancellationToken ct) =>
-            MediaModeration.ListAsync(db,status,q,kind,reported??false,page??1,pageSize??12,ct));
+        admin.MapGet("", (string? status,string? q,string? kind,bool? reported,int? page,int? pageSize,long? placeId,NpgsqlDataSource db,CancellationToken ct) =>
+            MediaModeration.ListAsync(db,status,q,kind,reported??false,page??1,pageSize??12,ct,placeId));
         admin.MapGet("/{id:long}/reports",(long id,NpgsqlDataSource db,CancellationToken ct)=>MediaModeration.ReportsAsync(db,id,ct));
         admin.MapPost("/{id:long}/review", async (long id, Review body,HttpContext http,NpgsqlDataSource db,CancellationToken ct) =>
         {

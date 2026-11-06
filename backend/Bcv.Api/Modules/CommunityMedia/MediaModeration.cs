@@ -124,10 +124,11 @@ public static class MediaModeration
         cmd.Parameters.AddWithValue(owner);cmd.Parameters.AddWithValue(type);cmd.Parameters.AddWithValue(title);cmd.Parameters.AddWithValue(text);await cmd.ExecuteNonQueryAsync(ct);
     }
 
-    public static async Task<JsonElement> ListAsync(NpgsqlDataSource db,string? status,string? q,string? kind,bool reported,int page,int pageSize,CancellationToken ct)
+    public static async Task<JsonElement> ListAsync(NpgsqlDataSource db,string? status,string? q,string? kind,bool reported,int page,int pageSize,CancellationToken ct,long? placeId=null)
     {
         status??="PENDING";q=(q??"").Trim();kind??="";
         if(status!=""&&!Statuses.Contains(status)||kind is not ("" or "image" or "video")||q.Length>200)throw new AdminValidation("Bộ lọc không hợp lệ.");
+        if(placeId is <=0)throw new AdminValidation("Địa danh không hợp lệ.");
         page=Math.Clamp(page,1,100000);pageSize=Math.Clamp(pageSize,1,50);
         await using var cmd=db.CreateCommand("""
             WITH rows AS (
@@ -140,7 +141,7 @@ public static class MediaModeration
               LEFT JOIN app_user a ON a.user_id=m.reviewed_by
             ), filtered AS (
               SELECT * FROM rows WHERE ($1='' OR status=$1) AND ($2='' OR place_name ILIKE '%'||$2||'%' OR author ILIKE '%'||$2||'%' OR caption ILIKE '%'||$2||'%')
-                AND ($3='' OR mime_type LIKE $3||'/%') AND (NOT $4 OR report_count>0)
+                AND ($3='' OR mime_type LIKE $3||'/%') AND (NOT $4 OR report_count>0) AND ($7::bigint IS NULL OR place_id=$7)
             )
             SELECT jsonb_build_object('total',(SELECT count(*) FROM filtered),'page',$5,'pageSize',$6,
               'stats',jsonb_build_object('pending',(SELECT count(*) FROM rows WHERE status='PENDING'),'approved',(SELECT count(*) FROM rows WHERE status='APPROVED'),
@@ -148,9 +149,9 @@ public static class MediaModeration
               'items',COALESCE((SELECT jsonb_agg(jsonb_build_object('mediaId',media_id,'placeId',place_id,'userId',user_id,'placeName',place_name,'author',author,
                 'uploadBlocked',media_upload_blocked,'caption',caption,'mimeType',mime_type,'status',status,'reviewNote',review_note,'createdAt',created_at,'reviewedAt',reviewed_at,
                 'reviewer',reviewer,'contentAvailable',content_available,'bytes',bytes,'reportCount',report_count,'totalReports',total_reports,'contentUrl','/api/community-media/'||media_id||'/content'))
-                FROM (SELECT * FROM filtered ORDER BY CASE WHEN status='PENDING' THEN created_at END ASC,created_at DESC,media_id DESC LIMIT $6 OFFSET (($5-1)*$6)) s),'[]'::jsonb))::text
+                FROM (SELECT * FROM filtered ORDER BY CASE WHEN status='PENDING' THEN created_at END ASC,CASE WHEN status='APPROVED' THEN reviewed_at END DESC NULLS LAST,created_at DESC,media_id DESC LIMIT $6 OFFSET (($5-1)*$6)) s),'[]'::jsonb))::text
             """);
-        cmd.Parameters.AddWithValue(status);cmd.Parameters.AddWithValue(q);cmd.Parameters.AddWithValue(kind);cmd.Parameters.AddWithValue(reported);cmd.Parameters.AddWithValue(page);cmd.Parameters.AddWithValue(pageSize);
+        cmd.Parameters.AddWithValue(status);cmd.Parameters.AddWithValue(q);cmd.Parameters.AddWithValue(kind);cmd.Parameters.AddWithValue(reported);cmd.Parameters.AddWithValue(page);cmd.Parameters.AddWithValue(pageSize);cmd.Parameters.AddWithValue(NpgsqlTypes.NpgsqlDbType.Bigint,(object?)placeId??DBNull.Value);
         return JsonSerializer.Deserialize<JsonElement>((string)(await cmd.ExecuteScalarAsync(ct))!);
     }
 

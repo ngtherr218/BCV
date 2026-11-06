@@ -28,6 +28,8 @@ static class ModerationChecks
             UPDATE place SET status='ACTIVE' WHERE place_id=910001;
             INSERT INTO community_media(media_id,user_id,place_id,mime_type,media_data) OVERRIDING SYSTEM VALUE VALUES(950001,950001,910001,'image/png',decode('89504e470d0a1a0a00000000','hex'));
             INSERT INTO community_media(media_id,user_id,place_id,mime_type,media_data) OVERRIDING SYSTEM VALUE VALUES(950002,950001,910001,'image/png',decode('89504e470d0a1a0a00000000','hex'));
+            INSERT INTO place(place_id,region_id,place_type_id,name,latitude,longitude,status) OVERRIDING SYSTEM VALUE VALUES(950020,910001,910001,'Other place media fixture',21,105,'ACTIVE');
+            INSERT INTO community_media(media_id,user_id,place_id,mime_type,media_data,status) OVERRIDING SYSTEM VALUE VALUES(950020,950002,950020,'image/png',decode('89504e470d0a1a0a00000000','hex'),'APPROVED');
             """);
         try
         {
@@ -57,6 +59,14 @@ static class ModerationChecks
             await Send("/api/admin/community-media/950001/review",new{status="APPROVED",note="",expectedStatus="PENDING"},HttpStatusCode.BadRequest);
             Check(await Scalar("SELECT progress_value FROM quest_progress WHERE user_id=950001 AND quest_id=950001")==1,"First approval not counted exactly once");
             Console.WriteLine("PASS moderation authentication, mandatory rejection reason, first approval task and duplicate review guard");
+            var approvedForPlace=await client.GetFromJsonAsync<JsonElement>("/api/admin/community-media?status=APPROVED&placeId=910001");
+            Check(approvedForPlace.GetProperty("total").GetInt32()==1&&approvedForPlace.GetProperty("items")[0].GetProperty("mediaId").GetInt64()==950001,"Place detail does not isolate its approved community content");
+            var otherPlace=await client.GetFromJsonAsync<JsonElement>("/api/admin/community-media?status=APPROVED&placeId=950020");
+            Check(otherPlace.GetProperty("total").GetInt32()==1&&otherPlace.GetProperty("items")[0].GetProperty("mediaId").GetInt64()==950020,"Other place approved content mixed into detail");
+            Token("950001");
+            var approvedForApp=await client.GetFromJsonAsync<JsonElement>("/api/places/910001/media?approvedOnly=true");
+            Check(approvedForApp.GetProperty("items").GetArrayLength()==1&&approvedForApp.GetProperty("items")[0].GetProperty("mediaId").GetInt64()==950001,"App detail includes owner's rejected content or excludes approved image");
+            Console.WriteLine("PASS web/app place detail lists approved user content only, scoped to the exact place");
             Token("950001");await Send("/api/community-media/950001/reports",new{reason="self"},HttpStatusCode.BadRequest);
             Token("950002");await Send("/api/community-media/950001/reports",new{reason="Nội dung vi phạm"},HttpStatusCode.OK);
             await Send("/api/community-media/950001/reports",new{reason="duplicate"},HttpStatusCode.BadRequest);
@@ -103,7 +113,7 @@ static class ModerationChecks
         }
         finally
         {
-            await Exec("DELETE FROM media_report; DELETE FROM community_media WHERE user_id BETWEEN 950001 AND 950005; DELETE FROM notification WHERE user_id BETWEEN 950001 AND 950005; DELETE FROM quest_progress WHERE quest_id=950001; DELETE FROM quest WHERE quest_id=950001; DELETE FROM app_user WHERE user_id BETWEEN 950001 AND 950005; UPDATE place SET status='DRAFT' WHERE place_id=910001");
+            await Exec("DELETE FROM media_report; DELETE FROM community_media WHERE user_id BETWEEN 950001 AND 950005; DELETE FROM place WHERE place_id=950020; DELETE FROM notification WHERE user_id BETWEEN 950001 AND 950005; DELETE FROM quest_progress WHERE quest_id=950001; DELETE FROM quest WHERE quest_id=950001; DELETE FROM app_user WHERE user_id BETWEEN 950001 AND 950005; UPDATE place SET status='DRAFT' WHERE place_id=910001");
         }
     }
     sealed class ModerationSessions:ISessionStore
