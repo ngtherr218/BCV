@@ -200,3 +200,14 @@ Cấu hình Goong REST API Key bằng `Goong__ApiKey`. Script `run-local.ps1` c�
 - API: GET/POST /api/places/{id}/media, GET /api/community-media/{id}/content, GET /api/admin/community-media, POST /api/admin/community-media/{id}/review.
 - Kiểm tra HTTP không dùng DB thật: dotnet run --project backend/Bcv.MediaChecks.
 - Cần deploy backend/web và cài APK mới cùng nhau; backend cũ chưa có các API này.
+
+## Đặc trưng theo loại địa danh
+
+Migration `db/023_place_type_features.sql` được nhúng trong API và tự chạy khi khởi động, sau migration gợi ý. Migration tạo ánh xạ mặc định cho 12 loại chuẩn; không ghi đè đặc trưng của địa danh cũ (được giữ ở chế độ `CUSTOM`).
+
+- Thêm/sửa loại địa danh: gửi `feature_codes` gồm ít nhất một trong 35 mã nội dung. Ánh xạ được lưu trong `place_type_feature`.
+- Thêm/sửa địa danh: `feature_source: "TYPE"` để backend lấy ánh xạ từ loại, không cần gửi `feature_codes`. `feature_source: "CUSTOM"` cùng `feature_codes` để tùy chỉnh. Loại chưa cấu hình sẽ báo lỗi rõ ràng.
+- Sửa ánh xạ loại cập nhật mọi địa danh `TYPE`, phân cụm lại trong một phiên bản mô hình mới và một transaction. Địa danh `CUSTOM` giữ nguyên. Không tạo lại phiên bản nếu ánh xạ không thay đổi.
+- Chỉ có đặc trưng chưa đảm bảo xuất hiện trong Top 3: các điều kiện trạng thái, khoảng cách, lịch sử khám phá và điểm xếp hạng vẫn áp dụng.
+
+Kiểm thử local: `./backend/test-admin-delete.ps1` (đã bao gồm kế thừa đặc trưng, cập nhật nhiều địa danh, tùy chỉnh và rollback). Test web: `node --test web/tests/place-feature-defaults.test.mjs`.

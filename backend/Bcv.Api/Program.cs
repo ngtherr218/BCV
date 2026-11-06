@@ -155,4 +155,5 @@ await Bcv.Api.Modules.PlaceCollection.Infrastructure.CollectionSchema.EnsureAsyn
 await Bcv.Api.Modules.StatsNotify.Infrastructure.NotificationSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
 await RecommendationSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
 await Bcv.Api.Modules.CommunityMedia.CommunityMediaEndpoints.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
+await Bcv.Api.Modules.Admin.PlaceTypeFeatureSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
 app.Run();

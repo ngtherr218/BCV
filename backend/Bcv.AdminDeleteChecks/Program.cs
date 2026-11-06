@@ -33,32 +33,34 @@ try
         await Setup("ALTER TABLE recommendation_config ADD COLUMN IF NOT EXISTS settings jsonb; CREATE TABLE IF NOT EXISTS recommendation_rating_snapshot(recommendation_config_id bigint REFERENCES recommendation_config,place_id bigint REFERENCES place,rating numeric(3,2),rating_count integer,PRIMARY KEY(recommendation_config_id,place_id))");
         await Setup("""
             INSERT INTO recommendation_config(recommendation_config_id,version,distance_limit,cluster_count,status,settings) OVERRIDING SYSTEM VALUE
-              VALUES(-910001,'delete-check',10000,15,'DRAFT','{}');
-            INSERT INTO recommendation_criterion(criterion_id,code,name,status) OVERRIDING SYSTEM VALUE VALUES(-910001,'delete-check','Delete check','ACTIVE');
-            INSERT INTO region(region_id,name,status) OVERRIDING SYSTEM VALUE VALUES(-910001,'Delete check region','DRAFT');
-            INSERT INTO place_type(place_type_id,name) OVERRIDING SYSTEM VALUE VALUES(-910001,'Delete check type');
-            INSERT INTO place(place_id,region_id,place_type_id,name,latitude,longitude,status) OVERRIDING SYSTEM VALUE VALUES(-910001,-910001,-910001,'Delete check place',21,105,'DRAFT');
-            INSERT INTO card(card_id,place_id,name,status) OVERRIDING SYSTEM VALUE VALUES(-910001,-910001,'Delete check card','DRAFT');
-            INSERT INTO place_image(place_image_id,place_id,image_key) OVERRIDING SYSTEM VALUE VALUES(-910001,-910001,'https://example.invalid/check.jpg');
-            INSERT INTO place_feature(place_feature_id,place_id,recommendation_config_id,cluster_number) OVERRIDING SYSTEM VALUE VALUES(-910001,-910001,-910001,0);
-            INSERT INTO place_feature_value VALUES(-910001,-910001,1);
-            INSERT INTO recommendation_rating_snapshot VALUES(-910001,-910001,4,1);
-            INSERT INTO collection(collection_id,name,status) OVERRIDING SYSTEM VALUE VALUES(-910001,'Delete check collection','DRAFT');
-            INSERT INTO collection_card(collection_card_id,collection_id,card_id) OVERRIDING SYSTEM VALUE VALUES(-910001,-910001,-910001);
-            INSERT INTO quest(quest_id,name,quest_type,condition_type,target_value,cycle_type,status) OVERRIDING SYSTEM VALUE VALUES(-910001,'Delete check quest','DAILY','STEP_COUNT',1,'DAILY','DRAFT');
+              VALUES(910001,'delete-check',10000,15,'DRAFT','{}');
+            INSERT INTO recommendation_criterion(criterion_id,code,name,status) OVERRIDING SYSTEM VALUE VALUES(910001,'delete-check','Delete check','ACTIVE');
+            INSERT INTO region(region_id,name,status) OVERRIDING SYSTEM VALUE VALUES(910001,'Delete check region','DRAFT');
+            INSERT INTO place_type(place_type_id,name) OVERRIDING SYSTEM VALUE VALUES(910001,'Delete check type');
+            INSERT INTO place(place_id,region_id,place_type_id,name,latitude,longitude,status) OVERRIDING SYSTEM VALUE VALUES(910001,910001,910001,'Delete check place',21,105,'DRAFT');
+            INSERT INTO card(card_id,place_id,name,status) OVERRIDING SYSTEM VALUE VALUES(910001,910001,'Delete check card','DRAFT');
+            INSERT INTO place_image(place_image_id,place_id,image_key) OVERRIDING SYSTEM VALUE VALUES(910001,910001,'https://example.invalid/check.jpg');
+            INSERT INTO place_feature(place_feature_id,place_id,recommendation_config_id,cluster_number) OVERRIDING SYSTEM VALUE VALUES(910001,910001,910001,0);
+            INSERT INTO place_feature_value VALUES(910001,910001,1);
+            INSERT INTO recommendation_rating_snapshot VALUES(910001,910001,4,1);
+            INSERT INTO collection(collection_id,name,status) OVERRIDING SYSTEM VALUE VALUES(910001,'Delete check collection','DRAFT');
+            INSERT INTO collection_card(collection_card_id,collection_id,card_id) OVERRIDING SYSTEM VALUE VALUES(910001,910001,910001);
+            INSERT INTO quest(quest_id,name,quest_type,condition_type,target_value,cycle_type,status) OVERRIDING SYSTEM VALUE VALUES(910001,'Delete check quest','DAILY','STEP_COUNT',1,'DAILY','DRAFT');
             """);
         await tx.CommitAsync();
     }
     settings.SearchPath = schema;
     await using var isolated = NpgsqlDataSource.Create(settings.ConnectionString);
     var repo = new AdminRepository(isolated, new TestSessions());
+    await PlaceTypeFeatureSchema.EnsureAsync(isolated);
+    await FeatureInheritanceChecks.Run(isolated, repo);
     void Assert(bool condition, string message) { if (!condition) throw new Exception(message); }
     async Task<long> Count(string table) { await using var cmd = isolated.CreateCommand($"SELECT count(*) FROM {table}"); return (long)(await cmd.ExecuteScalarAsync())!; }
     async Task Blocked(string resource, bool hasStatus)
     {
-        var result = await repo.CheckDelete(resource,-910001,default);
+        var result = await repo.CheckDelete(resource,910001,default);
         Assert(!result.CanDelete && result.CanChangeStatus == hasStatus, "Incorrect linked eligibility: " + resource);
-        try { await repo.Delete(resource,-910001,default); throw new Exception("Linked deletion accepted: " + resource); }
+        try { await repo.Delete(resource,910001,default); throw new Exception("Linked deletion accepted: " + resource); }
         catch(AdminValidation) { }
         Assert(await Count(AdminCatalog.Resources[resource].Table) == 1, "Parent lost: " + resource);
         Console.WriteLine("PASS linked check + DELETE blocked: " + resource);
@@ -69,28 +71,28 @@ try
     await using(var cmd=isolated.CreateCommand("DROP TABLE recommendation_rating_snapshot")) await cmd.ExecuteNonQueryAsync();
     await Blocked("places",true);
     Console.WriteLine("PASS missing optional snapshot table does not bypass business references");
-    await using(var cmd=isolated.CreateCommand("CREATE TABLE recommendation_rating_snapshot(recommendation_config_id bigint REFERENCES recommendation_config,place_id bigint REFERENCES place,rating numeric(3,2),rating_count integer,PRIMARY KEY(recommendation_config_id,place_id)); INSERT INTO recommendation_rating_snapshot VALUES(-910001,-910001,4,1)")) await cmd.ExecuteNonQueryAsync();
+    await using(var cmd=isolated.CreateCommand("CREATE TABLE recommendation_rating_snapshot(recommendation_config_id bigint REFERENCES recommendation_config,place_id bigint REFERENCES place,rating numeric(3,2),rating_count integer,PRIMARY KEY(recommendation_config_id,place_id)); INSERT INTO recommendation_rating_snapshot VALUES(910001,910001,4,1)")) await cmd.ExecuteNonQueryAsync();
     Assert(await Count("collection_card")==1,"Membership cascaded away");
     // Test ON DELETE SET NULL and CASCADE explicitly, including references outside public.
-    await using(var cmd=isolated.CreateCommand("CREATE TABLE quest_link(id bigint PRIMARY KEY,quest_id bigint REFERENCES quest(quest_id) ON DELETE SET NULL); INSERT INTO quest_link VALUES(1,-910001); CREATE TABLE region_link(id bigint PRIMARY KEY,region_id bigint REFERENCES region(region_id) ON DELETE CASCADE); INSERT INTO region_link VALUES(1,-910001)")) await cmd.ExecuteNonQueryAsync();
+    await using(var cmd=isolated.CreateCommand("CREATE TABLE quest_link(id bigint PRIMARY KEY,quest_id bigint REFERENCES quest(quest_id) ON DELETE SET NULL); INSERT INTO quest_link VALUES(1,910001); CREATE TABLE region_link(id bigint PRIMARY KEY,region_id bigint REFERENCES region(region_id) ON DELETE CASCADE); INSERT INTO region_link VALUES(1,910001)")) await cmd.ExecuteNonQueryAsync();
     await Blocked("quests",true);
     await using(var cmd=isolated.CreateCommand("DELETE FROM collection_card; DELETE FROM quest_link;")) await cmd.ExecuteNonQueryAsync();
     // Change since preflight: eligibility must be checked again by DELETE.
-    Assert((await repo.CheckDelete("collections",-910001,default)).CanDelete,"Empty collection not eligible");
-    await using(var cmd=isolated.CreateCommand("INSERT INTO collection_card(collection_card_id,collection_id,card_id) OVERRIDING SYSTEM VALUE VALUES(-910002,-910001,-910001)")) await cmd.ExecuteNonQueryAsync();
+    Assert((await repo.CheckDelete("collections",910001,default)).CanDelete,"Empty collection not eligible");
+    await using(var cmd=isolated.CreateCommand("INSERT INTO collection_card(collection_card_id,collection_id,card_id) OVERRIDING SYSTEM VALUE VALUES(910002,910001,910001)")) await cmd.ExecuteNonQueryAsync();
     await Blocked("collections",true);
     await using(var cmd=isolated.CreateCommand("DELETE FROM collection_card")) await cmd.ExecuteNonQueryAsync();
     Console.WriteLine("PASS link added after preflight is blocked at DELETE");
     // Actual state change leaves the linked parent and its child untouched.
-    await repo.Save("regions", -910001, System.Text.Json.JsonSerializer.SerializeToElement(new { name="Delete check region", status="INACTIVE" }), 1, default);
-    await using(var cmd=isolated.CreateCommand("SELECT status FROM region WHERE region_id=-910001"))
+    await repo.Save("regions", 910001, System.Text.Json.JsonSerializer.SerializeToElement(new { name="Delete check region", status="INACTIVE" }), 1, default);
+    await using(var cmd=isolated.CreateCommand("SELECT status FROM region WHERE region_id=910001"))
         Assert((string?)(await cmd.ExecuteScalarAsync()) == "INACTIVE", "Status update failed");
     Assert(await Count("place")==1,"Status update removed child");
     Console.WriteLine("PASS linked status update preserves child");
     foreach(var resource in new[]{"collections","cards","places","place-types","quests"})
     {
-        Assert((await repo.CheckDelete(resource,-910001,default)).CanDelete,"Unlinked record blocked: " + resource);
-        await repo.Delete(resource,-910001,default);
+        Assert((await repo.CheckDelete(resource,910001,default)).CanDelete,"Unlinked record blocked: " + resource);
+        await repo.Delete(resource,910001,default);
         Assert(await Count(AdminCatalog.Resources[resource].Table)==0,"Unlinked record not deleted: " + resource);
         Console.WriteLine("PASS unlinked eligibility + actual DELETE: " + resource);
         if(resource=="places")
@@ -104,13 +106,13 @@ try
     await Blocked("regions",true);
     Assert(await Count("region_link")==1,"CASCADE link was lost");
     await using(var cmd=isolated.CreateCommand("DELETE FROM region_link")) await cmd.ExecuteNonQueryAsync();
-    await repo.Delete("regions",-910001,default);
+    await repo.Delete("regions",910001,default);
     Assert(await Count("region")==0,"Region not deleted after unlink");
     foreach(var resource in new[]{"users","items"})
     {
-        try { await repo.Delete(resource,-910001,default); throw new Exception("Protected resource accepted"); } catch(AdminValidation) { }
+        try { await repo.Delete(resource,910001,default); throw new Exception("Protected resource accepted"); } catch(AdminValidation) { }
     }
-    try { await repo.CheckDelete("regions",-910001,default); throw new Exception("Missing record accepted"); } catch(KeyNotFoundException) { }
+    try { await repo.CheckDelete("regions",910001,default); throw new Exception("Missing record accepted"); } catch(KeyNotFoundException) { }
     Console.WriteLine("PASS CASCADE protection, unlinked region deletion, protected users/items, missing record");
 }
 finally

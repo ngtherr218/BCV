@@ -6,17 +6,84 @@ namespace Bcv.Api.Modules.Admin;
 
 internal static class AdminPlaceFeatures
 {
-    // Same configuration order as the recommendation reader. Save everything in
-    // the place transaction so incomplete model data cannot become visible.
-    public static async Task Save(NpgsqlConnection connection, NpgsqlTransaction transaction,
-        long placeId, JsonElement body, CancellationToken ct)
+    internal static HashSet<string> ReadCodes(JsonElement body)
+    {
+        if (!body.TryGetProperty("feature_codes", out var array) || array.ValueKind != JsonValueKind.Array || array.GetArrayLength() > 35)
+            throw new AdminValidation("Hãy chọn đặc trưng nội dung, tối đa 35 mục.");
+        var codes = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in array.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String || !PlaceFeatureClassifier.Features.Contains(item.GetString()!))
+                throw new AdminValidation("Đặc trưng nội dung không được hỗ trợ.");
+            codes.Add(item.GetString()!);
+        }
+        if (codes.Count == 0) throw new AdminValidation("Cần ít nhất một đặc trưng nội dung.");
+        return codes;
+    }
+
+    public static async Task Save(NpgsqlConnection connection, NpgsqlTransaction transaction, long placeId, JsonElement body, CancellationToken ct)
+    {
+        var source = body.TryGetProperty("feature_source", out var mode)
+            ? mode.ValueKind == JsonValueKind.String ? mode.GetString() : null
+            : body.TryGetProperty("feature_codes", out _) ? "CUSTOM" : "TYPE";
+        if (source is not ("TYPE" or "CUSTOM")) throw new AdminValidation("Chế độ đặc trưng không hợp lệ.");
+        HashSet<string> selected;
+        if (source == "CUSTOM") selected = ReadCodes(body);
+        else
+        {
+            selected = new(StringComparer.Ordinal);
+            await using var defaults = new NpgsqlCommand("SELECT f.code FROM place_type_feature f JOIN place p ON p.place_type_id=f.place_type_id WHERE p.place_id=$1", connection, transaction);
+            defaults.Parameters.AddWithValue(placeId);
+            await using var reader = await defaults.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct)) selected.Add(reader.GetString(0));
+            if (selected.Count == 0) throw new AdminValidation("Loại địa danh chưa cấu hình đặc trưng. Hãy cấu hình tại Loại địa danh hoặc bật tùy chỉnh.");
+        }
+        await using (var update = new NpgsqlCommand("UPDATE place SET feature_source=$2 WHERE place_id=$1", connection, transaction))
+        {
+            update.Parameters.AddWithValue(placeId); update.Parameters.AddWithValue(source!);
+            await update.ExecuteNonQueryAsync(ct);
+        }
+        await SaveBatch(connection, transaction, new Dictionary<long, HashSet<string>> { [placeId] = selected }, ct);
+    }
+
+    public static async Task SaveType(NpgsqlConnection connection, NpgsqlTransaction transaction, long typeId, JsonElement body, CancellationToken ct)
+    {
+        var selected = ReadCodes(body);
+        var previous = new HashSet<string>(StringComparer.Ordinal);
+        await using (var current = new NpgsqlCommand("SELECT code FROM place_type_feature WHERE place_type_id=$1", connection, transaction))
+        {
+            current.Parameters.AddWithValue(typeId);
+            await using var reader = await current.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct)) previous.Add(reader.GetString(0));
+        }
+        if (previous.SetEquals(selected)) return;
+        await using (var clear = new NpgsqlCommand("DELETE FROM place_type_feature WHERE place_type_id=$1", connection, transaction))
+        {
+            clear.Parameters.AddWithValue(typeId); await clear.ExecuteNonQueryAsync(ct);
+        }
+        await using (var insert = new NpgsqlCommand("INSERT INTO place_type_feature SELECT $1,unnest($2::text[])", connection, transaction))
+        {
+            insert.Parameters.AddWithValue(typeId); insert.Parameters.AddWithValue(selected.ToArray());
+            await insert.ExecuteNonQueryAsync(ct);
+        }
+        var updates = new Dictionary<long, HashSet<string>>();
+        await using (var places = new NpgsqlCommand("SELECT place_id FROM place WHERE place_type_id=$1 AND feature_source='TYPE' ORDER BY place_id FOR UPDATE", connection, transaction))
+        {
+            places.Parameters.AddWithValue(typeId);
+            await using var reader = await places.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct)) updates.Add(reader.GetInt64(0), selected);
+        }
+        if (updates.Count > 0) await SaveBatch(connection, transaction, updates, ct);
+    }
+
+    private static async Task SaveBatch(NpgsqlConnection connection, NpgsqlTransaction transaction, IReadOnlyDictionary<long, HashSet<string>> updates, CancellationToken ct)
     {
         await using (var gate = new NpgsqlCommand("SELECT pg_advisory_xact_lock(7246318)", connection, transaction))
             await gate.ExecuteNonQueryAsync(ct);
         long configId;
         int clusterCount;
         await using (var config = new NpgsqlCommand("""
-            SELECT recommendation_config_id, cluster_count FROM public.recommendation_config
+            SELECT recommendation_config_id, cluster_count FROM recommendation_config
             WHERE status = 'ACTIVE'
             ORDER BY updated_at DESC, recommendation_config_id DESC
             LIMIT 1 FOR SHARE
@@ -27,35 +94,9 @@ internal static class AdminPlaceFeatures
             configId = reader.GetInt64(0);
             clusterCount = reader.GetInt32(1);
         }
-        var selected = new HashSet<string>(StringComparer.Ordinal);
-        var provided = body.TryGetProperty("feature_codes", out var array);
-        if (provided)
-        {
-            if (array.ValueKind != JsonValueKind.Array || array.GetArrayLength() > 35)
-                throw new AdminValidation("Danh sách đặc trưng địa danh không hợp lệ.");
-            foreach (var item in array.EnumerateArray())
-            {
-                if (item.ValueKind != JsonValueKind.String || !PlaceFeatureClassifier.Features.Contains(item.GetString()!))
-                    throw new AdminValidation("Đặc trưng địa danh không được hỗ trợ.");
-                selected.Add(item.GetString()!);
-            }
-        }
-        else
-        {
-            await using var existing = new NpgsqlCommand("""
-                SELECT c.code FROM public.place_feature pf
-                JOIN public.place_feature_value fv ON fv.place_feature_id=pf.place_feature_id
-                JOIN public.recommendation_criterion c ON c.criterion_id=fv.criterion_id
-                WHERE pf.place_id=$1 AND pf.recommendation_config_id=$2 AND fv.feature_value=1
-                """, connection, transaction);
-            existing.Parameters.AddWithValue(placeId); existing.Parameters.AddWithValue(configId);
-            await using var reader = await existing.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct)) selected.Add(reader.GetString(0));
-        }
-        if (selected.Count == 0) throw new AdminValidation("Hãy chọn ít nhất một đặc trưng nội dung để phân cụm địa danh.");
         if (clusterCount != 15) throw new AdminValidation("Mô hình hiện tại hỗ trợ 15 cụm. Cần cập nhật mô hình cho cấu hình này.");
         // Do not silently create a partial feature vector if reference data is missing.
-        await using (var criteria = new NpgsqlCommand("SELECT count(*) FROM public.recommendation_criterion WHERE code=ANY($1)", connection, transaction))
+        await using (var criteria = new NpgsqlCommand("SELECT count(*) FROM recommendation_criterion WHERE code=ANY($1)", connection, transaction))
         {
             criteria.Parameters.AddWithValue(PlaceFeatureClassifier.Features.ToArray());
             if ((long)(await criteria.ExecuteScalarAsync(ct))! != PlaceFeatureClassifier.Features.Count)
@@ -96,36 +137,39 @@ internal static class AdminPlaceFeatures
             copy.Parameters.AddWithValue(configId); copy.Parameters.AddWithValue(previousId);
             await copy.ExecuteNonQueryAsync(ct);
         }
-        long featureId;
-        await using (var upsert = new NpgsqlCommand("""
-            INSERT INTO public.place_feature(place_id,recommendation_config_id,cluster_number)
-            VALUES($1,$2,$3) ON CONFLICT(place_id,recommendation_config_id)
-            DO UPDATE SET cluster_number=EXCLUDED.cluster_number,updated_at=CURRENT_TIMESTAMP
-            RETURNING place_feature_id
-            """, connection, transaction))
+        foreach (var (placeId, selected) in updates)
         {
-            upsert.Parameters.AddWithValue(placeId); upsert.Parameters.AddWithValue(configId);
-            upsert.Parameters.AddWithValue(PlaceFeatureClassifier.Classify(selected));
-            featureId = (long)(await upsert.ExecuteScalarAsync(ct))!;
-        }
-        await using var values = new NpgsqlCommand("""
-            INSERT INTO public.place_feature_value(place_feature_id,criterion_id,feature_value)
-            SELECT $1,criterion_id,CASE WHEN code=ANY($2) THEN 1.0 ELSE 0.0 END
-            FROM public.recommendation_criterion WHERE code=ANY($3)
-            ON CONFLICT(place_feature_id,criterion_id) DO UPDATE SET feature_value=EXCLUDED.feature_value
-            """, connection, transaction);
-        values.Parameters.AddWithValue(featureId); values.Parameters.AddWithValue(selected.ToArray());
-        values.Parameters.AddWithValue(PlaceFeatureClassifier.Features.ToArray());
-        await values.ExecuteNonQueryAsync(ct);
-        await using (var snapshot = new NpgsqlCommand("""
-            INSERT INTO recommendation_rating_snapshot
-            SELECT $1,place_id,rating,rating_count FROM place WHERE place_id=$2
-            ON CONFLICT(recommendation_config_id,place_id)
-            DO UPDATE SET rating=EXCLUDED.rating,rating_count=EXCLUDED.rating_count
-            """, connection, transaction))
-        {
-            snapshot.Parameters.AddWithValue(configId); snapshot.Parameters.AddWithValue(placeId);
-            await snapshot.ExecuteNonQueryAsync(ct);
+            long featureId;
+            await using (var upsert = new NpgsqlCommand("""
+                INSERT INTO place_feature(place_id,recommendation_config_id,cluster_number)
+                VALUES($1,$2,$3) ON CONFLICT(place_id,recommendation_config_id)
+                DO UPDATE SET cluster_number=EXCLUDED.cluster_number,updated_at=CURRENT_TIMESTAMP
+                RETURNING place_feature_id
+                """, connection, transaction))
+            {
+                upsert.Parameters.AddWithValue(placeId); upsert.Parameters.AddWithValue(configId);
+                upsert.Parameters.AddWithValue(PlaceFeatureClassifier.Classify(selected));
+                featureId = (long)(await upsert.ExecuteScalarAsync(ct))!;
+            }
+            await using var values = new NpgsqlCommand("""
+                INSERT INTO place_feature_value(place_feature_id,criterion_id,feature_value)
+                SELECT $1,criterion_id,CASE WHEN code=ANY($2) THEN 1.0 ELSE 0.0 END
+                FROM recommendation_criterion WHERE code=ANY($3)
+                ON CONFLICT(place_feature_id,criterion_id) DO UPDATE SET feature_value=EXCLUDED.feature_value
+                """, connection, transaction);
+            values.Parameters.AddWithValue(featureId); values.Parameters.AddWithValue(selected.ToArray());
+            values.Parameters.AddWithValue(PlaceFeatureClassifier.Features.ToArray());
+            await values.ExecuteNonQueryAsync(ct);
+            await using (var snapshot = new NpgsqlCommand("""
+                INSERT INTO recommendation_rating_snapshot
+                SELECT $1,place_id,rating,rating_count FROM place WHERE place_id=$2
+                ON CONFLICT(recommendation_config_id,place_id)
+                DO UPDATE SET rating=EXCLUDED.rating,rating_count=EXCLUDED.rating_count
+                """, connection, transaction))
+            {
+                snapshot.Parameters.AddWithValue(configId); snapshot.Parameters.AddWithValue(placeId);
+                await snapshot.ExecuteNonQueryAsync(ct);
+            }
         }
         await using (var deactivate = new NpgsqlCommand("UPDATE recommendation_config SET status='INACTIVE' WHERE recommendation_config_id=$1", connection, transaction))
         {

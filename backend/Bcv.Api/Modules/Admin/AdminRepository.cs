@@ -40,6 +40,7 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
             WHERE fk.contype='f' AND fk.confrelid=to_regclass($1)
               AND NOT ($2='places' AND COALESCE(fk.conrelid IN (
                   to_regclass('place_image'), to_regclass('place_feature'), to_regclass('recommendation_rating_snapshot')), false))
+              AND NOT ($2='place-types' AND COALESCE(fk.conrelid=to_regclass('place_type_feature'), false))
             GROUP BY fk.oid, ns.nspname, child.relname
             """, conn, tx);
         metadata.Parameters.AddWithValue(r.Table);
@@ -76,6 +77,11 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
         var r = Resource(key);
         await using var conn = await db.OpenConnectionAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
+        if (key is "places" or "place-types")
+        {
+            await using var gate = new NpgsqlCommand("SELECT pg_advisory_xact_lock(7246318)", conn, tx);
+            await gate.ExecuteNonQueryAsync(ct);
+        }
         var eligibility = await CheckReferences(key, id, conn, tx, ct);
         if (!eligibility.CanDelete) throw new AdminValidation(eligibility.Message + " Hãy chuyển trạng thái thay vì xóa.");
         try
@@ -144,6 +150,7 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
         var extra = key switch
         {
             "places" => " || jsonb_build_object('images',COALESCE((SELECT jsonb_agg(image_key ORDER BY place_image_id) FROM place_image WHERE place_id=t.place_id),'[]'::jsonb),'feature_codes',COALESCE((SELECT jsonb_agg(c.code ORDER BY c.criterion_id) FROM place_feature pf JOIN place_feature_value fv ON fv.place_feature_id=pf.place_feature_id JOIN recommendation_criterion c ON c.criterion_id=fv.criterion_id WHERE pf.place_id=t.place_id AND fv.feature_value=1 AND pf.recommendation_config_id=(SELECT recommendation_config_id FROM recommendation_config ORDER BY (status='ACTIVE') DESC,updated_at DESC,recommendation_config_id DESC LIMIT 1)),'[]'::jsonb))",
+            "place-types" => " || jsonb_build_object('feature_codes',COALESCE((SELECT jsonb_agg(code ORDER BY code) FROM place_type_feature WHERE place_type_id=t.place_type_id),'[]'::jsonb))",
             "collections" => " || jsonb_build_object('card_ids',COALESCE((SELECT jsonb_agg(card_id) FROM collection_card WHERE collection_id=t.collection_id),'[]'::jsonb))",
             "users" => " || jsonb_build_object('journey_count',(SELECT count(*) FROM journey WHERE user_id=t.user_id),'discovered_count',(SELECT count(*) FROM user_discovered_place WHERE user_id=t.user_id),'card_count',(SELECT count(*) FROM public.card c WHERE c.status='ACTIVE' AND (EXISTS(SELECT 1 FROM public.user_card uc WHERE uc.user_id=t.user_id AND uc.card_id=c.card_id) OR EXISTS(SELECT 1 FROM public.user_discovered_place d WHERE d.user_id=t.user_id AND d.place_id=c.place_id))),'total_steps',(SELECT COALESCE(sum(step_count),0) FROM step_data WHERE user_id=t.user_id))",
             _ => ""
@@ -198,6 +205,11 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
         if (values.GetValueOrDefault("image_key") is string img && !IsImage(img)) throw new AdminValidation("Ảnh phải là URL HTTPS hoặc ảnh JPEG đã tải lên.");
         await using var conn = await db.OpenConnectionAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
+        if (key is "places" or "place-types")
+        {
+            await using var gate = new NpgsqlCommand("SELECT pg_advisory_xact_lock(7246318)", conn, tx);
+            await gate.ExecuteNonQueryAsync(ct);
+        }
         async Task<object?> Scalar(string sql, params object[] args)
         {
             await using var cmd = new NpgsqlCommand(sql, conn, tx);
@@ -263,6 +275,7 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
             foreach (var image in images) await Scalar("INSERT INTO place_image(place_id,image_key) VALUES($1,$2) RETURNING place_image_id", savedId, image);
             await AdminPlaceFeatures.Save(conn, tx, savedId, body, ct);
         }
+        if (key == "place-types") await AdminPlaceFeatures.SaveType(conn, tx, savedId, body, ct);
         if (key == "collections")
         {
             if (!body.TryGetProperty("card_ids", out var array) || array.ValueKind != JsonValueKind.Array || array.GetArrayLength() > 5000)
@@ -286,7 +299,7 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
         await using var cmd = db.CreateCommand("""
             SELECT jsonb_build_object(
               'regions',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',region_id,'name',name,'status',status) ORDER BY region_id ASC) FROM region),'[]'),
-              'types',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',place_type_id,'name',name) ORDER BY name) FROM place_type),'[]'),
+              'types',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',place_type_id,'name',name,'feature_codes',COALESCE((SELECT jsonb_agg(code ORDER BY code) FROM place_type_feature f WHERE f.place_type_id=t.place_type_id),'[]'::jsonb)) ORDER BY name) FROM place_type t),'[]'),
               'features',COALESCE((SELECT jsonb_agg(jsonb_build_object('code',code,'name',name,'description',description) ORDER BY criterion_id) FROM recommendation_criterion WHERE code LIKE 'kind\_\_%' ESCAPE '\' OR code LIKE 'landform\_\_%' ESCAPE '\' OR code LIKE 'ecosystem\_\_%' ESCAPE '\' OR code LIKE 'theme\_\_%' ESCAPE '\'),'[]'),
               'places',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',place_id,'name',name,'latitude',latitude,'longitude',longitude,'status',status,'region_id',region_id,'image_key',(SELECT image_key FROM place_image i WHERE i.place_id=p.place_id ORDER BY place_image_id LIMIT 1)) ORDER BY name) FROM place p),'[]'),
               'cards',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',card_id,'name',name,'status',status) ORDER BY name) FROM card),'[]'),
