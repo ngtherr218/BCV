@@ -2,7 +2,7 @@
 
 App Kotlin cho người dùng: đọc số bước, đi hành trình ảo trên bản đồ Goong và mở khóa địa danh.
 
-App gọi Backend API qua HTTPS, không truy cập database trực tiếp. Mặc định dùng cùng backend/database với web quản trị tại `https://bcv-admin.onrender.com/`. Mã nguồn chia theo nghiệp vụ trong `feature/`; phần dùng chung nằm trong `core/`.
+App gọi Backend API qua HTTPS, không truy cập database trực tiếp. Mặc định dùng cùng backend/database với web quản trị tại `https://bcv-admin-test.onrender.com/`. Đây là máy chủ dùng chung của nhóm; giữ cùng địa chỉ trong các bản APK để tránh đăng nhập và ghi dữ liệu sang hai database khác nhau. Mã nguồn chia theo nghiệp vụ trong `feature/`; phần dùng chung nằm trong `core/`.
 
 ## Mục lục
 
@@ -29,14 +29,14 @@ App gọi Backend API qua HTTPS, không truy cập database trực tiếp. Mặc
 Tạo `android/dev.properties` (Git bỏ qua file này):
 
 ```properties
-bcvApiBaseUrl=https://bcv-admin.onrender.com/
+bcvApiBaseUrl=https://bcv-admin-test.onrender.com/
 bcvGoongMaptilesKey=<Goong Maptiles Key>
 bcvGoongApiKey=<Goong REST API Key>
 ```
 
 | Khóa | Ý nghĩa | Nếu bỏ trống |
 | --- | --- | --- |
-| `bcvApiBaseUrl` | Địa chỉ Backend, kết thúc bằng `/` | `https://bcv-admin.onrender.com/` |
+| `bcvApiBaseUrl` | Địa chỉ Backend, kết thúc bằng `/` | `https://bcv-admin-test.onrender.com/` |
 | `bcvGoongMaptilesKey` | Hiển thị bản đồ Goong | Bản đồ trống |
 | `bcvGoongApiKey` | Tra địa chỉ từ tọa độ và chỉ đường theo đường phố | Không hiện địa chỉ, không vẽ đường đi |
 
