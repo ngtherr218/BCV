@@ -28,7 +28,9 @@ data class CollectionCard(
     val name: String,
     val imageUrl: String?,
     val owned: Boolean,
-    val isNew: Boolean = false
+    val isNew: Boolean = false,
+    /** Owned cards remain collectible when their destination is no longer published. */
+    val placeAvailable: Boolean = true
 )
 
 data class CollectionDetail(

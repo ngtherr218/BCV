@@ -11,16 +11,20 @@ namespace Bcv.Api.Modules.PlaceCollection.Infrastructure;
 public sealed class CollectionRepository(NpgsqlDataSource db)
 {
     private const string Owned = """
-        (EXISTS (SELECT 1 FROM public.user_card uc WHERE uc.user_id = $1 AND uc.card_id = c.card_id)
-         OR EXISTS (SELECT 1 FROM public.user_discovered_place d
+        (EXISTS (SELECT 1 FROM user_card uc WHERE uc.user_id = $1 AND uc.card_id = c.card_id)
+         OR EXISTS (SELECT 1 FROM user_discovered_place d
                     WHERE d.user_id = $1 AND d.place_id = c.place_id))
         """;
 
-    private const string NewCard = "EXISTS (SELECT 1 FROM public.user_card uc WHERE uc.user_id = $1 AND uc.card_id = c.card_id AND uc.seen_at IS NULL)";
+    private const string NewCard = "EXISTS (SELECT 1 FROM user_card uc WHERE uc.user_id = $1 AND uc.card_id = c.card_id AND uc.seen_at IS NULL)";
+
+    // A retired destination cannot be earned. Keep earned active cards without changing card retirement policy.
+    private const string PlaceAvailable = "COALESCE(p.status = 'ACTIVE' AND r.status = 'ACTIVE', FALSE)";
+    private const string Eligible = "(c.status = 'ACTIVE' AND (" + Owned + " OR " + PlaceAvailable + "))";
 
     public async Task MarkSeenAsync(long userId, long cardId, CancellationToken ct)
     {
-        await using var command = db.CreateCommand("UPDATE public.user_card SET seen_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND card_id = $2 AND seen_at IS NULL");
+        await using var command = db.CreateCommand("UPDATE user_card SET seen_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND card_id = $2 AND seen_at IS NULL");
         command.Parameters.Add(new NpgsqlParameter<long> { TypedValue = userId, NpgsqlDbType = NpgsqlDbType.Bigint });
         command.Parameters.Add(new NpgsqlParameter<long> { TypedValue = cardId, NpgsqlDbType = NpgsqlDbType.Bigint });
         await command.ExecuteNonQueryAsync(ct);
@@ -32,7 +36,10 @@ public sealed class CollectionRepository(NpgsqlDataSource db)
         int ownedCards, totalCards, newCards;
         await using (var command = new NpgsqlCommand($"""
             SELECT count(*) FILTER (WHERE {Owned}), count(*), count(*) FILTER (WHERE {NewCard})
-            FROM public.card c WHERE c.status = 'ACTIVE'
+            FROM card c
+            LEFT JOIN place p ON p.place_id = c.place_id
+            LEFT JOIN region r ON r.region_id = p.region_id
+            WHERE {Eligible}
             """, connection))
         {
             command.Parameters.Add(new NpgsqlParameter<long> { TypedValue = userId, NpgsqlDbType = NpgsqlDbType.Bigint });
@@ -51,10 +58,12 @@ public sealed class CollectionRepository(NpgsqlDataSource db)
                    (array_agg(c.image_key ORDER BY cc.collection_card_id)
                         FILTER (WHERE {Owned} AND c.image_key IS NOT NULL))[1:4],
                    count(DISTINCT c.card_id) FILTER (WHERE {NewCard})
-            FROM public.collection col
-            JOIN public.collection_card cc ON cc.collection_id = col.collection_id
-            JOIN public.card c ON c.card_id = cc.card_id AND c.status = 'ACTIVE'
-            WHERE col.status = 'ACTIVE'
+            FROM collection col
+            JOIN collection_card cc ON cc.collection_id = col.collection_id
+            JOIN card c ON c.card_id = cc.card_id
+            LEFT JOIN place p ON p.place_id = c.place_id
+            LEFT JOIN region r ON r.region_id = p.region_id
+            WHERE col.status = 'ACTIVE' AND {Eligible}
             GROUP BY col.collection_id, col.name, col.description
             ORDER BY col.collection_id
             """, connection))
@@ -79,7 +88,7 @@ public sealed class CollectionRepository(NpgsqlDataSource db)
         string name;
         string? description;
         await using (var command = new NpgsqlCommand("""
-            SELECT name, description FROM public.collection
+            SELECT name, description FROM collection
             WHERE collection_id = $1 AND status = 'ACTIVE'
             """, connection))
         {
@@ -92,10 +101,13 @@ public sealed class CollectionRepository(NpgsqlDataSource db)
 
         var cards = new List<CollectionCard>();
         await using (var command = new NpgsqlCommand($"""
-            SELECT c.card_id, c.place_id, c.name, c.image_key, {Owned} AS owned, {NewCard} AS is_new
-            FROM public.collection_card cc
-            JOIN public.card c ON c.card_id = cc.card_id AND c.status = 'ACTIVE'
-            WHERE cc.collection_id = $2
+            SELECT c.card_id, c.place_id, c.name, c.image_key, {Owned} AS owned, {NewCard} AS is_new,
+                   {PlaceAvailable} AS place_available
+            FROM collection_card cc
+            JOIN card c ON c.card_id = cc.card_id
+            LEFT JOIN place p ON p.place_id = c.place_id
+            LEFT JOIN region r ON r.region_id = p.region_id
+            WHERE cc.collection_id = $2 AND {Eligible}
             ORDER BY is_new DESC, owned DESC, cc.collection_card_id
             """, connection))
         {
@@ -106,7 +118,8 @@ public sealed class CollectionRepository(NpgsqlDataSource db)
             {
                 var owned = reader.GetBoolean(4);
                 cards.Add(new CollectionCard(reader.GetInt64(0), reader.GetInt64(1), reader.GetString(2),
-                    owned && !reader.IsDBNull(3) ? reader.GetString(3) : null, owned, reader.GetBoolean(5)));
+                    owned && !reader.IsDBNull(3) ? reader.GetString(3) : null, owned, reader.GetBoolean(5),
+                    reader.GetBoolean(6)));
             }
         }
         return new CollectionDetail(collectionId, name, description, cards.Count(c => c.Owned), cards.Count, cards);

@@ -28,13 +28,14 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
         int? ratingCount;
         await using (var command = new NpgsqlCommand($"""
             SELECT p.place_id, p.name, pt.name,
-                   EXISTS (SELECT 1 FROM public.user_discovered_place d
+                   EXISTS (SELECT 1 FROM user_discovered_place d
                            WHERE d.user_id = $1 AND d.place_id = p.place_id),
-                   ({GeoSql.VirtualLocationToPlaceMeters} / 1000.0)::numeric, p.introduction, p.highlights, r.name, p.rating, p.rating_count
-            FROM public.place p
-            JOIN public.place_type pt ON pt.place_type_id = p.place_type_id
-            JOIN public.region r ON r.region_id = p.region_id
-            JOIN public.virtual_location v ON v.user_id = $1
+                   ({GeoSql.VirtualLocationToPlaceMeters} / 1000.0)::numeric, p.introduction, p.highlights, r.name, p.rating, p.rating_count,
+                   v.user_id
+            FROM place p
+            JOIN place_type pt ON pt.place_type_id = p.place_type_id
+            JOIN region r ON r.region_id = p.region_id
+            LEFT JOIN virtual_location v ON v.user_id = $1
             WHERE p.place_id = $2 AND p.status = 'ACTIVE' AND r.status = 'ACTIVE'
             """, connection))
         {
@@ -42,7 +43,9 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
             command.Parameters.Add(new NpgsqlParameter<long> { TypedValue = placeId, NpgsqlDbType = NpgsqlDbType.Bigint });
             await using var reader = await command.ExecuteReaderAsync(ct);
             if (!await reader.ReadAsync(ct))
-                throw new ExploreException("PLACE_NOT_FOUND", "Không tìm thấy địa danh hoặc vị trí ảo.");
+                throw new ExploreException("PLACE_NOT_FOUND", "Địa danh này hiện không còn khả dụng.");
+            if (reader.IsDBNull(10))
+                throw new ExploreException("NO_STARTING_POINT", "Hãy chọn điểm xuất phát trước khi xem địa danh.");
             id = reader.GetInt64(0);
             name = reader.GetString(1);
             placeType = reader.GetString(2);
@@ -57,7 +60,7 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
 
         var images = new List<string>();
         await using (var command = new NpgsqlCommand("""
-            SELECT image_key FROM public.place_image
+            SELECT image_key FROM place_image
             WHERE place_id = $1 ORDER BY place_image_id
             """, connection))
         {

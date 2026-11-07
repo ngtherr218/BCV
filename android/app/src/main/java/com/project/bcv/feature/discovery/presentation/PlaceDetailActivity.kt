@@ -98,7 +98,10 @@ class PlaceDetailActivity : AppCompatActivity() {
             }
             val place = state.place
             when {
-                place == null -> showLoading(state.error)
+                place == null -> {
+                    showLoading(state.error, state.unavailable)
+                    if (state.unavailable) setResult(RESULT_PLACE_UNAVAILABLE)
+                }
                 renderedPlaceId == place.id -> showPlace(place)
                 else -> prepare(place)
             }
@@ -119,8 +122,11 @@ class PlaceDetailActivity : AppCompatActivity() {
         val discoveredHint = intent.getBooleanExtra(EXTRA_DISCOVERED, false)
         showSkeletonFor(intent.getStringExtra(EXTRA_PLACE_NAME).orEmpty(), discoveredHint)
         binding.topTitle.text = if (discoveredHint) "Nội dung địa danh" else "Chọn điểm đến"
-        binding.retryButton.setOnClickListener { model.load(placeId) }
-        if (placeId <= 0) finish() else if (model.state.value?.place == null) model.load(placeId)
+        binding.retryButton.setOnClickListener {
+            if (model.state.value?.unavailable == true) finish() else model.load(placeId)
+        }
+        if (placeId <= 0) finish()
+        else if (model.state.value?.place == null && model.state.value?.unavailable != true) model.load(placeId)
     }
 
     /** Fills the placeholder of the page that will open: locked destination or discovered content. */
@@ -132,7 +138,7 @@ class PlaceDetailActivity : AppCompatActivity() {
         skeletonDiscovered = discovered
     }
 
-    private fun showLoading(error: String?) = with(binding) {
+    private fun showLoading(error: String?, unavailable: Boolean = false) = with(binding) {
         approvedCommunity.visibility = View.GONE
         communityMediaButton.visibility = View.GONE
         approvedMedia.clear()
@@ -144,8 +150,13 @@ class PlaceDetailActivity : AppCompatActivity() {
             Skeleton.hide(loadingSkeleton)
             bottomBar.visibility = View.GONE
             loadingError.visibility = View.VISIBLE
-            loadingStatus.text = "$error\nKiểm tra kết nối rồi nhấn Thử lại."
+            loadingContent.contentDescription = if (unavailable) "Địa danh không còn khả dụng" else "Không tải được nội dung địa danh"
+            loadingStatus.setTextColor(ContextCompat.getColor(this@PlaceDetailActivity,
+                if (unavailable) R.color.forest else R.color.error_red))
+            loadingStatus.text = if (unavailable) error else "$error\nKiểm tra kết nối rồi nhấn Thử lại."
+            retryButton.text = if (unavailable) "Quay lại" else "Thử lại"
         } else {
+            loadingContent.contentDescription = "Đang tải nội dung địa danh"
             Skeleton.show(loadingSkeleton, loadingError)
             // The destination picker keeps its (still disabled) button in place while loading.
             bottomBar.visibility = if (skeletonDiscovered) View.GONE else View.VISIBLE
@@ -343,6 +354,7 @@ class PlaceDetailActivity : AppCompatActivity() {
     }
 
     companion object {
+        const val RESULT_PLACE_UNAVAILABLE = Activity.RESULT_FIRST_USER + 1
         const val EXTRA_PLACE_ID = "place_id"
         const val EXTRA_PLACE_NAME = "place_name"
         const val EXTRA_DISCOVERED = "place_discovered"

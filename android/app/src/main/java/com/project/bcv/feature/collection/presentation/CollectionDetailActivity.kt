@@ -163,6 +163,7 @@ class CollectionDetailActivity : AppCompatActivity() {
                 .putExtra(CardDetailActivity.EXTRA_PLACE_ID, card.placeId)
                 .putExtra(CardDetailActivity.EXTRA_IMAGE_URL, card.imageUrl)
                 .putExtra(CardDetailActivity.EXTRA_OWNED, card.owned)
+                .putExtra(CardDetailActivity.EXTRA_PLACE_AVAILABLE, card.placeAvailable)
                 .putExtra(CardDetailActivity.EXTRA_COLLECTION_NAME, detail.name))
         }
         return item

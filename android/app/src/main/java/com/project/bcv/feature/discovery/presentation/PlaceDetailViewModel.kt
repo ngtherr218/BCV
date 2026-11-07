@@ -9,6 +9,7 @@ import com.project.bcv.core.network.ApiFailure
 import com.project.bcv.feature.discovery.domain.ExplorePlaceDetail
 import com.project.bcv.feature.discovery.domain.ExploreRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -18,7 +19,8 @@ data class PlaceDetailState(
     val saving: Boolean = false,
     val error: String? = null,
     val confirmReplace: Boolean = false,
-    val saved: Boolean = false
+    val saved: Boolean = false,
+    val unavailable: Boolean = false
 )
 
 class PlaceDetailViewModel(private val repository: ExploreRepository) : ViewModel() {
@@ -31,6 +33,13 @@ class PlaceDetailViewModel(private val repository: ExploreRepository) : ViewMode
             try {
                 val place = withContext(Dispatchers.IO) { repository.loadPlace(placeId) }
                 mutableState.value = PlaceDetailState(place = place, loading = false)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: ApiFailure) {
+                val unavailable = error.code in setOf("PLACE_NOT_FOUND", "PLACE_UNAVAILABLE", "NOT_FOUND")
+                mutableState.value = PlaceDetailState(loading = false, unavailable = unavailable,
+                    error = if (unavailable) "Địa danh này hiện không còn khả dụng. Nội dung có thể đã được ngừng hiển thị."
+                    else error.message)
             } catch (error: Exception) {
                 mutableState.value = PlaceDetailState(loading = false,
                     error = error.message ?: "Không tải được địa danh.")
@@ -47,6 +56,8 @@ class PlaceDetailViewModel(private val repository: ExploreRepository) : ViewMode
             try {
                 withContext(Dispatchers.IO) { repository.createJourney(place.id, replaceActive) }
                 mutableState.value = current.copy(saved = true)
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: ApiFailure) {
                 mutableState.value = current.copy(saving = false,
                     confirmReplace = error.code == "ACTIVE_JOURNEY_EXISTS",

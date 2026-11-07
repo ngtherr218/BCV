@@ -21,6 +21,7 @@ string Q(string value) => "\"" + value.Replace("\"", "\"\"") + "\"";
 await Exec($"CREATE SCHEMA {schema}");
 try
 {
+    await CollectionAvailabilityChecks.Run(raw);
     await using (var conn = await source.OpenConnectionAsync())
     await using (var tx = await conn.BeginTransactionAsync())
     {

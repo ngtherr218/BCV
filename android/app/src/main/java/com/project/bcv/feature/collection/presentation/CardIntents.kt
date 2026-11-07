@@ -12,5 +12,6 @@ object CardIntents {
         .putExtra(CardDetailActivity.EXTRA_PLACE_ID, reward.card.placeId)
         .putExtra(CardDetailActivity.EXTRA_IMAGE_URL, reward.card.imageUrl)
         .putExtra(CardDetailActivity.EXTRA_OWNED, reward.card.owned)
+        .putExtra(CardDetailActivity.EXTRA_PLACE_AVAILABLE, reward.card.placeAvailable)
         .putExtra(CardDetailActivity.EXTRA_COLLECTION_NAME, reward.collectionName)
 }

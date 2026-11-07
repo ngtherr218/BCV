@@ -47,7 +47,8 @@ class CollectionRepositoryImpl(
                     card.getString("name"),
                     card.optString("imageUrl").takeIf { it.isNotBlank() && it != "null" },
                     card.getBoolean("owned"), card.getBoolean("owned") && !inbox.isSeen(card.getLong("cardId")) &&
-                        (card.optBoolean("isNew") || inbox.isUnseen(card.getLong("cardId"), card.getLong("placeId")))
+                        (card.optBoolean("isNew") || inbox.isUnseen(card.getLong("cardId"), card.getLong("placeId"))),
+                    card.optBoolean("placeAvailable", true)
                 )
             }
         }
