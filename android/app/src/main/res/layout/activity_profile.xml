@@ -167,22 +167,6 @@
                     app:iconSize="18dp"
                     app:iconTint="#3C7DB0" />
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/deleteButton"
-                    style="@style/Widget.Material3.Button"
-                    android:layout_width="0dp"
-                    android:layout_height="52dp"
-                    android:layout_marginStart="12dp"
-                    android:layout_weight="1"
-                    android:text="Xóa tài khoản"
-                    android:textAllCaps="false"
-                    android:textColor="#C2553F"
-                    android:textStyle="bold"
-                    app:backgroundTint="#FBE9E5"
-                    app:cornerRadius="16dp"
-                    app:icon="@drawable/ic_delete_outline"
-                    app:iconSize="18dp"
-                    app:iconTint="#C2553F" />
             </LinearLayout>
         </LinearLayout>
     </ScrollView>
