@@ -92,6 +92,7 @@ class AccountActivity : AppCompatActivity() {
         WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
         binding = ActivityAccountBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        binding.allowAuthFormScreenSharing()
         configurePasswordToggle(binding.passwordLayout, binding.passwordInput)
         configurePasswordToggle(binding.confirmLayout, binding.confirmInput)
         rememberedLogin = RememberedLoginStore(applicationContext)

@@ -31,7 +31,7 @@ import com.project.bcv.feature.statsnotify.notifications.presentation.Notificati
 import com.project.bcv.feature.statsnotify.stats.presentation.StatsActivity
 import kotlinx.coroutines.launch
 
-/** Account summary, personalisation settings, the user's data screens, sign-out and account deletion. */
+/** Account summary, personalisation settings, the user's data screens and sign-out. */
 class ProfileActivity : AppCompatActivity() {
     private lateinit var binding: ActivityProfileBinding
     private lateinit var model: ProfileViewModel
@@ -81,7 +81,6 @@ class ProfileActivity : AppCompatActivity() {
             startActivity(Intent(this, NotificationsActivity::class.java))
         }
         binding.logoutButton.setOnClickListener { confirmLogout() }
-        binding.deleteButton.setOnClickListener { confirmDelete() }
 
         model.profile.observe(this) { state ->
             // Only the account card comes from the server; the links below are shown at once.
@@ -142,15 +141,6 @@ class ProfileActivity : AppCompatActivity() {
             .setMessage("Bạn sẽ cần đăng nhập lại để tiếp tục hành trình.")
             .setNegativeButton("Huỷ", null)
             .setPositiveButton("Đăng xuất") { _, _ -> model.logout() }
-            .show()
-    }
-
-    private fun confirmDelete() {
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Xóa tài khoản?")
-            .setMessage("Tài khoản sẽ bị đóng và không đăng nhập lại được bằng email này. Thao tác không thể hoàn tác.")
-            .setNegativeButton("Giữ tài khoản", null)
-            .setPositiveButton("Xóa tài khoản") { _, _ -> model.deleteAccount() }
             .show()
     }
 

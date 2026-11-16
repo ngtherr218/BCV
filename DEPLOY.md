@@ -78,6 +78,24 @@ Thay email mẫu bằng email thật. Lệnh không tự nâng quyền hay đổ
 
 Blueprint tắt tự động deploy: sau mỗi lần push `Web`, dùng **Manual Deploy → Deploy latest commit** trong Render. Sửa Maptiles Key cần rebuild web; sửa REST key/chuỗi kết nối cần restart/redeploy backend. Kiểm tra cả `/health` và đăng nhập sau khi cập nhật.
 
+### Máy chủ dùng chung và đồng bộ nhánh
+
+Nhóm thống nhất dùng `https://bcv-admin-test.onrender.com/` cho cả app và web. Web gọi `/api` trên chính tên miền đang mở; APK dùng `bcvApiBaseUrl`, nên mở web Test và giữ URL Test khi build app. Dữ liệu trên `bcv-admin.onrender.com` không tự chuyển sang Test.
+
+`Web` là nhánh nguồn của service Test. Giữ `Deploy_web` cùng commit với `Web` sau khi kiểm thử; khi nhánh đích chưa có commit riêng, dùng fast-forward, không cần force push:
+
+```powershell
+git fetch origin
+git switch Deploy_web
+git merge --ff-only origin/Web
+git push origin Deploy_web
+git switch Web
+```
+
+Hai nhánh giống code không đồng nghĩa hai service dùng cùng database: `ConnectionStrings__Bcv` được đặt riêng trong Environment của từng service Render. Theo cấu hình dùng chung hiện tại, dùng bản Test để đọc và ghi dữ liệu. Nếu vẫn vận hành hai service, cần cấu hình cùng database ở Render và triển khai cùng commit; thao tác Git không gộp dữ liệu giữa hai database.
+
+Kho mã nhóm đang đồng bộ là `ngtherr218/BCV`. Nếu service Render vẫn lấy nguồn từ fork `Lee-Quang/BCV_Sv_Test`, cập nhật fork đến cùng commit trước khi chọn Manual Deploy; kiểm tra mục Settings của service để xác nhận repository và nhánh thực tế.
+
 ## 4. Kiểm tra trước khi chia sẻ link
 
 - Truy cập link HTTPS từ điện thoại dùng 4G hoặc máy khác mạng Wi-Fi.

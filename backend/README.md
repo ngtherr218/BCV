@@ -159,6 +159,8 @@ Mọi API (trừ đăng ký, đăng nhập, đặt lại mật khẩu, `/health`
 | Thống kê, thông báo | `GET /api/profile/stats`, `GET /api/notifications`, `POST /api/notifications/{id}/read` |
 | Quản trị | Xem [web/README.md](../web/README.md#api-quản-trị) |
 
+Chi tiết bộ sưu tập trả `placeAvailable` cho mỗi thẻ. Giá trị này chỉ đúng khi địa danh và khu vực của nó đang hoạt động; app không mở trang địa danh khi giá trị là `false`. Thẻ đang hoạt động đã sở hữu vẫn được giữ như lịch sử khi địa danh ngừng hoạt động. Thẻ chưa sở hữu thuộc địa danh không còn khả dụng được bỏ khỏi danh sách và tổng số thẻ có thể thu thập; tổng quan, từng bộ và chi tiết dùng cùng quy tắc. Chính sách ẩn thẻ ngừng hoạt động được giữ nguyên, không xóa dữ liệu sở hữu. API địa danh trả `PLACE_NOT_FOUND` cho địa danh không khả dụng và `NO_STARTING_POINT` khi địa danh còn hoạt động nhưng người dùng chưa có vị trí ảo.
+
 ## Đóng góp
 
 Xem [Đóng góp](../README.md#đóng-góp) ở README gốc.
