@@ -57,7 +57,7 @@ public static class RecommendationScoring
     public static IReadOnlyList<ScoredPlace> Rank(IReadOnlyList<RecommendationPlace> places,
         IReadOnlyList<PreferenceGroup> preferences, string? activityLevel,
         IReadOnlyDictionary<string, decimal> weights, decimal distanceLimitMeters,
-        IReadOnlyDictionary<string, int>? activityThresholds = null)
+        IReadOnlyDictionary<string, int>? activityThresholds = null, int take = MaxResults)
     {
         if (distanceLimitMeters <= 0) throw new ArgumentOutOfRangeException(nameof(distanceLimitMeters));
         if (!ValidWeights(weights)) throw new ArgumentException("Expected five nonnegative criterion weights summing to one", nameof(weights));
@@ -91,7 +91,7 @@ public static class RecommendationScoring
             var matched = preferences.Where(g => g.Matches(place)).Select(g => g.Name).ToList();
             ranked.Add(new ScoredPlace(place, steps, score.Value, criteria, matched, EffectiveWeights(criteria, weights)));
         }
-        return ranked.OrderByDescending(p => p.Score).ThenBy(p => p.Place.PlaceId).Take(MaxResults).ToList();
+        return ranked.OrderByDescending(p => p.Score).ThenBy(p => p.Place.PlaceId).Take(take).ToList();
     }
 
     private static double? PreferenceScore(RecommendationPlace place, IReadOnlyList<PreferenceGroup> preferences) =>

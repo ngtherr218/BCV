@@ -80,9 +80,6 @@ class JourneyRouteMap(activity: Activity, savedState: Bundle?, private val host:
         host.addView(walker, FrameLayout.LayoutParams(badgeSize, badgeSize))
         host.addView(startPin, FrameLayout.LayoutParams(pinSize, pinSize))
         listOf(startDot, startPin, walker, destinationBadge).forEach { it.visibility = View.INVISIBLE }
-        com.project.bcv.core.map.MapZoomControls.attach(host,
-            zoomIn = { map?.animateCamera(CameraUpdateFactory.zoomIn()) },
-            zoomOut = { map?.animateCamera(CameraUpdateFactory.zoomOut()) })
         mapView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> frame() }
         mapView.getMapAsync { readyMap ->
             map = readyMap

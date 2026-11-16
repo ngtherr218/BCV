@@ -5,7 +5,7 @@ import java.util.Locale
 
 object PlaceSearch {
     private val marks = Regex("\\p{M}+")
-    private fun normalize(value: String) = Normalizer.normalize(value.lowercase(Locale.ROOT), Normalizer.Form.NFD)
+    fun normalize(value: String) = Normalizer.normalize(value.lowercase(Locale.ROOT), Normalizer.Form.NFD)
         .replace(marks, "").replace('đ', 'd')
     fun filter(places: List<ExploreMapPlace>, input: String): List<ExploreMapPlace> {
         val query = normalize(input.trim())

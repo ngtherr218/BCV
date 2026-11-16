@@ -62,7 +62,7 @@
         android:drawablePadding="10dp"
         android:gravity="center_vertical"
         android:textColor="@color/forest"
-        android:textSize="14sp"
+        android:textSize="15sp"
         android:textStyle="bold" />
 
     <View

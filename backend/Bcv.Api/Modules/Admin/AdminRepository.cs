@@ -39,7 +39,8 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
             JOIN pg_attribute pa ON pa.attrelid=fk.confrelid AND pa.attnum=k.parentkey
             WHERE fk.contype='f' AND fk.confrelid=to_regclass($1)
               AND NOT ($2='places' AND COALESCE(fk.conrelid IN (
-                  to_regclass('place_image'), to_regclass('place_feature'), to_regclass('recommendation_rating_snapshot'), to_regclass('place_video')), false))
+                  to_regclass('place_image'), to_regclass('place_feature'), to_regclass('recommendation_rating_snapshot'), to_regclass('place_video'),
+                  to_regclass('place_question')), false))
               AND NOT ($2='place-types' AND COALESCE(fk.conrelid=to_regclass('place_type_feature'), false))
             GROUP BY fk.oid, ns.nspname, child.relname
             """, conn, tx);
@@ -133,8 +134,9 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
         if (key == "places") json += " || jsonb_build_object('region_name',(SELECT name FROM region WHERE region_id=t.region_id),'type_name',(SELECT name FROM place_type WHERE place_type_id=t.place_type_id),'image_count',(SELECT count(*) FROM place_image WHERE place_id=t.place_id),'image_key',(SELECT image_key FROM place_image WHERE place_id=t.place_id ORDER BY place_image_id LIMIT 1))";
         if (key == "cards") json += " || jsonb_build_object('place_name',(SELECT name FROM place WHERE place_id=t.place_id),'collected_count',(SELECT count(*) FROM (SELECT user_id FROM public.user_card WHERE card_id=t.card_id UNION SELECT user_id FROM public.user_discovered_place WHERE place_id=t.place_id) owners))";
         if (key == "collections") json += " || jsonb_build_object('card_count',(SELECT count(*) FROM collection_card WHERE collection_id=t.collection_id))";
-        if (key == "quests") json += " || jsonb_build_object('reward_name',(SELECT name FROM item WHERE item_id=t.reward_item_id),'completed_count',(SELECT count(*) FROM quest_progress WHERE quest_id=t.quest_id AND completion_status))";
+        if (key == "quests") json += " || jsonb_build_object('reward_name',concat_ws(' + ',(SELECT name || ' × ' || t.reward_quantity FROM item WHERE item_id=t.reward_item_id),CASE WHEN t.reward_points IS NOT NULL THEN t.reward_points || ' điểm khám phá' END),'completed_count',(SELECT count(*) FROM quest_progress WHERE quest_id=t.quest_id AND completion_status))";
         if (key == "regions") json += " || jsonb_build_object('place_count',(SELECT count(*) FROM place WHERE region_id=t.region_id))";
+        if (key == "questions") json += " || jsonb_build_object('place_name',(SELECT name FROM place WHERE place_id=t.place_id),'answer_label',chr(65+t.answer_index))";
         await using var cmd = db.CreateCommand($"""
             SELECT jsonb_build_object('total',(SELECT count(*) FROM {r.Table} t {where}),
             'items',COALESCE((SELECT jsonb_agg(data) FROM (SELECT {json} AS data FROM {r.Table} t {where} ORDER BY t.{r.Id} {direction} LIMIT $5 OFFSET $6) s),'[]'::jsonb))::text
@@ -334,7 +336,20 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
               'draftCards',(SELECT count(*) FROM card WHERE status='DRAFT'),
               'trend', (SELECT jsonb_agg(jsonb_build_object('date',d::date,'journeys',(SELECT count(*) FROM journey WHERE started_at>=d AND started_at<d+interval '1 day'),'users',(SELECT count(*) FROM app_user WHERE created_at>=d AND created_at<d+interval '1 day')) ORDER BY d) FROM generate_series(CURRENT_DATE-($1-1),CURRENT_DATE,interval '1 day') d),
               'topRegions',COALESCE((SELECT jsonb_agg(to_jsonb(s) ORDER BY s.region_id ASC) FROM (SELECT r.region_id,r.name,count(p.place_id) AS places,(SELECT count(*) FROM user_discovered_place u JOIN place p2 ON p2.place_id=u.place_id WHERE p2.region_id=r.region_id) AS discoveries FROM region r LEFT JOIN place p ON p.region_id=r.region_id GROUP BY r.region_id ORDER BY r.region_id ASC LIMIT 5) s),'[]'),
-              'recentJourneys',COALESCE((SELECT jsonb_agg(to_jsonb(s)) FROM (SELECT j.journey_id,u.full_name,p.name AS destination,j.status,j.recorded_steps,j.required_steps,j.started_at FROM journey j JOIN app_user u ON u.user_id=j.user_id JOIN place p ON p.place_id=j.destination_place_id ORDER BY j.started_at DESC LIMIT 5) s),'[]')
+              'recentJourneys',COALESCE((SELECT jsonb_agg(to_jsonb(s)) FROM (SELECT j.journey_id,u.full_name,p.name AS destination,j.status,j.recorded_steps,j.required_steps,j.started_at FROM journey j JOIN app_user u ON u.user_id=j.user_id JOIN place p ON p.place_id=j.destination_place_id ORDER BY j.started_at DESC LIMIT 5) s),'[]'),
+              -- F48: retention = share of users (registered at least N days ago) still active on day N or later.
+              'retention',(SELECT jsonb_object_agg(k, CASE WHEN eligible=0 THEN NULL ELSE round(100.0*kept/eligible) END) FROM (
+                  SELECT 'd'||n AS k, count(*) AS eligible,
+                    count(*) FILTER (WHERE EXISTS(SELECT 1 FROM daily_activity a WHERE a.user_id=u.user_id AND a.activity_date >= (u.created_at + n * interval '1 day')::date)
+                      OR EXISTS(SELECT 1 FROM step_data s WHERE s.user_id=u.user_id AND s.synced_at >= u.created_at + n * interval '1 day')) AS kept
+                  FROM unnest(ARRAY[1,7,30]) n JOIN app_user u ON u.role='USER' AND u.created_at <= CURRENT_TIMESTAMP - n * interval '1 day'
+                  GROUP BY n) r),
+              'activeStreaks',(SELECT count(DISTINCT user_id) FROM daily_activity WHERE activity_date >= CURRENT_DATE-1 AND steps >= goal_steps),
+              'checkins',(SELECT count(*) FROM place_checkin),
+              'stepFlags',COALESCE((SELECT jsonb_agg(to_jsonb(s)) FROM (SELECT u.user_id,u.full_name,count(*) AS flags,sum(f.rejected_steps) AS rejected,max(f.created_at) AS last_at,
+                  (array_agg(f.reason ORDER BY f.created_at DESC))[1] AS reason
+                  FROM step_flag f JOIN app_user u ON u.user_id=f.user_id WHERE f.created_at >= CURRENT_TIMESTAMP - interval '7 days'
+                  GROUP BY u.user_id,u.full_name ORDER BY max(f.created_at) DESC LIMIT 6) s),'[]')
             )::text
             """);
         cmd.Parameters.AddWithValue(days);

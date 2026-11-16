@@ -117,8 +117,19 @@ public sealed class PostgresRecommendationRepository(NpgsqlDataSource db) : IRec
                     reader.GetDecimal(8), reader.GetBoolean(9)));
         }
 
+        var dismissed = new HashSet<long>();
+        await using (var command = new NpgsqlCommand("""
+            SELECT place_id FROM public.place_dismissal
+            WHERE user_id = $1 AND dismissed_at > CURRENT_TIMESTAMP - INTERVAL '30 days'
+            """, connection))
+        {
+            command.Parameters.Add(UserId(userId));
+            await using var reader = await command.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct)) dismissed.Add(reader.GetInt64(0));
+        }
+
         return new RecommendationInput(regionName, latitude, longitude, activityLevel, preferences,
-            config with { Weights = weights }, places);
+            config with { Weights = weights }, places) { Dismissed = dismissed };
     }
 
     private static NpgsqlParameter<long> UserId(long userId) =>

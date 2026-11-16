@@ -40,7 +40,7 @@
                 android:accessibilityHeading="true"
                 android:text="Tin mới trên hành trình"
                 android:textColor="@color/forest"
-                android:textSize="18sp"
+                android:textSize="17sp"
                 android:textStyle="bold" />
 
             <TextView

@@ -7,6 +7,41 @@
     android:background="@color/tab_screen_bg"
     android:orientation="vertical">
 
+    <!-- Fixed header shared with Hộ chiếu and Nhật ký, so switching pages never moves it. -->
+    <LinearLayout
+        android:id="@+id/collectionHeader"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="20dp"
+        android:paddingTop="20dp"
+        android:paddingEnd="20dp">
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="BƯỚC CHÂN VIỆT"
+            android:textColor="@color/teal"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:accessibilityHeading="true"
+            android:text="Bộ sưu tập"
+            android:textColor="@color/forest"
+            android:textSize="30sp"
+            android:textStyle="bold" />
+
+        <!-- Thẻ · Hộ chiếu · Nhật ký, filled in code. -->
+        <FrameLayout
+            android:id="@+id/collectionSwitcher"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="8dp" />
+    </LinearLayout>
+
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -18,26 +53,11 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:paddingStart="20dp"
-            android:paddingTop="20dp"
+            android:paddingTop="8dp"
             android:paddingEnd="20dp"
             android:paddingBottom="20dp">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="BƯỚC CHÂN VIỆT"
-                android:textColor="@color/teal"
-                android:textSize="12sp"
-                android:textStyle="bold" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:accessibilityHeading="true"
-                android:text="Bộ sưu tập"
-                android:textColor="@color/forest"
-                android:textSize="32sp"
-                android:textStyle="bold" />
 
             <!-- First load: shaped like the summary card, header and collection cards. -->
             <include android:id="@+id/loadingSkeleton" layout="@layout/skeleton_collection" />
@@ -150,7 +170,7 @@
                     android:accessibilityHeading="true"
                     android:text="Bộ sưu tập của bạn"
                     android:textColor="@color/forest"
-                    android:textSize="18sp"
+                    android:textSize="17sp"
                     android:textStyle="bold" />
 
                 <TextView
@@ -186,7 +206,7 @@
                     android:accessibilityLiveRegion="polite"
                     android:gravity="center"
                     android:textColor="#6F8579"
-                    android:textSize="14sp" />
+                    android:textSize="15sp" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/retryButton"

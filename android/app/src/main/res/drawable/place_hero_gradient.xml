@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Darkens the bottom of the hero photo so the white name stays readable. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient android:angle="90" android:startColor="#B3122A20" android:centerColor="#40122A20" android:endColor="#00122A20" />
+</shape>

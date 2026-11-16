@@ -32,7 +32,7 @@ class ActiveItemBanner @JvmOverloads constructor(context: Context, attrs: Attrib
             setStroke((resources.displayMetrics.density).toInt().coerceAtLeast(1), 0xFF92C9AA.toInt())
         }
         title.setTextColor(0xFF126747.toInt())
-        title.textSize = 14f
+        title.textSize = 15f
         title.setTypeface(null, Typeface.BOLD)
         detail.setTextColor(0xFF426956.toInt())
         detail.textSize = 12f

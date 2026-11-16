@@ -130,7 +130,7 @@
                         android:layout_weight="1"
                         android:text="Mức vận động tự đánh giá"
                         android:textColor="@color/forest"
-                        android:textSize="16sp"
+                        android:textSize="17sp"
                         android:textStyle="bold" />
 
                     <TextView

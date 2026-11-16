@@ -159,8 +159,9 @@ class InventoryActivity : AppCompatActivity() {
         itemList.removeAllViews()
         overview.items.forEach { itemList.addView(itemCard(it, overview).root) }
 
-        footerNote.text = if (owned) "Chỉ trừ khi sử dụng thành công." else "Vật phẩm chưa sở hữu vẫn hiển thị số 0."
-        footerHint.text = if (owned) "Hiệu ứng áp dụng theo cấu hình vật phẩm." else "Xem phần thưởng đang áp dụng tại Nhiệm vụ."
+        // One short hint is enough; the details live in each item's sheet.
+        footerNote.text = if (owned) "Chạm vào vật phẩm để xem cách dùng." else "Hoàn thành nhiệm vụ ở Thử thách để nhận vật phẩm."
+        footerHint.visibility = View.GONE
         if (first) ScreenMotion.reveal(content)
     }
 
@@ -325,7 +326,7 @@ class InventoryActivity : AppCompatActivity() {
             }, LinearLayout.LayoutParams((20 * density).toInt(), (20 * density).toInt()))
             addView(TextView(context).apply {
                 this.text = text
-                textSize = 14f
+                textSize = 15f
                 setTextColor(if (kind == Check.BLOCKED) color else ContextCompat.getColor(context, R.color.forest))
             }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = (12 * density).toInt() })
             contentDescription = when (kind) {

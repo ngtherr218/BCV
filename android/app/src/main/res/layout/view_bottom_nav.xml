@@ -30,23 +30,6 @@
     </LinearLayout>
 
     <LinearLayout
-        android:id="@+id/tabJourney"
-        style="@style/NavTab"
-        android:contentDescription="Hành trình">
-
-        <ImageView
-            android:id="@+id/tabJourneyIcon"
-            style="@style/NavTabIcon"
-            android:src="@drawable/ic_nav_route"
-            app:tint="#7D8A82" />
-
-        <TextView
-            android:id="@+id/tabJourneyLabel"
-            style="@style/NavTabLabel"
-            android:text="Hành trình" />
-    </LinearLayout>
-
-    <LinearLayout
         android:id="@+id/tabCollection"
         style="@style/NavTab"
         android:contentDescription="Bộ sưu tập">
@@ -70,7 +53,7 @@
                 android:gravity="center"
                 android:background="@drawable/notification_badge_bg"
                 android:textColor="@android:color/white"
-                android:textSize="10sp"
+                android:textSize="11sp"
                 android:importantForAccessibility="no"
                 android:visibility="gone" />
         </FrameLayout>
@@ -82,19 +65,36 @@
     </LinearLayout>
 
     <LinearLayout
-        android:id="@+id/tabQuest"
+        android:id="@+id/tabChallenge"
         style="@style/NavTab"
-        android:contentDescription="Nhiệm vụ">
+        android:contentDescription="Thử thách">
 
         <ImageView
-            android:id="@+id/tabQuestIcon"
+            android:id="@+id/tabChallengeIcon"
             style="@style/NavTabIcon"
             android:src="@drawable/ic_nav_task"
             app:tint="#7D8A82" />
 
         <TextView
-            android:id="@+id/tabQuestLabel"
+            android:id="@+id/tabChallengeLabel"
             style="@style/NavTabLabel"
-            android:text="Nhiệm vụ" />
+            android:text="Thử thách" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/tabRanking"
+        style="@style/NavTab"
+        android:contentDescription="Xếp hạng">
+
+        <ImageView
+            android:id="@+id/tabRankingIcon"
+            style="@style/NavTabIcon"
+            android:src="@drawable/ic_trophy"
+            app:tint="#7D8A82" />
+
+        <TextView
+            android:id="@+id/tabRankingLabel"
+            style="@style/NavTabLabel"
+            android:text="Xếp hạng" />
     </LinearLayout>
 </LinearLayout>

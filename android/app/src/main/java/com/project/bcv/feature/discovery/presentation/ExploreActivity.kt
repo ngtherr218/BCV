@@ -62,9 +62,12 @@ class ExploreActivity : AppCompatActivity() {
     private var mapLoaded = false
     private var mapFailed = false
     private val searchMapFocus = Runnable {
-        if (binding.placeTypeSearch.text.isNotBlank()) goongMap.focusSearchResults()
+        // Results would otherwise sit under the expanded journey sheet.
+        if (searchQuery.isNotBlank() || searchFilters.active) { setSheetCollapsed(true); goongMap.focusSearchResults() }
     }
-    private var placeTypeOptions = emptyList<String>()
+    private var searchQuery = ""
+    private var searchFilters = SearchFilters()
+    private var searchSheet: ExploreSearchSheet? = null
     private var lastSnapshot: com.project.bcv.feature.discovery.domain.ExploreSnapshot? = null
     private var renderedStage: ExploreStage? = null
     private var shownStepsJourneyId: Long? = null
@@ -178,17 +181,24 @@ class ExploreActivity : AppCompatActivity() {
             }
         }
         model.address.observe(this) { model.state.value?.let(::renderLocationName) }
-        binding.placeTypeSearch.threshold = 1
-        binding.placeTypeSearch.addTextChangedListener(object : android.text.TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                lastSnapshot = null
-                model.state.value?.let(::render)
-                handler.removeCallbacks(searchMapFocus)
-                handler.postDelayed(searchMapFocus, 400)
-            }
-            override fun afterTextChanged(s: android.text.Editable?) = Unit
-        })
+        TooltipCompat.setTooltipText(binding.quizMapButton, "Trạm câu hỏi")
+        binding.quizMapButton.setOnClickListener { openQuiz(null) }
+        TooltipCompat.setTooltipText(binding.addStepsMapButton, "Cộng bước (thử nghiệm)")
+        binding.addStepsMapButton.setOnClickListener {
+            val amounts = intArrayOf(500, 1000, 5000)
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                .setTitle("Cộng bước chân (thử nghiệm)")
+                .setItems(arrayOf("+500 bước", "+1.000 bước", "+5.000 bước", "Tùy chỉnh / mô phỏng đi bộ…")) { _, which ->
+                    if (which < amounts.size) model.sendTestSteps(amounts[which]) else StepTestDialog.show(this, model)
+                }
+                .setNegativeButton("Đóng", null)
+                .show()
+        }
+        goongMap.onQuizStopTap = { stop -> openQuiz(stop) }
+        binding.searchButton.setOnClickListener { showSearchDialog() }
+        TooltipCompat.setTooltipText(binding.searchButton, "Tìm địa danh")
+        binding.filterChip.setOnClickListener { showSearchDialog() }
+        binding.filterChipClear.setOnClickListener { setSearchQuery("", SearchFilters()) }
         binding.recenterButton.setOnClickListener { goongMap.recenter() }
         binding.primaryButton.setOnClickListener { primaryAction() }
         binding.secondaryButton.setOnClickListener { secondaryAction() }
@@ -200,16 +210,13 @@ class ExploreActivity : AppCompatActivity() {
         binding.profileButton.setOnClickListener { startActivity(Intent(this, ProfileActivity::class.java)) }
         BottomNav.select(binding.bottomNavigation, NavTab.EXPLORE)
         binding.bottomNavigation.tabExplore.setOnClickListener { model.refreshIfNeeded() }
-        binding.bottomNavigation.tabJourney.setOnClickListener { openJourney() }
-        binding.bottomNavigation.tabCollection.setOnClickListener {
-            startActivity(BottomNav.intent(this, CollectionActivity::class.java, NavTab.EXPLORE))
-            BottomNav.skipTransition(this, opening = true)
-            returningFromTab = true
-        }
-        binding.bottomNavigation.tabQuest.setOnClickListener {
-            startActivity(BottomNav.intent(this, QuestActivity::class.java, NavTab.EXPLORE))
-            BottomNav.skipTransition(this, opening = true)
-            returningFromTab = true
+        mapOf(NavTab.COLLECTION to binding.bottomNavigation.tabCollection, NavTab.CHALLENGE to binding.bottomNavigation.tabChallenge,
+            NavTab.RANKING to binding.bottomNavigation.tabRanking
+        ).forEach { (tab, view) ->
+            view.setOnClickListener {
+                BottomNav.go(this, binding.bottomNavigation, NavTab.EXPLORE, tab, binding.root)
+                returningFromTab = true
+            }
         }
         model.refreshIfNeeded()
         stepsPermissionAsked = savedInstanceState?.getBoolean(STEPS_PERMISSION_ASKED_KEY) ?: false
@@ -276,6 +283,8 @@ class ExploreActivity : AppCompatActivity() {
         goongMap.onResume()
         // Mutations invalidate the cached tab; a normal return keeps its existing content.
         model.refreshIfNeeded()
+        // F83: today's steps feed the streak and weekly board (throttled inside).
+        lifecycleScope.launch { com.project.bcv.feature.engagement.EngagementApi(this@ExploreActivity).reportToday() }
         loadProfileAvatar()
         if (::model.isInitialized) {
             model.checkPermission()
@@ -440,6 +449,85 @@ class ExploreActivity : AppCompatActivity() {
             ?: fallback ?: "Chưa có vị trí ảo"
     }
 
+    // ---------- F76: question stops spread along the journey ----------
+    private var quizJourneyId: Long? = null
+    private var quizNextUnlock = Int.MAX_VALUE
+    private var quizOpenKeys = emptySet<String>()
+    private var quizLoading = false
+
+    /** Reloads the stops when the journey changes or the walker reaches the next locked stop. */
+    private fun syncQuizStops(state: ExploreUiState) {
+        val journey = state.snapshot?.journey?.takeIf { it.status == "IN_PROGRESS" }
+        if (journey == null) {
+            if (quizJourneyId != null) { quizJourneyId = null; goongMap.showQuizStops(emptyList()) }
+            return
+        }
+        if (journey.id != quizJourneyId || journey.recordedSteps >= quizNextUnlock) refreshQuiz(announce = journey.id == quizJourneyId)
+    }
+
+    private fun refreshQuiz(announce: Boolean) {
+        if (quizLoading) return
+        quizLoading = true
+        lifecycleScope.launch {
+            val data = runCatching { com.project.bcv.feature.engagement.EngagementApi(this@ExploreActivity).quiz() }.getOrNull()
+            quizLoading = false
+            if (data == null) return@launch
+            quizJourneyId = data.optLong("journeyId").takeIf { it > 0 } ?: model.state.value?.snapshot?.journey?.id
+            val stops = data.optJSONArray("stops")
+            val list = (0 until (stops?.length() ?: 0)).map { i -> stops!!.getJSONObject(i) }
+            goongMap.showQuizStops(list.map { GoongExploreMap.QuizStop(it.getInt("number"), it.getDouble("fraction"), it.getString("state")) })
+            quizNextUnlock = list.filter { it.getString("state") == "LOCKED" }.minOfOrNull { it.getInt("unlockSteps") } ?: Int.MAX_VALUE
+            val open = list.filter { it.getString("state") == "OPEN" }
+            val newlyOpen = open.firstOrNull { it.getString("key") !in quizOpenKeys }
+            quizOpenKeys = open.map { it.getString("key") }.toSet()
+            // Gold when a stop is waiting for an answer.
+            binding.quizMapButton.backgroundTintList = if (open.isNotEmpty()) ColorStateList.valueOf(0xFFFFE7A8.toInt()) else null
+            binding.quizMapButton.contentDescription = if (open.isNotEmpty()) "Trạm câu hỏi: ${open.size} câu đang chờ trả lời" else "Trạm câu hỏi"
+            if (announce && newlyOpen != null) {
+                val stop = newlyOpen.getInt("number")
+                Snackbar.make(binding.root, "📍 Bạn đã tới Trạm câu hỏi $stop!", Snackbar.LENGTH_LONG)
+                    .setAction("Trả lời") { openQuiz(stop) }.show()
+            }
+        }
+    }
+
+    private fun openQuiz(stop: Int?) {
+        com.project.bcv.feature.engagement.CultureQuizSheet(this, stop) { model.load(); refreshQuiz(announce = false) }.show()
+    }
+
+    private fun setSearchQuery(value: String, filters: SearchFilters = searchFilters) {
+        val query = value.trim()
+        if (query == searchQuery && filters == searchFilters) return
+        searchQuery = query
+        searchFilters = filters
+        lastSnapshot = null
+        model.state.value?.let(::render)
+        handler.removeCallbacks(searchMapFocus)
+        handler.postDelayed(searchMapFocus, 400)
+    }
+
+    /** Search sheet with suggestions; filters the map live, the chip on the map keeps the filter visible after closing. */
+    private fun showSearchDialog() {
+        if (searchSheet != null) return
+        val snapshot = model.state.value?.snapshot ?: run {
+            Snackbar.make(binding.root, "Đang tải danh sách địa danh, thử lại sau giây lát.", Snackbar.LENGTH_SHORT).show()
+            return
+        }
+        searchSheet = ExploreSearchSheet(this, snapshot, searchQuery, searchFilters,
+            com.project.bcv.feature.engagement.EngagementApi.cachedDailyGoal(this),
+            onQuery = { query, filters -> setSearchQuery(query, filters) },
+            onPlace = { place ->
+                setSearchQuery(place.name, SearchFilters())
+                placeDetailLauncher.launch(Intent(this, PlaceDetailActivity::class.java)
+                    .putExtra(PlaceDetailActivity.EXTRA_PLACE_ID, place.id)
+                    .putExtra(PlaceDetailActivity.EXTRA_PLACE_NAME, place.name)
+                    .putExtra(PlaceDetailActivity.EXTRA_DISCOVERED, place.isDiscovered))
+            }).also {
+            it.setOnDismiss { searchSheet = null }
+            it.show()
+        }
+    }
+
     private fun render(state: ExploreUiState) = with(binding) {
         if (state.snapshot?.journey?.status == "IN_PROGRESS") {
             requestActivityPermissionIfNeeded()
@@ -447,14 +535,19 @@ class ExploreActivity : AppCompatActivity() {
         }
         activeItemBanner.show(state.snapshot?.journey)
         state.snapshot?.let { snapshot ->
-            val options = snapshot.places.map { it.placeType }.filter(String::isNotBlank).distinct().sorted()
-            if (options != placeTypeOptions) {
-                placeTypeOptions = options
-                placeTypeSearch.setAdapter(android.widget.ArrayAdapter(this@ExploreActivity, android.R.layout.simple_dropdown_item_1line, options))
-            }
-            val query = placeTypeSearch.text.toString().trim()
-            val filtered = snapshot.copy(places = com.project.bcv.feature.discovery.domain.PlaceSearch.filter(snapshot.places, query))
-            filterSummary.text = if (query.isEmpty()) "${snapshot.places.size} địa danh · Chọn loại để lọc bản đồ" else "${filtered.places.size} địa danh phù hợp"
+            val query = searchQuery
+            val goal = com.project.bcv.feature.engagement.EngagementApi.cachedDailyGoal(this@ExploreActivity)
+            val origin = snapshot.location?.coordinates
+            val filtered = snapshot.copy(places = com.project.bcv.feature.discovery.domain.PlaceSearch.filter(snapshot.places, query)
+                .filter { place ->
+                    val km = origin?.let { com.project.bcv.feature.engagement.EngagementApi.distanceKm(
+                        it.latitude, it.longitude, place.coordinates.latitude, place.coordinates.longitude) }
+                    searchFilters.matches(place, km, goal)
+                })
+            val narrowed = query.isNotEmpty() || searchFilters.active
+            filterChip.visibility = if (narrowed) View.VISIBLE else View.GONE
+            filterChipText.text = (listOfNotNull(query.takeIf(String::isNotEmpty)?.let { "“$it”" }) + searchFilters.labels())
+                .joinToString(" · ") + " · ${filtered.places.size} địa danh"
             if (filtered != lastSnapshot) {
                 goongMap.show(filtered)
                 lastSnapshot = filtered
@@ -465,6 +558,12 @@ class ExploreActivity : AppCompatActivity() {
         mapFailure.visibility = if (mapFailed) View.VISIBLE else View.GONE
         locationCard.visibility = if (mapFailed || !mapLoaded) View.GONE else View.VISIBLE
         recenterButton.visibility = locationCard.visibility
+        // F76 on the map: only while walking somewhere, since questions are about the destination.
+        quizMapButton.visibility = if (locationCard.visibility == View.VISIBLE &&
+            state.snapshot?.journey?.status == "IN_PROGRESS") View.VISIBLE else View.GONE
+        syncQuizStops(state)
+        addStepsMapButton.visibility = if (com.project.bcv.BuildConfig.STEP_TEST_ENABLED &&
+            quizMapButton.visibility == View.VISIBLE) View.VISIBLE else View.GONE
 
         val copy = if (mapFailed) mapErrorCopy else copyFor(state)
         statusTitle.text = copy.noticeTitle
@@ -479,6 +578,9 @@ class ExploreActivity : AppCompatActivity() {
         sheetDescription.text = copy.description
         primaryButton.text = copy.primary
         primaryButton.isEnabled = copy.primaryEnabled
+        primaryButton.visibility = if (copy.primary.isEmpty()) View.GONE else View.VISIBLE
+        (primaryButton.parent as View).visibility =
+            if (copy.primary.isEmpty() && copy.secondary.isEmpty()) View.GONE else View.VISIBLE
         secondaryButton.visibility = if (copy.secondary.isEmpty()) View.GONE else View.VISIBLE
         secondaryButton.text = copy.secondary
         secondaryButton.isEnabled = state.stage != ExploreStage.SYNCING
@@ -491,7 +593,7 @@ class ExploreActivity : AppCompatActivity() {
         // With progress shown the sheet follows the journey design: no description or footer line.
         sheetDescription.visibility = if (showProgress) View.GONE else View.VISIBLE
         sheetFooter.visibility = sheetDescription.visibility
-        sheetTitle.textSize = if (showProgress) 22f else 25f
+        sheetTitle.textSize = if (showProgress) 20f else 26f
         if (journey != null && showProgress) {
             showSteps(journey.id, journey.recordedSteps)
             stepsTotal.text = "/ ${format(journey.requiredSteps)} bước"
@@ -505,9 +607,8 @@ class ExploreActivity : AppCompatActivity() {
         tertiaryButton.visibility = if (showProgress && journey?.status == "IN_PROGRESS" &&
             state.stage != ExploreStage.PERMISSION_REQUIRED) View.VISIBLE else View.GONE
         tertiaryButton.isEnabled = state.stage != ExploreStage.SYNCING
-        demoStepsButton.visibility = if (com.project.bcv.BuildConfig.STEP_TEST_ENABLED) View.VISIBLE else View.GONE
-        demoStepsButton.isEnabled = true
-        demoStepsButton.alpha = 1f
+        // Step simulator stays in code for testing but is hidden from the header.
+        demoStepsButton.visibility = View.GONE
         if (renderedStage != state.stage) {
             if (renderedStage != null) {
                 ScreenMotion.reveal(statusCard)
@@ -545,20 +646,20 @@ class ExploreActivity : AppCompatActivity() {
                 "Gợi ý điểm đến", footer = "Gợi ý được tìm từ vị trí ảo hiện tại.")
             ExploreStage.ACTIVE -> ScreenCopy("Hành trình đang thực hiện", "Tiến độ được xác nhận từ số bước đã đồng bộ.",
                 journey?.destinationName.orEmpty(), "Tiếp tục hành trình khám phá của bạn.",
-                "Xem hành trình", secondary = "Đồng bộ", footer = "Vị trí ảo cập nhật khi hoàn thành hành trình.",
+                "", footer = "Vị trí ảo cập nhật khi hoàn thành hành trình.",
                 noticeBackground = 0xFFEAF2F9.toInt(), noticeColor = 0xFF4B88AD.toInt())
-            // Same buttons as ACTIVE so nothing moves; Đồng bộ is disabled while it runs.
+            // Steps sync automatically (every 5 s), so an active journey needs no buttons here.
             ExploreStage.SYNCING -> ScreenCopy("Đang đồng bộ bước chân", "Đang gửi tiến độ đã xác nhận.",
                 journey?.destinationName.orEmpty(), "Vui lòng chờ kết quả từ máy chủ.",
-                "Xem hành trình", secondary = "Đồng bộ", footer = "Không gửi yêu cầu trùng trong lúc đồng bộ.",
+                "", footer = "Không gửi yêu cầu trùng trong lúc đồng bộ.",
                 noticeBackground = 0xFFEAF2F9.toInt(), noticeColor = 0xFF4B88AD.toInt())
             ExploreStage.SYNC_FAILED -> ScreenCopy("Đồng bộ chưa thành công", "Tiến độ vẫn giữ ở trạng thái đã lưu.",
                 journey?.destinationName.orEmpty(), state.message.orEmpty(), "Thử lại",
-                secondary = "Đồng bộ", footer = "Chỉ cập nhật sau khi máy chủ xác nhận.",
+                footer = "Chỉ cập nhật sau khi máy chủ xác nhận.",
                 noticeBackground = 0xFFFCEFEA.toInt(), noticeColor = 0xFFC36E59.toInt())
             ExploreStage.NO_NEW_STEPS -> ScreenCopy("Chưa có bước chân mới", "Không cộng lại bước đã ghi nhận.",
                 journey?.destinationName.orEmpty(), "Tiến độ hiện tại của bạn đã được giữ nguyên.",
-                "Xem hành trình", secondary = "Đồng bộ", footer = "Cập nhật lại khi có bước chân mới.")
+                "", footer = "Cập nhật lại khi có bước chân mới.")
             ExploreStage.PERMISSION_REQUIRED -> ScreenCopy("Chưa có quyền bước chân", "Tiến độ đã lưu vẫn được giữ nguyên.",
                 journey?.destinationName.orEmpty(), "Cho phép Health Connect hoặc Hoạt động thể chất để đếm bước.",
                 "Cho phép đếm bước", secondary = "Xem hành trình đã lưu",

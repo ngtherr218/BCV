@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Bottom sheet: search field, place-type chips as ready-made suggestions, live result list. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/searchSheetRoot"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:focusable="true"
+    android:focusableInTouchMode="true"
+    android:orientation="vertical"
+    android:paddingTop="8dp"
+    android:paddingBottom="12dp">
+
+    <View
+        android:layout_width="40dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:background="#DFE8DD" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="20dp"
+        android:paddingEnd="8dp">
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Tìm địa danh"
+            android:textColor="@color/forest"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+        <ImageButton
+            android:id="@+id/searchClose"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Đóng"
+            android:padding="11dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_close"
+            app:tint="#6F8579" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:layout_marginHorizontal="20dp"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/explore_search_box_bg"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="14dp"
+        android:paddingEnd="4dp">
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_explore_search"
+            app:tint="#6F8579" />
+        <EditText
+            android:id="@+id/searchInput"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:background="@null"
+            android:hint="Tên địa danh, loại địa danh…"
+            android:imeOptions="actionSearch"
+            android:importantForAutofill="no"
+            android:inputType="text"
+            android:singleLine="true"
+            android:textColor="@color/forest"
+            android:textColorHint="#93A69B"
+            android:textSize="15sp" />
+        <ImageButton
+            android:id="@+id/searchClear"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Xóa chữ"
+            android:padding="11dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_close"
+            android:visibility="gone"
+            app:tint="#6F8579" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/typeLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="20dp"
+        android:layout_marginTop="14dp"
+        android:text="LOẠI ĐỊA DANH"
+        android:textColor="#718A78"
+        android:textSize="11sp"
+        android:textStyle="bold" />
+
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:clipToPadding="false"
+        android:paddingHorizontal="20dp"
+        android:scrollbars="none">
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/typeChips"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:chipSpacingHorizontal="8dp"
+            app:singleLine="true"
+            app:singleSelection="true" />
+    </HorizontalScrollView>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="20dp"
+        android:layout_marginTop="8dp"
+        android:text="BỘ LỌC"
+        android:textColor="#718A78"
+        android:textSize="11sp"
+        android:textStyle="bold" />
+
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:clipToPadding="false"
+        android:paddingHorizontal="20dp"
+        android:scrollbars="none">
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/filterChips"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:chipSpacingHorizontal="8dp"
+            app:singleLine="true" />
+    </HorizontalScrollView>
+
+    <TextView
+        android:id="@+id/resultLabel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="20dp"
+        android:layout_marginTop="10dp"
+        android:textColor="#718A78"
+        android:textSize="11sp"
+        android:textStyle="bold" />
+
+    <FrameLayout
+        android:id="@+id/resultArea"
+        android:layout_width="match_parent"
+        android:layout_height="320dp"
+        android:layout_marginTop="4dp">
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/resultList"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingHorizontal="12dp" />
+        <TextView
+            android:id="@+id/resultEmpty"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:paddingHorizontal="32dp"
+            android:text="Không tìm thấy địa danh phù hợp.\nThử từ khóa khác hoặc chọn một loại ở trên."
+            android:textColor="#7C9086"
+            android:textSize="13sp"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/showOnMap"
+        style="@style/Widget.Material3.Button"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:layout_marginHorizontal="20dp"
+        android:layout_marginTop="8dp"
+        android:textAllCaps="false"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        app:backgroundTint="@color/teal"
+        app:cornerRadius="16dp" />
+</LinearLayout>

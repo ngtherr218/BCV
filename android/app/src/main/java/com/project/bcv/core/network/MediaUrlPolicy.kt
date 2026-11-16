@@ -4,7 +4,7 @@ import java.net.URI
 
 /** Only these application endpoints may receive a session token from an image/video player. */
 object MediaUrlPolicy {
-    private val contentPath = Regex("/api/(community-media/[1-9][0-9]*/content|explore/places/[1-9][0-9]*/videos/[1-9][0-9]*|places/[1-9][0-9]*/thumbnail)")
+    private val contentPath = Regex("/api/(journal/photos/[1-9][0-9]*/content|explore/places/[1-9][0-9]*/videos/[1-9][0-9]*|places/[1-9][0-9]*/thumbnail)")
 
     fun authenticatedUrl(baseUrl: String, value: String): String? = runCatching {
         val base = URI(baseUrl)

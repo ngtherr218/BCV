@@ -56,7 +56,7 @@ class ExploreRepositoryImpl(
                         }.orEmpty(),
                         it.optJSONArray("reasons")?.let { array ->
                             (0 until array.length()).map(array::getString)
-                        }.orEmpty())
+                        }.orEmpty(), it.optBoolean("isSurprise"))
                 }
             })
         }

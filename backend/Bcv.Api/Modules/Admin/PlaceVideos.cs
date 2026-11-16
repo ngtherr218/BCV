@@ -68,8 +68,6 @@ public static class PlaceVideos
             var count=0;await using var r=await check.ExecuteReaderAsync(ct);while(await r.ReadAsync(ct))count++;
             if(count!=ids.Length)throw new AdminValidation("Video không tồn tại, đã hết hạn hoặc đang thuộc địa danh khác.");
         }
-        await using(var count=new NpgsqlCommand("SELECT count(*) FROM community_media WHERE place_id=$1 AND status='APPROVED' AND mime_type LIKE 'video/%'",conn,tx))
-        {count.Parameters.AddWithValue(placeId);if((long)(await count.ExecuteScalarAsync(ct))!+ids.Length>5)throw new AdminValidation("Địa danh đã đủ 5 video công khai, tính cả video cộng đồng đã duyệt.");}
         await using(var remove=new NpgsqlCommand("DELETE FROM place_video WHERE place_id=$1 AND NOT(video_id=ANY($2))",conn,tx))
         {remove.Parameters.AddWithValue(placeId);remove.Parameters.AddWithValue(ids);await remove.ExecuteNonQueryAsync(ct);}
         await using(var attach=new NpgsqlCommand("UPDATE place_video SET place_id=$1 WHERE video_id=ANY($2)",conn,tx))

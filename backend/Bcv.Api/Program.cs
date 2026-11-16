@@ -32,6 +32,7 @@ var connectionString = builder.Configuration.GetConnectionString("Bcv")
     ?? throw new InvalidOperationException("Set ConnectionStrings__Bcv before starting the API.");
 
 builder.Services.AddSingleton(NpgsqlDataSource.Create(connectionString));
+Bcv.Api.Modules.Journey.Infrastructure.StepGuard.Enabled = builder.Configuration.GetValue("StepGuard:Enabled", true);
 builder.Services.AddScoped<AdminRepository>();
 builder.Services.AddScoped<RecommendationAdmin>();
 builder.Services.AddHttpClient<GoongGeocoder>(client => client.Timeout = TimeSpan.FromSeconds(10))
@@ -90,7 +91,7 @@ else
     builder.Services.AddSingleton<IImageStorage, InlineImageStorage>();
 }
 
-builder.Services.AddHostedService<Bcv.Api.Modules.CommunityMedia.MediaMaintenance>();
+builder.Services.AddHostedService<Bcv.Api.Modules.PlaceMedia.PlaceVideoMaintenance>();
 var app = builder.Build();
 app.UseDefaultFiles();
 app.UseStaticFiles();
@@ -150,11 +151,13 @@ app.MapInventoryEndpoints();
 app.MapItemUseEndpoints();
 app.MapStatsNotifyEndpoints();
 app.MapAdminEndpoints();
-Bcv.Api.Modules.CommunityMedia.CommunityMediaEndpoints.MapCommunityMedia(app);
+Bcv.Api.Modules.PlaceMedia.PlaceMediaEndpoints.MapPlaceMedia(app);
+Bcv.Api.Modules.Engagement.EngagementEndpoints.MapEngagementEndpoints(app);
 await AccountSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
 await Bcv.Api.Modules.PlaceCollection.Infrastructure.CollectionSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
 await Bcv.Api.Modules.StatsNotify.Infrastructure.NotificationSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
 await RecommendationSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
-await Bcv.Api.Modules.CommunityMedia.CommunityMediaEndpoints.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
+await Bcv.Api.Modules.PlaceMedia.PlaceMediaEndpoints.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
 await Bcv.Api.Modules.Admin.PlaceTypeFeatureSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
+await Bcv.Api.Modules.Engagement.EngagementSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
 app.Run();

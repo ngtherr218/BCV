@@ -5,8 +5,6 @@ import { catalog, valueLabels } from './catalog';
 import { Badge, ErrorBox, Loading } from './components';
 import { useAnimatedDismiss } from './motion';
 import PlaceVideosField from './PlaceVideosField';
-import ApprovedPlaceMedia from './ApprovedPlaceMedia';
-import ModerationActionDialog from './ModerationActionDialog';
 
 const references = { regions:'regions', types:'place-types', places:'places', cards:'cards', items:'items' };
 const metrics = {
@@ -17,7 +15,6 @@ export default function DetailDrawer({ resource, recordId, close, edit, openRela
   const config=catalog[resource];
   const { closing, dismiss }=useAnimatedDismiss(close);
   const [data,setData]=useState(null);const [lookups,setLookups]=useState({});const [loading,setLoading]=useState(true);const [error,setError]=useState('');const [retry,setRetry]=useState(0);
-  const [uploadAction,setUploadAction]=useState(null);const [accessMessage,setAccessMessage]=useState('');
   const panel=useRef(null);
   useEffect(()=>{if(data){panel.current?.querySelector('.drawer-body')?.scrollTo({top:0,behavior:'auto'});panel.current?.focus();}},[data,resource,recordId]);
   useEffect(()=>{let alive=true;setLoading(true);setData(null);setError('');Promise.all([api(`/data/${resource}/${recordId}`),api('/lookups')]).then(([record,options])=>{if(alive){setData(record);setLookups(options);}}).catch(e=>{if(alive)setError(e.message);}).finally(()=>{if(alive)setLoading(false);});return()=>{alive=false;};},[resource,recordId,retry]);
@@ -34,12 +31,10 @@ export default function DetailDrawer({ resource, recordId, close, edit, openRela
       {resource==='places'&&<section className="detail-section"><h3>Video địa danh</h3><PlaceVideosField value={data.videos||[]} readOnly/></section>}
       <div className="detail-summary"><span className="metric-icon mint"><config.icon size={24}/></span><div><h3>{data.name||data.full_name||`#${recordId}`}</h3><span>{config.title} · Mã #{recordId}</span></div>{data.status&&<Badge value={data.status}/>}</div>
       {resource==='users'&&<><dl className="detail-grid"><div><dt>Họ tên</dt><dd>{data.full_name}</dd></div><div><dt>Email</dt><dd>{data.email}</dd></div><div><dt>Vai trò</dt><dd>{valueLabels[data.role]||data.role}</dd></div><div><dt>Ngày tham gia</dt><dd>{date(data.created_at)}</dd></div></dl><div className="mini-metrics">{metrics.users.map(([key,label])=><div key={key}><strong>{number(data[key])}</strong><span>{label}</span></div>)}</div></>}
-      {resource==='users'&&data.role!=='ADMIN'&&<section className="detail-section"><h3>Quyền gửi ảnh/video</h3><p>{data.media_upload_blocked?'Đang khóa quyền gửi':'Được phép gửi nội dung'}</p><button type="button" className="button secondary" onClick={()=>setUploadAction({item:{userId:data.user_id,author:data.full_name},blocked:!data.media_upload_blocked})}>{data.media_upload_blocked?'Mở quyền gửi':'Khóa quyền gửi'}</button>{accessMessage&&<p role="status">{accessMessage}</p>}</section>}
       {resource==='items'&&<dl className="detail-grid"><div><dt>Loại vật phẩm</dt><dd>{valueLabels[data.item_type]||data.item_type}</dd></div></dl>}
       <dl className="detail-grid">{fields.map(field=><div className={field.wide?'wide':''} key={field.key}><dt>{field.label}</dt><dd className={field.type==='textarea'?'detail-prose':''}>{value(field)}</dd></div>)}</dl>
-      {resource==='places'&&<ApprovedPlaceMedia key={recordId} placeId={recordId}/>}
       {resource==='regions'&&<section className="detail-section"><h3>Địa danh thuộc khu vực <span>{number(regionPlaces.length)}</span></h3>{regionPlaces.length?<div className="detail-relations">{regionPlaces.map(place=><div key={place.id}>{reference('places',place.id)}<Badge value={place.status}/></div>)}</div>:<p className="detail-empty">Khu vực chưa có địa danh.</p>}</section>}
       {resource==='collections'&&<section className="detail-section"><h3>Thẻ thuộc bộ sưu tập <span>{number(collectionCards.length)}</span></h3>{collectionCards.length?<div className="detail-relations">{collectionCards.map(id=><div key={id}>{reference('cards',id)}{(lookups.cards||[]).find(card=>card.id===id)?.status&&<Badge value={lookups.cards.find(card=>card.id===id).status}/>}</div>)}</div>:<p className="detail-empty">Bộ sưu tập chưa có thẻ.</p>}</section>}
     </div>}</div><footer className="drawer-footer"><span>Chế độ xem thông tin</span><button type="button" className="button secondary" onClick={dismiss}>Đóng</button>{data&&!error&&<button type="button" className="button primary" onClick={()=>edit(resource,recordId)} disabled={resource==='users'&&data.role==='ADMIN'}><Pencil size={16}/>{resource==='users'?'Cập nhật trạng thái':'Chỉnh sửa'}</button>}{data&&!error&&config.delete!==false&&<button type="button" className="button danger" onClick={()=>remove(resource,data)} disabled={resource==='users'&&data.role==='ADMIN'}><Trash2 size={16}/> Xóa</button>}</footer>
-  </section>{uploadAction&&<ModerationActionDialog action={uploadAction} close={()=>setUploadAction(null)} done={message=>{setData(previous=>({...previous,media_upload_blocked:uploadAction.blocked}));setUploadAction(null);setAccessMessage(message);}}/>}</div>;
+  </section></div>;
 }

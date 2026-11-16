@@ -22,7 +22,7 @@ object StepTestDialog {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(8), dp(20), dp(12))
         }
-        fun text(value: String) = TextView(activity).apply { text = value; textSize = 14f; setPadding(0, dp(8), 0, dp(8)) }
+        fun text(value: String) = TextView(activity).apply { text = value; textSize = 15f; setPadding(0, dp(8), 0, dp(8)) }
         content.addView(text("Bước thử được lưu thật vào tài khoản đang đăng nhập và tác động hành trình, nhiệm vụ, vật phẩm. Hành trình đã test sẽ dùng bước mô phỏng thay cho bộ đếm thiết bị đến khi kết thúc. Không ghi vào Health Connect."))
         fun number(label: String, initial: String): EditText {
             content.addView(text(label))

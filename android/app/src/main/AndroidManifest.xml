@@ -31,6 +31,14 @@
         android:theme="@style/Theme.BướcChânViệt">
         <service android:name=".feature.discovery.data.JourneyStepService"
             android:exported="false" android:foregroundServiceType="health" android:stopWithTask="false" />
+        <provider android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.share" android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/share_paths" />
+        </provider>
+        <activity android:name=".feature.engagement.AchievementsActivity" android:exported="false" />
+        <activity android:name=".feature.engagement.JournalActivity" android:exported="false" />
+        <activity android:name=".feature.engagement.PassportActivity" android:exported="false" />
+        <activity android:name=".feature.engagement.JournalEntryActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".feature.discovery.presentation.ExploreActivity" android:exported="false" />
         <activity android:name=".feature.discovery.presentation.PlaceDetailActivity" android:exported="false" />
         <activity android:name=".feature.discovery.presentation.RecommendationActivity" android:exported="false" />
@@ -46,7 +54,6 @@
         <activity android:name=".feature.account.profile.presentation.EditProfileActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".feature.account.profile.presentation.ChangePasswordActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".feature.discovery.presentation.PlaceVideoActivity" android:exported="false" />
-        <activity android:name=".feature.discovery.presentation.CommunityMediaActivity" android:exported="false" />
         <activity android:name=".feature.statsnotify.stats.presentation.StatsActivity" android:exported="false" />
         <activity android:name=".feature.journey.presentation.JourneyHistoryActivity" android:exported="false" />
         <activity android:name=".feature.statsnotify.notifications.presentation.NotificationsActivity" android:exported="false" />

@@ -24,20 +24,31 @@ public sealed class QuestRepository(NpgsqlDataSource db)
                 WHERE qp.quest_id = q.quest_id AND qp.user_id = $1
                   AND qp.cycle_key IN ($2, $3, 'ONCE')
                   AND qp.completion_status AND NOT qp.reward_status
-                  AND q.reward_item_id IS NOT NULL
-                RETURNING q.reward_item_id AS item_id, q.reward_quantity AS quantity
+                  AND (q.reward_item_id IS NOT NULL OR q.reward_points IS NOT NULL)
+                RETURNING q.quest_id, q.name, qp.cycle_key, q.reward_item_id AS item_id,
+                          q.reward_quantity AS quantity, q.reward_points AS points
             ), totals AS (
-                SELECT item_id, SUM(quantity)::int AS quantity FROM due GROUP BY item_id
+                SELECT item_id, SUM(quantity)::int AS quantity FROM due WHERE item_id IS NOT NULL GROUP BY item_id
             ), granted AS (
                 INSERT INTO public.user_item (user_id, item_id, quantity)
                 SELECT $1, item_id, quantity FROM totals
                 ON CONFLICT (user_id, item_id) DO UPDATE
                 SET quantity = user_item.quantity + EXCLUDED.quantity, updated_at = CURRENT_TIMESTAMP
+            ), scored AS (
+                -- Explorer points: one ledger row per quest and cycle, so a reward is never paid twice.
+                INSERT INTO public.explorer_point (user_id, source, ref_key, points, note)
+                SELECT $1, 'QUEST', quest_id || ':' || cycle_key, points, left('Hoàn thành nhiệm vụ: ' || name, 200)
+                FROM due WHERE points IS NOT NULL
+                ON CONFLICT (user_id, source, ref_key) DO NOTHING
             )
             INSERT INTO public.notification (user_id, notification_type, title, content)
             SELECT $1, 'ITEM_RECEIVED', 'Đã nhận vật phẩm',
                    t.quantity || ' ' || lower(i.name) || ' đã được thêm vào kho.'
             FROM totals t JOIN public.item i ON i.item_id = t.item_id
+            UNION ALL
+            SELECT $1, 'POINTS_RECEIVED', 'Đã nhận điểm khám phá',
+                   '+' || SUM(points) || ' điểm khám phá từ nhiệm vụ.'
+            FROM due WHERE points IS NOT NULL HAVING SUM(points) > 0
             """, connection, transaction))
         {
             grant.Parameters.Add(new NpgsqlParameter<long> { TypedValue = userId, NpgsqlDbType = NpgsqlDbType.Bigint });
@@ -51,7 +62,7 @@ public sealed class QuestRepository(NpgsqlDataSource db)
         await using (var command = new NpgsqlCommand("""
             SELECT q.quest_id, q.name, q.cycle_type, q.condition_type, q.target_value,
                    COALESCE(qp.progress_value, 0), COALESCE(qp.completion_status, FALSE),
-                   COALESCE(qp.reward_status, FALSE), i.name, i.item_type, q.reward_quantity
+                   COALESCE(qp.reward_status, FALSE), i.name, i.item_type, q.reward_quantity, q.reward_points
             FROM public.quest q
             LEFT JOIN public.quest_progress qp
               ON qp.quest_id = q.quest_id AND qp.user_id = $1
@@ -70,7 +81,8 @@ public sealed class QuestRepository(NpgsqlDataSource db)
                 var quest = new QuestView(reader.GetInt64(0), reader.GetString(1), reader.GetString(2),
                     reader.GetString(3), reader.GetInt32(4), reader.GetInt32(5), reader.GetBoolean(6),
                     reader.GetBoolean(7), reader.IsDBNull(8) ? null : reader.GetString(8),
-                    reader.IsDBNull(9) ? null : reader.GetString(9), reader.IsDBNull(10) ? null : reader.GetInt32(10));
+                    reader.IsDBNull(9) ? null : reader.GetString(9), reader.IsDBNull(10) ? null : reader.GetInt32(10),
+                    reader.IsDBNull(11) ? null : reader.GetInt32(11));
                 (quest.CycleType == "DAILY" ? dailyQuests : weeklyQuests).Add(quest);
             }
         }

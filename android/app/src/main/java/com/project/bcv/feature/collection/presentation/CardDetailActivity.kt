@@ -122,6 +122,27 @@ class CardDetailActivity : AppCompatActivity() {
         ownedChip.compoundDrawableTintList = ColorStateList.valueOf(if (owned) teal else muted)
 
         showAvailability(owned)
+        if (owned) showMastery()
+    }
+
+    /** "Am hiểu" edition: every question stop about this place answered correctly → gold frame. */
+    private fun showMastery() {
+        val placeId = intent.getLongExtra(EXTRA_PLACE_ID, 0L)
+        lifecycleScope.launch {
+            val ids = runCatching { com.project.bcv.feature.engagement.EngagementApi(this@CardDetailActivity).masteredPlaces() }
+                .getOrNull() ?: return@launch
+            if (placeId !in ids) return@launch
+            val gold = 0xFFC9962B.toInt()
+            binding.cardFace.foreground = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = 18 * resources.displayMetrics.density
+                setStroke((4 * resources.displayMetrics.density).toInt(), gold)
+            }
+            binding.headline.text = "Một dấu chân thật am hiểu."
+            binding.ownedChip.text = "✦ Bản Am hiểu"
+            binding.ownedChip.setTextColor(gold)
+            binding.ownedChip.compoundDrawableTintList = ColorStateList.valueOf(gold)
+            binding.ownedNote.text = "Bạn đã trả lời đúng mọi trạm câu hỏi về địa danh này.\nThẻ được nâng lên bản Am hiểu viền vàng."
+        }
     }
 
     private fun showAvailability(owned: Boolean) = with(binding) {

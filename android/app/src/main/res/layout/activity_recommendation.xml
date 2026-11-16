@@ -36,7 +36,7 @@
                     app:tint="@color/teal" />
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                     android:layout_marginStart="12dp" android:text="Từ vị trí ảo"
-                    android:textColor="@color/muted" android:textSize="14sp" />
+                    android:textColor="@color/muted" android:textSize="15sp" />
                 <!-- Street address as on Explore; long ones are cut at the end. -->
                 <TextView android:id="@+id/regionName" android:layout_width="0dp"
                     android:layout_height="wrap_content" android:layout_marginStart="12dp"
@@ -47,10 +47,10 @@
 
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="24dp" android:text="Điểm đến dành cho bạn"
-                android:textColor="#1C3F33" android:textSize="27sp" android:textStyle="bold" />
+                android:textColor="#1C3F33" android:textSize="26sp" android:textStyle="bold" />
             <TextView android:id="@+id/subtitle" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:layout_marginTop="6dp"
-                android:textColor="@color/muted" android:textSize="14sp" />
+                android:textColor="@color/muted" android:textSize="15sp" />
 
             <LinearLayout android:id="@+id/cards" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:layout_marginTop="18dp"

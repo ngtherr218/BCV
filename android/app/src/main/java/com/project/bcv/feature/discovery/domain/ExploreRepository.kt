@@ -54,7 +54,9 @@ data class ExploreSnapshot(val location: ExploreLocation?, val journey: ExploreJ
 /** One of the (at most three) destinations ranked by the server's P/C/A/R/N score. */
 data class RecommendedPlace(val rank: Int, val id: Long, val name: String, val regionName: String,
     val imageUrl: String?, val isDiscovered: Boolean, val distanceKm: Double, val requiredSteps: Int,
-    val matchedPreferences: List<String>, val reasons: List<String> = emptyList())
+    val matchedPreferences: List<String>, val reasons: List<String> = emptyList(),
+    /** F75: the one slot picked outside the user's interests. */
+    val isSurprise: Boolean = false)
 
 /** [location] is the virtual location, looked up to the same street address the Explore map shows. */
 data class Recommendations(val regionName: String, val location: Coordinates, val places: List<RecommendedPlace>)

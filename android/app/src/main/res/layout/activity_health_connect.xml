@@ -214,7 +214,7 @@
                     android:layout_height="wrap_content"
                     android:text="BƯỚC CHÂN THÀNH HÀNH TRÌNH"
                     android:textColor="#728B74"
-                    android:textSize="10sp"
+                    android:textSize="11sp"
                     android:textStyle="bold" />
             </LinearLayout>
 
@@ -225,7 +225,7 @@
                 android:layout_marginTop="8dp"
                 android:text="Biến bước chân"
                 android:textColor="@color/forest"
-                android:textSize="28sp"
+                android:textSize="26sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -234,7 +234,7 @@
                 android:layout_height="wrap_content"
                 android:text="thành hành trình."
                 android:textColor="@color/teal"
-                android:textSize="28sp"
+                android:textSize="26sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -286,7 +286,7 @@
                         android:layout_height="wrap_content"
                         android:text="Số bước chân"
                         android:textColor="@color/forest"
-                        android:textSize="16sp"
+                        android:textSize="17sp"
                         android:textStyle="bold" />
 
                     <TextView
@@ -393,7 +393,7 @@
             android:text="Để sau"
             android:textAllCaps="false"
             android:textColor="#557B62"
-            android:textSize="14sp"
+            android:textSize="15sp"
             android:textStyle="bold"
             app:cornerRadius="15dp"
             app:strokeColor="#BFD7C4"
@@ -407,7 +407,7 @@
             android:gravity="center"
             android:text="Bạn sẽ xác nhận quyền trên màn hình hệ thống."
             android:textColor="#849B88"
-            android:textSize="10sp" />
+            android:textSize="11sp" />
 
     </LinearLayout>
 </LinearLayout>

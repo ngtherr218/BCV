@@ -9,13 +9,3 @@ CREATE TABLE IF NOT EXISTS place_video (
  created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS place_video_place_idx ON place_video(place_id);
-ALTER TABLE community_media ALTER COLUMN media_data DROP NOT NULL;
-ALTER TABLE community_media ADD COLUMN IF NOT EXISTS file_deleted_at timestamptz;
-ALTER TABLE community_media ADD COLUMN IF NOT EXISTS delete_after timestamptz;
-ALTER TABLE media_report DROP CONSTRAINT IF EXISTS media_report_status_check;
-ALTER TABLE media_report ADD CONSTRAINT media_report_status_check CHECK(status IN ('OPEN','RESOLVED','ACCEPTED','DISMISSED'));
-UPDATE community_media SET media_data=NULL,file_deleted_at=CURRENT_TIMESTAMP WHERE status='REMOVED' AND media_data IS NOT NULL;
-UPDATE community_media SET delete_after=reviewed_at+INTERVAL '7 days' WHERE status='REJECTED' AND delete_after IS NULL;
-
-ALTER TABLE community_media DROP CONSTRAINT IF EXISTS community_media_status_check;
-ALTER TABLE community_media ADD CONSTRAINT community_media_status_check CHECK(status IN ('PENDING','APPROVED','REJECTED','FLAGGED','REMOVED','EXPIRED'));

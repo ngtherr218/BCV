@@ -66,7 +66,7 @@
         android:layout_marginTop="16dp"
         android:lineSpacingExtra="4dp"
         android:textColor="#6F8579"
-        android:textSize="14sp" />
+        android:textSize="15sp" />
 
     <LinearLayout
         android:id="@+id/sheetChecks"

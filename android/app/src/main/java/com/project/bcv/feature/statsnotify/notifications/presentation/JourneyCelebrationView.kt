@@ -31,7 +31,7 @@ class JourneyCelebrationView(context: Context, message: String) : LinearLayout(c
         addView(emblem, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         addView(TextView(context).apply {
             text = "Chúc mừng bạn đã hoàn thành!"
-            textSize = 23f
+            textSize = 20f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.rgb(30, 91, 69))
@@ -40,7 +40,7 @@ class JourneyCelebrationView(context: Context, message: String) : LinearLayout(c
         })
         body = TextView(context).apply {
             text = message
-            textSize = 16f
+            textSize = 15f
             gravity = Gravity.CENTER
             setTextColor(Color.rgb(70, 100, 83))
             setLineSpacing(6f, 1.1f)

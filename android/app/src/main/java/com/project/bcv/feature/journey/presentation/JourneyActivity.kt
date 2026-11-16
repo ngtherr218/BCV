@@ -64,9 +64,7 @@ class JourneyActivity : AppCompatActivity() {
         setContentView(binding.root)
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.setPadding(bars.left, bars.top, bars.right, 0)
-            // Same as Explore: the cream nav surface continues behind the system gesture area.
-            BottomNav.applyBottomInset(binding.bottomNavigation, bars.bottom)
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
         routeMap = JourneyRouteMap(this, savedInstanceState, binding.mapHost)
@@ -77,14 +75,8 @@ class JourneyActivity : AppCompatActivity() {
             JourneyViewModel::class.java]
         model.state.observe(this, ::render)
 
-        BottomNav.select(binding.bottomNavigation, NavTab.JOURNEY)
-        // A tab, not a pushed screen: open and close in place so the bar never moves.
-        BottomNav.skipTransition(this, opening = true)
-        BottomNav.skipTransition(this, opening = false)
-        // Khám phá is the tab to the left: content came in from the right and leaves the same way.
-        BottomNav.enter(BottomNav.contentOf(binding.root, binding.bottomNavigation),
-            fromRight = BottomNav.enteredFromRight(this, NavTab.JOURNEY))
-        binding.bottomNavigation.tabExplore.setOnClickListener { closeTab() }
+        // No longer a tab: opened from "Tôi" (profile) as a normal screen, so it has no bottom bar.
+        binding.bottomNavigation.root.visibility = android.view.View.GONE
         // The full, interactive map of this journey lives on Khám phá.
         binding.mapTapTarget.setOnClickListener {
             setResult(RESULT_OK, Intent().putExtra(EXTRA_FOCUS_MAP, true))
@@ -93,35 +85,9 @@ class JourneyActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = closeTab()
         })
-        binding.bottomNavigation.tabJourney.setOnClickListener { model.refreshIfNeeded() }
-        binding.bottomNavigation.tabCollection.setOnClickListener { openTabToRight(CollectionActivity::class.java) }
-        binding.bottomNavigation.tabQuest.setOnClickListener { openTabToRight(QuestActivity::class.java) }
     }
 
-    private var closing = false
-
-    /** Bộ sưu tập and Nhiệm vụ are to the right: slide out to the left and replace this tab in place. */
-    private fun openTabToRight(target: Class<out android.app.Activity>) {
-        if (closing) return
-        closing = true
-        BottomNav.exit(BottomNav.contentOf(binding.root, binding.bottomNavigation), toRight = false) {
-            startActivity(BottomNav.intent(this, target, NavTab.JOURNEY))
-            BottomNav.skipTransition(this, opening = true)
-            finish()
-        }
-    }
-
-    /** Back to Khám phá: slide this tab's content out to the right, then close without a window animation. */
-    private fun closeTab() {
-        if (closing) return
-        closing = true
-        BottomNav.exit(BottomNav.contentOf(binding.root, binding.bottomNavigation), toRight = true) { finish() }
-    }
-
-    override fun finish() {
-        super.finish()
-        BottomNav.skipTransition(this, opening = false)
-    }
+    private fun closeTab() = finish()
 
     override fun onStart() { super.onStart(); routeMap.onStart() }
     override fun onResume() {

@@ -7,13 +7,18 @@ public sealed record RecommendationConfig(long ConfigId, string Version, decimal
 
 public sealed record RecommendationInput(string RegionName, decimal Latitude, decimal Longitude, string? ActivityLevel,
     IReadOnlyList<PreferenceGroup> Preferences, RecommendationConfig Config,
-    IReadOnlyList<RecommendationPlace> Places);
+    IReadOnlyList<RecommendationPlace> Places)
+{
+    /// <summary>Places the user marked "Không quan tâm" in the last 30 days (F74).</summary>
+    public IReadOnlySet<long> Dismissed { get; init; } = new HashSet<long>();
+}
 
+/// <summary>[IsSurprise]: the one slot picked outside the user's interests (F75).</summary>
 public sealed record RecommendedPlace(int Rank, long PlaceId, string Name, string RegionName, string? ImageUrl,
     bool IsDiscovered, decimal DistanceKm, int RequiredSteps, double Score,
     IReadOnlyList<string> MatchedPreferences, CriterionScores Criteria,
     IReadOnlyList<string> UsedCriteria, IReadOnlyList<string> MissingCriteria,
-    IReadOnlyDictionary<string, double> EffectiveWeights, IReadOnlyList<string> Reasons);
+    IReadOnlyDictionary<string, double> EffectiveWeights, IReadOnlyList<string> Reasons, bool IsSurprise = false);
 
 /// <summary>Latitude/Longitude are the virtual location, so the app can show its street address.</summary>
 public sealed record RecommendationResult(string RegionName, decimal Latitude, decimal Longitude,
@@ -37,17 +42,30 @@ public sealed class RecommendationService(IRecommendationRepository repository)
             throw new ExploreException("NO_ACTIVITY_LEVEL", "Hãy thiết lập mức vận động trước khi tìm điểm đến.");
         if (input.Config.DistanceLimitMeters <= 0 || !RecommendationScoring.ValidWeights(input.Config.Weights))
             throw new ExploreException("INVALID_RECOMMENDATION_CONFIG", "Cấu hình gợi ý chưa hợp lệ. Vui lòng thử lại sau.");
-        var ranked = RecommendationScoring.Rank(input.Places, input.Preferences, input.ActivityLevel,
-            input.Config.Weights, input.Config.DistanceLimitMeters, input.Config.Settings?.ActivityThresholds);
-        var places = ranked.Select((p, index) =>
+        var all = RecommendationScoring.Rank(input.Places, input.Preferences, input.ActivityLevel,
+            input.Config.Weights, input.Config.DistanceLimitMeters, input.Config.Settings?.ActivityThresholds, int.MaxValue)
+            .Where(p => !input.Dismissed.Contains(p.Place.PlaceId)).ToList();
+        var picks = all.Take(RecommendationScoring.MaxResults).Select(p => (Place: p, Surprise: false)).ToList();
+        // F75: swap the last slot for a well-rated place outside the user's interests, so the
+        // recommender does not lock them into one kind of place. Stable for the day.
+        var outside = all.Skip(picks.Count).Where(p => p.MatchedPreferences.Count == 0).Take(5).ToList();
+        if (picks.Count == RecommendationScoring.MaxResults && outside.Count > 0 && picks.All(p => p.Place.MatchedPreferences.Count > 0))
         {
+            var day = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7)).DayNumber;
+            picks[^1] = (outside[(int)((userId + day) % outside.Count)], true);
+        }
+        var places = picks.Select((pick, index) =>
+        {
+            var p = pick.Place;
             var used = p.EffectiveWeights.Keys.ToList();
             var missing = RecommendationScoring.Criteria(p.Criteria)
                 .Where(c => !RecommendationScoring.HasScore(c.Value) && input.Config.Weights[c.Code] > 0).Select(c => c.Code).ToList();
+            var reasons = Reasons(p);
+            if (pick.Surprise) reasons = ["Thử điều mới: nằm ngoài sở thích quen thuộc của bạn", .. reasons.Where(r => !r.StartsWith("Cần khoảng"))];
             return new RecommendedPlace(index + 1, p.Place.PlaceId, p.Place.Name, p.Place.RegionName,
                 p.Place.ImageUrl, p.Place.Discovered, Math.Round(p.Place.DistanceMeters / 1000m, 2),
                 p.RequiredSteps, Math.Round(p.Score, 4), p.MatchedPreferences, p.Criteria, used, missing,
-                p.EffectiveWeights, Reasons(p));
+                p.EffectiveWeights, reasons, pick.Surprise);
         }).ToList();
         return new RecommendationResult(input.RegionName, input.Latitude, input.Longitude,
             input.Config.Version, places, input.Config.Settings);

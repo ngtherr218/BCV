@@ -59,16 +59,12 @@ class CollectionActivity : AppCompatActivity() {
         BottomNav.select(binding.bottomNavigation, NavTab.COLLECTION)
         BottomNav.skipTransition(this, opening = true)
         BottomNav.skipTransition(this, opening = false)
-        BottomNav.enter(BottomNav.contentOf(binding.root, binding.bottomNavigation),
-            fromRight = BottomNav.enteredFromRight(this, NavTab.COLLECTION))
-        binding.bottomNavigation.tabExplore.setOnClickListener { leave() }
-        binding.bottomNavigation.tabJourney.setOnClickListener {
-            leave(Intent(BottomNav.intent(this, JourneyActivity::class.java, NavTab.COLLECTION)))
-        }
-        binding.bottomNavigation.tabCollection.setOnClickListener { model.refreshIfNeeded() }
-        binding.bottomNavigation.tabQuest.setOnClickListener {
-            leave(BottomNav.intent(this, QuestActivity::class.java, NavTab.COLLECTION), toRight = false)
-        }
+        if (!intent.getBooleanExtra(BottomNav.EXTRA_SAME_TAB, false))
+            BottomNav.enter(BottomNav.contentOf(binding.root, binding.bottomNavigation),
+                fromRight = BottomNav.enteredFromRight(this, NavTab.COLLECTION))
+        binding.collectionSwitcher.addView(
+            com.project.bcv.feature.engagement.EngagementBlocks.collectionSwitcher(this, "cards"))
+        BottomNav.wire(this, binding.bottomNavigation, NavTab.COLLECTION, binding.root) { model.refreshIfNeeded() }
         binding.retryButton.setOnClickListener { model.load() }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = leave()
@@ -85,7 +81,7 @@ class CollectionActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
-        (binding.root.getChildAt(0) as? android.widget.ScrollView)?.let { model.scrollY = it.scrollY }
+        (binding.root.getChildAt(1) as? android.widget.ScrollView)?.let { model.scrollY = it.scrollY }
         super.onPause()
     }
 
@@ -132,7 +128,7 @@ class CollectionActivity : AppCompatActivity() {
                 if (!restoredScroll) {
                     restoredScroll = true
                     val scrollY = model.scrollY
-                    (binding.root.getChildAt(0) as? android.widget.ScrollView)?.let { scroll ->
+                    (binding.root.getChildAt(1) as? android.widget.ScrollView)?.let { scroll ->
                         scroll.post { scroll.scrollTo(0, scrollY) }
                     }
                 }

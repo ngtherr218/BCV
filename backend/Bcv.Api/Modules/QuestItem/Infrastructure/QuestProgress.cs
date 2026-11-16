@@ -15,6 +15,8 @@ public static class QuestProgress
     public const string CompleteJourney = "COMPLETE_JOURNEY";
     public const string MediaApproved = "MEDIA_APPROVED";
     public const string PhotoApproved = "PHOTO_APPROVED";
+    /// <summary>F76: one per correct culture-question answer.</summary>
+    public const string QuizCorrect = "QUIZ_CORRECT";
 
     public static async Task RecordAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
         long userId, string conditionType, int amount, CancellationToken ct)

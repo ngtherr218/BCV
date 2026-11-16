@@ -109,8 +109,10 @@ public sealed class PostgresJourneyRepository(NpgsqlDataSource db) : IJourneyRep
         int requiredSteps;
         long destinationPlaceId;
         string status;
+        double minutesSinceStart;
         await using (var command = new NpgsqlCommand("""
-            SELECT started_at, recorded_steps, required_steps, destination_place_id, status
+            SELECT started_at, recorded_steps, required_steps, destination_place_id, status,
+                   (EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - started_at)) / 60.0)::float8
             FROM public.journey
             WHERE journey_id = $1 AND user_id = $2
             FOR UPDATE
@@ -126,6 +128,7 @@ public sealed class PostgresJourneyRepository(NpgsqlDataSource db) : IJourneyRep
             requiredSteps = reader.GetInt32(2);
             destinationPlaceId = reader.GetInt64(3);
             status = reader.GetString(4);
+            minutesSinceStart = Math.Max(0, reader.GetDouble(5));
         }
 
         if (status != "IN_PROGRESS")
@@ -136,19 +139,31 @@ public sealed class PostgresJourneyRepository(NpgsqlDataSource db) : IJourneyRep
 
         var sourceId = $"health-connect:journey:{request.JourneyId}";
         var previousSteps = 0;
+        double minutesSinceLastSync;
         await using (var command = new NpgsqlCommand("""
-            SELECT step_count FROM public.step_data
+            SELECT step_count, (EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - end_time)) / 60.0)::float8 FROM public.step_data
             WHERE user_id = $1 AND source_data_id = $2
             FOR UPDATE
             """, connection, transaction))
         {
             command.Parameters.Add(new NpgsqlParameter<long> { TypedValue = userId, NpgsqlDbType = NpgsqlDbType.Bigint });
             command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = sourceId, NpgsqlDbType = NpgsqlDbType.Varchar });
-            var value = await command.ExecuteScalarAsync(ct);
-            if (value is int count) previousSteps = count;
+            await using var reader = await command.ExecuteReaderAsync(ct);
+            if (await reader.ReadAsync(ct)) { previousSteps = reader.GetInt32(0); minutesSinceLastSync = reader.GetDouble(1); }
+            else minutesSinceLastSync = minutesSinceStart;
         }
 
         var cumulativeSteps = checked((int)request.CumulativeSteps);
+        // F87: refuse implausible jumps instead of trusting the client. Steps above the walking-rate
+        // allowance are not lost: Health Connect keeps them and the next sync can add them later.
+        var allowed = StepGuard.MaxNewSteps(minutesSinceLastSync, minutesSinceStart, previousSteps);
+        if (cumulativeSteps - previousSteps > allowed)
+        {
+            var rejected = cumulativeSteps - previousSteps - allowed;
+            cumulativeSteps = previousSteps + allowed;
+            await Bcv.Api.Modules.Engagement.EngagementEndpoints.FlagAsync(connection, transaction, userId, request.JourneyId,
+                $"Số bước tăng quá nhanh: +{rejected:N0} bước bị tạm giữ", rejected, ct);
+        }
         if (cumulativeSteps > previousSteps)
         {
             await using (var command = new NpgsqlCommand("""
@@ -171,6 +186,25 @@ public sealed class PostgresJourneyRepository(NpgsqlDataSource db) : IJourneyRep
             // Only the steps new since the last sync count toward today's and this week's quests.
             await QuestProgress.RecordAsync(connection, transaction, userId, QuestProgress.StepCount,
                 cumulativeSteps - previousSteps, ct);
+
+            // Streak and weekly board: journey steps also count toward today's total, so users whose
+            // steps come from the device sensor (no Health Connect) still build a streak. A later
+            // Health Connect report keeps whichever total is higher.
+            await using (var daily = new NpgsqlCommand("""
+                INSERT INTO public.daily_activity (user_id, activity_date, steps, journey_steps, goal_steps)
+                SELECT $1, (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '7 hours')::date, LEAST($2, 40000), $2,
+                       CASE (SELECT activity_level FROM public.user_preference WHERE user_id = $1)
+                            WHEN 'LOW' THEN 3000 WHEN 'HIGH' THEN 10000 ELSE 6000 END
+                ON CONFLICT (user_id, activity_date) DO UPDATE
+                    SET journey_steps = daily_activity.journey_steps + EXCLUDED.journey_steps,
+                        steps = LEAST(GREATEST(daily_activity.health_steps, daily_activity.journey_steps + EXCLUDED.journey_steps), 40000),
+                        updated_at = CURRENT_TIMESTAMP
+                """, connection, transaction))
+            {
+                daily.Parameters.Add(new NpgsqlParameter<long> { TypedValue = userId, NpgsqlDbType = NpgsqlDbType.Bigint });
+                daily.Parameters.Add(new NpgsqlParameter<int> { TypedValue = cumulativeSteps - previousSteps, NpgsqlDbType = NpgsqlDbType.Integer });
+                await daily.ExecuteNonQueryAsync(ct);
+            }
 
             // Raw steps count once; an active speed-shoe boost adds its extra share to this journey only.
             var boosts = await SpeedShoesStore.LoadBoostsAsync(connection, transaction, userId, request.JourneyId, ct);

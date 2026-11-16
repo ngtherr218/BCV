@@ -52,7 +52,7 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
             discovered = reader.GetBoolean(3);
             distanceKm = reader.GetDecimal(4);
             introduction = !reader.IsDBNull(5) ? reader.GetString(5) : null;
-            highlights = discovered && !reader.IsDBNull(6) ? reader.GetString(6) : null;
+            highlights = !reader.IsDBNull(6) ? reader.GetString(6) : null;
             regionName = reader.GetString(7);
             rating = reader.IsDBNull(8) ? null : reader.GetDecimal(8);
             ratingCount = reader.IsDBNull(9) ? null : reader.GetInt32(9);
@@ -77,7 +77,8 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
             await using var reader=await command.ExecuteReaderAsync(ct);
             while(await reader.ReadAsync(ct))videos.Add(new ExplorePlaceVideo(reader.GetInt64(0),$"/api/explore/places/{placeId}/videos/{reader.GetInt64(0)}",reader.GetDouble(1),reader.GetInt32(2),reader.GetInt32(3)));
         }
-        // The first photo stays visible (blurred) while locked; the gallery opens with the place.
+        // Preview before unlocking: cover photo, introduction and fun fact. The full gallery, videos,
+        // the collectible card and every reward still need the walk (or a real check-in).
         return new ExplorePlaceDetail(id, name, placeType, images.FirstOrDefault(), discovered, distanceKm,
             distanceKm <= 0 ? 0 : StepConversion.RequiredSteps(distanceKm), introduction, highlights, regionName,
             discovered ? images : [], rating, ratingCount, videos);
@@ -151,10 +152,8 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
             SELECT p.place_id, p.name, p.latitude, p.longitude,
                    (d.place_id IS NOT NULL) AS is_discovered,
                    COALESCE((SELECT name FROM public.place_type WHERE place_type_id=p.place_type_id),''),
-                   COALESCE((SELECT CASE WHEN image_key LIKE 'data:%' THEN '/api/places/' || p.place_id || '/thumbnail' ELSE image_key END
-                        FROM public.place_image WHERE place_id=p.place_id ORDER BY place_image_id LIMIT 1),
-                       (SELECT '/api/community-media/' || media_id || '/content' FROM public.community_media
-                        WHERE place_id=p.place_id AND status='APPROVED' AND mime_type LIKE 'image/%' ORDER BY media_id DESC LIMIT 1))
+                   (SELECT CASE WHEN image_key LIKE 'data:%' THEN '/api/places/' || p.place_id || '/thumbnail' ELSE image_key END
+                        FROM public.place_image WHERE place_id=p.place_id ORDER BY place_image_id LIMIT 1)
             FROM public.place p
             LEFT JOIN public.user_discovered_place d
               ON d.place_id = p.place_id AND d.user_id = $1

@@ -83,7 +83,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="Xem bộ sưu tập"
-                android:textSize="14sp"
+                android:textSize="15sp"
                 android:textStyle="bold" />
 
             <ImageView

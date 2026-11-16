@@ -61,7 +61,7 @@ class PlaceVideoActivity : AppCompatActivity() {
         loading = ProgressBar(this)
         frame.addView(loading, FrameLayout.LayoutParams(dp(40), dp(40), Gravity.CENTER))
         status = TextView(this).apply {
-            textSize = 14f; setTextColor(ContextCompat.getColor(context, R.color.forest)); setPadding(0, dp(12), 0, dp(6))
+            textSize = 15f; setTextColor(ContextCompat.getColor(context, R.color.forest)); setPadding(0, dp(12), 0, dp(6))
         }
         root.addView(status)
         retry = MaterialButton(this).apply { text = "Thử tải lại video"; visibility = View.GONE; setOnClickListener { playWhenReady = true; openVideo() } }

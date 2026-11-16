@@ -110,16 +110,24 @@ class RecommendationActivity : AppCompatActivity() {
             item.card.strokeColor = if (best) 0xFFA9CBB0.toInt() else 0xFFDCE6DD.toInt()
             item.rank.text = "%02d".format(place.rank)
             item.rank.setTextColor(if (best) 0xFF07836D.toInt() else 0xFF85968F.toInt())
-            item.status.text = if (place.isDiscovered) "ĐÃ MỞ KHÓA" else "CHƯA MỞ KHÓA"
-            item.status.setTextColor(accent)
+            item.status.text = when {
+                place.isSurprise -> "✨ THỬ ĐIỀU MỚI"
+                place.isDiscovered -> "ĐÃ MỞ KHÓA"
+                else -> "CHƯA MỞ KHÓA"
+            }
+            item.status.setTextColor(if (place.isSurprise) 0xFFC9962B.toInt() else accent)
             item.name.text = place.name
             item.distance.text = "${distanceText(place.distanceKm)} · ~${stepsText(place.requiredSteps)} bước"
             val reasons = place.reasons.ifEmpty {
                 if (place.matchedPreferences.isEmpty()) emptyList() else
                     listOf("Hợp sở thích: ${place.matchedPreferences.joinToString(", ")}")
             }
-            item.matched.text = reasons.take(2).joinToString(" · ")
-            item.matched.contentDescription = reasons.joinToString(". ")
+            // "Vì sao gợi ý điểm này": the server's own reasons, shown in full.
+            item.matched.text = if (reasons.isEmpty()) "" else "Vì sao gợi ý: " + reasons.take(3).joinToString(" · ")
+            item.matched.maxLines = 3
+            item.matched.contentDescription = "Vì sao gợi ý: " + reasons.joinToString(". ")
+            item.dismissButton.contentDescription = "Không quan tâm ${place.name}, ẩn khỏi gợi ý 30 ngày"
+            item.dismissButton.setOnClickListener { dismiss(place) }
             // Keeps its line when empty so every card has the skeleton's height.
             item.matched.visibility = if (reasons.isEmpty()) View.INVISIBLE else View.VISIBLE
             item.selectButton.backgroundTintList = ColorStateList.valueOf(
@@ -137,25 +145,38 @@ class RecommendationActivity : AppCompatActivity() {
                         .putExtra(PlaceDetailActivity.EXTRA_DISCOVERED, place.isDiscovered))
                 }
             }
-            if (Build.VERSION.SDK_INT >= 31 && !place.isDiscovered) {
-                item.image.setRenderEffect(RenderEffect.createBlurEffect(10f, 10f, Shader.TileMode.CLAMP))
-            }
+            // Preview photo is shown clearly; the small badge marks a place not yet unlocked.
+            item.lockBadge.visibility = if (place.isDiscovered) android.view.View.GONE else android.view.View.VISIBLE
             place.imageUrl?.let { url -> loadImage(item, url, place.isDiscovered) }
         }
         renderSaving(model.savingPlaceId.value)
     }
 
-    private fun loadImage(item: ItemRecommendationBinding, url: String, discovered: Boolean) {
+    /** F74: hide for 30 days, refill the list, and let the user undo right away. */
+    private fun dismiss(place: RecommendedPlace) {
+        val api = com.project.bcv.feature.engagement.EngagementApi(this)
+        cards[place.id]?.dismissButton?.isEnabled = false
         lifecycleScope.launch {
-            val bitmap = RemoteImages.load(url, sample = 4) ?: return@launch
-            item.image.setImageBitmap(if (Build.VERSION.SDK_INT < 31 && !discovered) blurFallback(bitmap) else bitmap)
+            runCatching { api.dismiss(place.id) }.onSuccess {
+                model.load()
+                Snackbar.make(binding.root, "Đã ẩn ${place.name} khỏi gợi ý trong 30 ngày.", Snackbar.LENGTH_LONG)
+                    .setAction("Hoàn tác") {
+                        lifecycleScope.launch { runCatching { api.undoDismiss(place.id) }; model.load() }
+                    }.show()
+            }.onFailure {
+                cards[place.id]?.dismissButton?.isEnabled = true
+                Snackbar.make(binding.root, it.message ?: "Không cập nhật được.", Snackbar.LENGTH_LONG).show()
+            }
         }
     }
 
-    private fun blurFallback(source: Bitmap): Bitmap {
-        val small = Bitmap.createScaledBitmap(source, max(1, source.width / 16), max(1, source.height / 16), true)
-        return Bitmap.createScaledBitmap(small, source.width, source.height, true)
+    private fun loadImage(item: ItemRecommendationBinding, url: String, discovered: Boolean) {
+        lifecycleScope.launch {
+            val bitmap = RemoteImages.load(url, sample = 4) ?: return@launch
+            item.image.setImageBitmap(bitmap)
+        }
     }
+
 
     private fun renderSaving(placeId: Long?) {
         cards.forEach { (id, item) ->

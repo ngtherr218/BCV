@@ -62,9 +62,6 @@ class GoongStartingMap(activity: Activity, savedState: Bundle?) {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
             ))
             host.addView(marker, 1, FrameLayout.LayoutParams(markerSize, markerSize))
-            zoomControls = com.project.bcv.core.map.MapZoomControls.attach(host,
-                zoomIn = { map?.animateCamera(CameraUpdateFactory.zoomIn()) },
-                zoomOut = { map?.animateCamera(CameraUpdateFactory.zoomOut()) })
         }
         if (coordinates != null && (coordinates != target || zoom != targetZoom)) {
             val animated = target != null
