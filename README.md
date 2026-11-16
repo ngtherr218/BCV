@@ -1,207 +1,143 @@
-# Bước Chân Việt (*BCV-Web*)
+# Bước Chân Việt
 
-> **Phiên bản local v2 (10/11/2026):** xem [hướng dẫn chạy và kiểm thử local](docs/technical/local_v2_runbook.md). Backend v2 dùng cổng **5082**, database **vietnam_explorer_dev_v2**, web **5173**; database `bcv` được giữ nguyên. Không dùng cấu hình/deploy online ở các mục lịch sử bên dưới cho phiên v2.
+Bước Chân Việt chuyển bước chân thật thành hành trình khám phá các địa danh Việt Nam. Repository gồm app Android, ASP.NET Core API, web quản trị và dữ liệu mô hình gợi ý ngoại tuyến. Tài liệu này dành cho nhánh **bcv_v2**, cập nhật ngày 16/11/2026.
 
-Khám phá địa danh Việt Nam bằng bước chân thật: app Android, Backend API, web quản trị và mô hình gợi ý điểm đến.
+## Chức năng
 
-Người dùng đi bộ ngoài đời thực; app đọc số bước qua Health Connect và quy đổi thành tiến độ của một hành trình ảo tới các địa danh. Hoàn thành hành trình sẽ mở khóa ảnh, câu chuyện, thẻ sưu tập, kèm nhiệm vụ và vật phẩm. Mô hình K-Means phân cụm 311 địa danh theo 35 đặc trưng để gợi ý điểm đến hợp sở thích và mức vận động. Đây là đồ án tốt nghiệp nhóm **ĐAHK1262703**, Khoa Công nghệ Thông tin, Trường Đại học Mở Hà Nội. Thư mục kho mã có tên `BCV-Web`.
+- Chọn sở thích từ 12 nhóm loại địa danh; lọc và tìm kiếm điểm đến theo khoảng cách, số ngày dự kiến và loại địa danh. Gợi ý điểm đến mới dựa trên sở thích và mức vận động.
+- Đồng bộ bước qua Health Connect để hoàn thành hành trình ảo. Địa danh đã khám phá không được chọn làm hành trình mới; backend kiểm tra cả khi bắt đầu và khi hoàn thành.
+- Khám phá lần đầu bằng đi bộ nhận điểm xếp hạng theo cấu hình; mặc định **150 điểm**. Vé bay không cộng điểm xếp hạng. Nhiệm vụ có điểm thưởng riêng, được chốt một lần theo chu kỳ.
+- Bảng xếp hạng tuần theo giờ Việt Nam, lọc vùng và xác định vị trí của bạn; tên hiển thị lấy từ hồ sơ, không ghép mã người dùng. Thông báo hoàn thành ghi nhận thay đổi thứ hạng toàn quốc trong tuần.
+- Xem trước danh mục thẻ, nhận và đánh dấu thẻ mới đã xem. Thẻ đã sở hữu vẫn còn trong lịch sử khi địa danh ngừng hoạt động. Hộ chiếu tổng hợp dấu khám phá và vùng đã đi từ lịch sử, không tạo thêm quyền sở hữu thẻ.
+- Xem lại kết quả hành trình từ dữ liệu đã ghi nhận; mở lại không phát thưởng. Đóng góp ảnh địa danh, kiểm duyệt và báo cáo ảnh; lưu metadata khi file hết thời hạn lưu trữ.
+- Quản trị danh mục, nhiệm vụ, điểm thưởng và kiểm duyệt nội dung. Điểm đã chốt trong sổ điểm không bị tính lại khi thay cấu hình.
 
-## Mục lục
+## Cấu trúc
 
-- [Bối cảnh](#bối-cảnh)
-- [Cài đặt](#cài-đặt)
-- [Sử dụng](#sử-dụng)
-- [Cấu hình](#cấu-hình)
-- [Xử lý sự cố](#xử-lý-sự-cố)
-- [API](#api)
-- [Người duy trì](#người-duy-trì)
-- [Đóng góp](#đóng-góp)
-- [Giấy phép](#giấy-phép)
+| Thư mục | Nội dung |
+| --- | --- |
+| `android/` | Android Kotlin, Health Connect, bản đồ và bộ nhớ đệm ảnh công khai |
+| `backend/Bcv.Api/` | API, quy tắc nghiệp vụ, truy cập PostgreSQL |
+| `web/` | Web quản trị React 19 và Vite 7 |
+| `sql/` | **Bộ SQL triển khai hiện tại**, cài mới/nâng cấp/kiểm tra |
+| `db/` | Migration và seed lịch sử trong quá trình phát triển |
+| `recommendation/` | Dataset, huấn luyện và đánh giá mô hình K-Means ngoại tuyến |
+| `docs/` | Báo cáo chức năng, thay đổi CSDL và tài liệu kỹ thuật |
 
-## Bối cảnh
+App/web gọi API; chỉ backend kết nối database. Backend đọc nhãn cụm, đặc trưng và cấu hình đã lưu, không cần chạy dịch vụ Python khi phục vụ yêu cầu. Mô hình gốc dùng 311 địa danh, 35 đặc trưng và 15 cụm; danh mục triển khai có thể có thêm địa danh do quản trị viên tạo.
 
-Đặc tả đầy đủ nằm trong [tài liệu đồ án](https://docs.google.com/document/d/1GAQdAqCcwr_IivfHzInilF0LhbWyniN6AONmzqEHWjo/edit?tab=t.0).
+## Yêu cầu
 
-### Kiến trúc
+- .NET SDK 10.
+- PostgreSQL 18, PostGIS 3.6 và bộ công cụ `psql`, `pg_dump`, `createdb` tương thích.
+- Node.js 22.12 trở lên để chạy web; dùng `npm ci` theo lockfile.
+- Android Studio với SDK 37, JDK tương thích AGP 9.4.1/Gradle 9.6. Dự án dùng Gradle wrapper; app yêu cầu Android 8.1/API 27 trở lên. Health Connect cần thiết bị và quyền đọc bước phù hợp.
 
-```text
-App Android ─┐
-             ├─► Backend API (ASP.NET Core, cổng 5081) ─► PostgreSQL + PostGIS
-Web quản trị ┘                                              ▲
-                                                            │ nhãn cụm, 35 đặc trưng
-                              Mô hình gợi ý (Python, K-Means, huấn luyện ngoại tuyến)
-```
+## Chuẩn bị database
 
-App và web **không** kết nối thẳng vào database; mọi dữ liệu đi qua Backend API. Nhãn cụm của mô hình được lưu sẵn trong database, nên Backend chấm điểm gợi ý mà không cần gọi dịch vụ Python.
-
-| Thư mục | Thành phần | Công nghệ | Hướng dẫn riêng |
-| --- | --- | --- | --- |
-| [`android/`](android/) | App cho người dùng | Kotlin, minSdk 27, Health Connect, MapLibre + Goong | [android/README.md](android/README.md) |
-| [`backend/`](backend/) | Backend API dạng modular monolith | C#, ASP.NET Core .NET 10, Npgsql | [backend/README.md](backend/README.md) |
-| [`web/`](web/) | Web quản trị nội dung | React 19, Vite 7 | [web/README.md](web/README.md) |
-| [`db/`](db/) | Schema 25 bảng, dữ liệu mẫu, migration | PostgreSQL 18 + PostGIS 3.6 | [db/README.md](db/README.md) |
-| [`recommendation/`](recommendation/) | Mô hình phân cụm địa danh | Python 3.12, scikit-learn, FastAPI | [recommendation/README.md](recommendation/README.md) |
-
-### Dịch vụ bên ngoài
-
-| Dịch vụ | Dùng cho | Bắt buộc |
-| --- | --- | --- |
-| Goong Maps | Bản đồ (Maptiles key), tra địa chỉ và chỉ đường (REST API key) | Có, để hiện bản đồ |
-| Health Connect | Đọc số bước trên điện thoại | Có, trên thiết bị |
-| Cloudflare R2 | Lưu ảnh tải lên; không có thì lưu trong database | Không |
-| Gmail SMTP | Gửi mã đặt lại mật khẩu; không có thì mã in ra log | Không |
-
-Web quản trị dùng bản đồ Goong hiện hành. Trong biểu mẫu địa danh, chọn khu vực rồi bấm ô vĩ độ/kinh độ để mở bản đồ tại vùng các địa danh thuộc khu vực đó; đổi khu vực chỉ chuyển khung nhìn, không tự thay tọa độ. Xem [cách chọn tọa độ và lưu ý khu vực trước sáp nhập](web/README.md#chọn-tọa-độ-và-đặc-trưng-địa-danh).
-
-## Cài đặt
-
-Để nhóm truy cập qua Internet, xem [hướng dẫn triển khai web và backend lên hosting](DEPLOY.md). Bộ Docker dùng chung một tên miền cho web và API; database PostgreSQL/PostGIS được cấu hình riêng.
-
-Các lệnh dưới đây chạy bằng **PowerShell** tại thư mục gốc của kho mã, trên Windows. macOS/Linux dùng PowerShell 7 (`pwsh`) cho các script `.ps1`.
-
-### Yêu cầu
-
-| Công cụ | Phiên bản | Dùng cho |
-| --- | --- | --- |
-| [.NET SDK](https://dotnet.microsoft.com/download) | 10.0 | Backend |
-| [PostgreSQL](https://www.postgresql.org/download/) + PostGIS | 18 + 3.6 | Database |
-| [Node.js](https://nodejs.org/) | 22.12 trở lên | Web quản trị |
-| [Android Studio](https://developer.android.com/studio) | bản mới, kèm JDK | App Android |
-| [Python](https://www.python.org/) | 3.12 | Chỉ khi chạy hoặc kiểm thử mô hình gợi ý |
-
-### 1. Tạo database
-
-Tạo database trống tên `bcv` (bằng pgAdmin hoặc `createdb`), bật PostGIS, rồi nạp schema và dữ liệu theo thứ tự trong [db/README.md](db/README.md#tạo-database-mới). Sau khi nạp, kích hoạt nội dung mẫu (mục [Trạng thái nội dung](db/README.md#trạng-thái-nội-dung)); nếu không, app sẽ không có địa danh, bộ sưu tập hay nhiệm vụ nào.
-
-### 2. Cấu hình backend
+Đọc [sql/README.md](sql/README.md) trước khi chạy. Database mới:
 
 ```powershell
-Copy-Item backend/local.settings.example.json backend/local.settings.json
-.\backend\set-local-secrets.ps1
+createdb -h localhost -U postgres -T template0 -E UTF8 vietnam_explorer_dev_v2
+psql -X -h localhost -U postgres -d vietnam_explorer_dev_v2 -v ON_ERROR_STOP=1 -f sql/install.sql
 ```
 
-Sửa `backend/local.settings.json` cho đúng máy của bạn, quan trọng nhất là `DbHost`, `DbPort`, `DbName`, `DbUser`. Script `set-local-secrets.ps1` lưu mật khẩu PostgreSQL (và tùy chọn SMTP, R2) vào biến môi trường của tài khoản Windows, không ghi vào file nào trong kho mã. Chi tiết: [backend/README.md](backend/README.md#cấu-hình).
+Database đang có dữ liệu: backup trước, kiểm tra điều kiện rồi chạy `sql/upgrade.sql`. Không chạy lại schema/seed cài mới trên database đang sử dụng. Bộ seed không chứa tài khoản, mật khẩu, lịch sử hay dữ liệu cá nhân. Schema cuối có **33 bảng nghiệp vụ**, không tính bảng của PostGIS.
 
-### 3. Chạy backend
+## Chạy local v2
+
+Các cổng của profile local v2 là API **5082**, web **5173**; database là **vietnam_explorer_dev_v2**. Các script cũ `run-local.ps1`/`create-admin.ps1` dùng cấu hình riêng và có thể trỏ đến DB/cổng cũ; không trộn với profile v2.
+
+### Backend
+
+Tại thư mục gốc:
 
 ```powershell
-.\backend\run-local.ps1
+Copy-Item .env.example .env.local
+# Sửa DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD trong .env.local.
+dotnet restore backend/Bcv.Api/Bcv.Api.csproj
+.\backend\run-dev-v2.ps1
 ```
 
-Kiểm tra: http://127.0.0.1:5081/health trả về `{"status":"ok"}`.
-
-### 4. Tạo tài khoản quản trị và chạy web
-
-```powershell
-.\backend\create-admin.ps1 -Email admin@bcv.local
-cd web
-npm ci
-npm run dev
-```
-
-Mở http://127.0.0.1:5173 và đăng nhập bằng tài khoản vừa tạo. Nếu `create-admin.ps1` báo lỗi build vì backend đang chạy, dừng backend (Ctrl+C), chạy script rồi khởi động lại backend.
-
-### 5. Chạy app Android
-
-Tạo `android/dev.properties` (Git bỏ qua file này):
-
-```properties
-bcvApiBaseUrl=https://bcv-admin-test.onrender.com/
-bcvGoongMaptilesKey=<Goong Maptiles Key>
-bcvGoongApiKey=<Goong REST API Key>
-```
-
-Rồi build và cài lên thiết bị:
-
-```powershell
-cd android
-.\gradlew.bat installDebug
-```
-
-Hoặc mở thư mục `android/` bằng Android Studio và bấm **Run**. Mặc định app dùng API deploy `https://bcv-admin-test.onrender.com/`, cùng máy chủ với web quản trị của nhóm, không cần backend local hay cáp USB. `bcvApiBaseUrl` trong `android/dev.properties` hoặc tham số Gradle có thể ghi đè mặc định; khi dùng bản online, giữ cùng địa chỉ Test ở các cấu hình này. Để thử backend local, cấu hình rõ `bcvApiBaseUrl=http://10.0.2.2:5081/` cho emulator hoặc IP Wi-Fi của máy tính cho điện thoại thật. Chi tiết: [android/README.md](android/README.md).
-
-### 6. (Tùy chọn) Kiểm thử mô hình gợi ý
-
-```powershell
-cd recommendation
-py -3.12 -m venv .venv
-.venv\Scripts\python -m pip install -r requirements-test.txt
-.venv\Scripts\python -m unittest discover -s tests -v
-```
-
-## Sử dụng
-
-### App Android
-
-1. **Đăng ký** bằng email và mật khẩu (hoặc đăng nhập). Phiên được giữ 30 ngày nên lần sau mở app sẽ vào thẳng.
-2. **Thiết lập lần đầu:** chọn 1–3 loại địa danh yêu thích, mức vận động, cấp quyền đọc số bước, chọn điểm xuất phát ảo.
-3. **Khám phá:** bấm **Gợi ý điểm đến** để nhận 3 địa danh hợp với bạn, chọn một để bắt đầu hành trình.
-4. **Đi bộ thật**, rồi bấm **Đồng bộ** để cập nhật tiến độ. Đủ bước thì hành trình hoàn thành, địa danh được mở khóa và vị trí ảo chuyển tới đó.
-5. **Bộ sưu tập, Nhiệm vụ, Hồ sơ** ở các tab còn lại.
-
-Khi trình diễn, nút icon người đi bộ có dấu "+" cạnh chữ **Khám phá** ghi thêm 2.000 bước mẫu vào Health Connect để thử đồng bộ.
+`.env.local` đã được Git bỏ qua. Launcher chỉ chấp nhận DB v2 trên máy local, tắt startup migration, SMTP, R2 và tác vụ dọn media trong profile thử nghiệm. Kiểm tra [API health local](http://127.0.0.1:5082/health).
 
 ### Web quản trị
 
-Quản lý người dùng, khu vực, địa danh (kèm bản đồ chọn tọa độ ngay trong form, chọn đặc trưng theo loại và tự phân cụm khi lưu), loại địa danh, thẻ, bộ sưu tập, nhiệm vụ và vật phẩm. Đổi loại địa danh sẽ thay toàn bộ ô tích; chọn lại mục mặc định sẽ bỏ hết tích. Nội dung ở trạng thái `DRAFT` chỉ hiện trong quản trị; chuyển sang `ACTIVE` thì app mới thấy. Xem [web/README.md](web/README.md).
+Mở terminal khác:
 
-### Quy tắc nghiệp vụ chính
+```powershell
+cd web
+npm ci
+$env:BCV_API_TARGET='http://127.0.0.1:5082'
+$env:WEB_PORT='5173'
+npm run dev
+```
 
-| Quy tắc | Giá trị | Nơi mô tả |
-| --- | --- | --- |
-| Quy đổi khoảng cách thành bước | S = max(1, ⌈1000 · D · κ / L⌉), κ = 1, L = 0,75 m theo code hiện hành | [backend/README.md](backend/README.md#quy-đổi-khoảng-cách-thành-số-bước) |
-| Điểm gợi ý | S = 0,35P + 0,15C + 0,3A + 0,1R + 0,1N, trả tối đa 3 địa danh | [backend/README.md](backend/README.md#gợi-ý-điểm-đến) |
-| Loại địa danh | 12 loại chuẩn, mỗi loại ánh xạ sang nhóm đặc trưng của mô hình | [db/README.md](db/README.md#loại-địa-danh) |
-| Phạm vi điểm xuất phát | Địa danh `ACTIVE` gần nhất trong bán kính 75 km | [android/README.md](android/README.md#luồng-sử-dụng) |
+Mở [web local](http://127.0.0.1:5173). Cần đặt `BCV_API_TARGET` vì cấu hình mặc định của Vite vẫn hỗ trợ profile cũ ở cổng 5081. Có thể lưu hai biến này trong `web/.env.local` (không commit).
 
-## Cấu hình
+### Tạo tài khoản quản trị
 
-Các file và biến sau là **riêng của từng máy**, đã được Git bỏ qua; không commit và không chép sang máy khác.
+Không có tài khoản/mật khẩu mặc định trong SQL. Cấu hình chuỗi kết nối **đúng database đích**, rồi chạy CLI:
 
-| File / biến | Nội dung |
-| --- | --- |
-| `backend/local.settings.json` | Địa chỉ database, cổng API, tài khoản SMTP |
-| Biến môi trường `BCV_DB_PASSWORD`, `BCV_SMTP_PASSWORD`, `BCV_R2_*` | Mật khẩu và khóa dịch vụ của backend |
-| `%LOCALAPPDATA%\BCV\sessions.json` | Phiên đăng nhập đã lưu (chỉ chứa mã băm token) |
-| `web/.env.local` | Cổng web, địa chỉ backend, Maptiles key (đều tùy chọn) |
-| `android/dev.properties` | URL backend và hai khóa Goong cho app |
+```powershell
+$env:ConnectionStrings__Bcv='Host=localhost;Port=5432;Database=vietnam_explorer_dev_v2;Username=<user>;Password=<password>'
+$pw=Read-Host 'Mat khau admin moi (12-128 ky tu, co chu va so)' -AsSecureString
+$env:BCV_ADMIN_PASSWORD=[System.Net.NetworkCredential]::new('', $pw).Password
+try {
+    dotnet run --project backend/Bcv.Api -- --create-admin admin@example.com
+} finally {
+    Remove-Item Env:BCV_ADMIN_PASSWORD -ErrorAction SilentlyContinue
+    Remove-Item Env:ConnectionStrings__Bcv -ErrorAction SilentlyContinue
+}
+```
 
-## Xử lý sự cố
+Thay email/giá trị giữ chỗ trước khi chạy. Không ghi credential vào file được theo dõi bởi Git.
 
-| Hiện tượng | Cách xử lý |
-| --- | --- |
-| `/health` báo `Database unavailable` | PostgreSQL chưa chạy, sai `DbPort` trong `local.settings.json`, hoặc sai `BCV_DB_PASSWORD` |
-| App báo "Chưa thể kết nối" | Điện thoại khác mạng, sai IP trong `dev.properties`, hoặc Windows Firewall chặn cổng 5081. Xem [android/README.md](android/README.md#xử-lý-sự-cố) |
-| Web báo lỗi mạng | Backend chưa chạy hoặc `BCV_API_TARGET` trong `web/.env.local` sai cổng |
-| Không có điểm đề xuất, bộ sưu tập, nhiệm vụ trống | Nội dung còn `DRAFT`; kích hoạt theo [db/README.md](db/README.md#trạng-thái-nội-dung) |
-| Bản đồ trống, không có đường đi | Thiếu hoặc sai khóa Goong trong `dev.properties`; build lại app sau khi sửa |
-| Cài app lên điện thoại báo `INSTALL_FAILED_ABORTED` | Điện thoại (ví dụ vivo) hỏi xác nhận cài qua USB; bấm **Cài đặt** rồi chạy lại |
+### Android
 
-## API
+```powershell
+.\backend\build-android-dev-v2.ps1 -Api http://127.0.0.1:5082/
+```
 
-Toàn bộ endpoint của Backend (tài khoản, khám phá, hành trình, gợi ý, bộ sưu tập, nhiệm vụ, vật phẩm, thống kê, thông báo) liệt kê tại [backend/README.md](backend/README.md#api); API quản trị tại [web/README.md](web/README.md#api-quản-trị). Mọi API (trừ đăng ký, đăng nhập, đặt lại mật khẩu, `/health`) yêu cầu header `Authorization: Bearer <token>`.
+Helper sử dụng JDK Android Studio và dependency đã cache; xem tham số trong script nếu cài SDK/JDK ở vị trí khác. Hoặc mở `android/` bằng Android Studio và build với Gradle property `bcvApiBaseUrl`. Mặc định build Android trỏ máy chủ Test dùng chung, nên cần truyền URL local khi kiểm thử local.
 
-## Người duy trì
+Với emulator/USB device, ánh xạ cổng bằng ADB (launcher v2 duy trì mapping cho emulator):
 
-Nhóm đồ án ĐAHK1262703, chuyên ngành Công nghệ phần mềm, Trường Đại học Mở Hà Nội:
+```powershell
+adb devices
+adb reverse tcp:5082 tcp:5082
+```
 
-- Lê Đức Quang
-- Nguyễn Thị Thơ
-- Phạm Công Đạt
-- Nguyễn Thị Minh Thúy
+Nếu dùng IP LAN, truyền `-Api http://<IP-PC>:5082/`; điện thoại và PC phải liên lạc được. Cấp quyền Health Connect để đồng bộ bước; kết nối API thành công không đồng nghĩa thiết bị đã cấp quyền cảm biến/bước.
 
-## Đóng góp
+## Cấu hình và triển khai
 
-Đây là kho mã đồ án của nhóm; thay đổi do các thành viên thực hiện. Câu hỏi và góp ý gửi qua mục Issues của kho mã hoặc trực tiếp cho nhóm.
+- `ConnectionStrings__Bcv`: chuỗi Npgsql, cấu hình tại môi trường chạy backend. Cloud cần SSL phù hợp nhà cung cấp.
+- `Database__ApplyStartupMigrations=false`: dùng bộ SQL quản lý schema thay vì migration tự chạy lúc startup.
+- `Sessions__FilePath`: nơi lưu hash token, cần ổ đĩa bền vững nếu muốn giữ phiên qua redeploy.
+- `Smtp__*`, `R2__*`, `Goong__ApiKey`: cấu hình riêng cho email, kho media và geocoding. Khóa Maptiles dùng phía client khác REST key phía server.
+- `VITE_GOONG_MAPTILES_KEY`: khóa bản đồ công khai dành cho web; không dùng nó để chứa bí mật backend.
 
-Khi đóng góp:
+Xem [DEPLOY.md](DEPLOY.md) cho Docker/cloud và cấu hình máy chủ Test. Lần cập nhật này push mã lên **bcv_v2**; cấu hình service đang theo dõi nhánh `Web`/`Deploy_web` không tự chuyển nhánh hoặc database. Không chạy migration cloud chỉ bằng thao tác push Git.
 
-- Không commit file cấu hình riêng của máy, mật khẩu hay khóa dịch vụ (xem [Cấu hình](#cấu-hình)).
-- Thay đổi database viết thành script mới đánh số tiếp theo trong `db/`, chạy trong một giao dịch, có kiểm tra trạng thái và chạy lại được an toàn.
-- Cập nhật README của thành phần liên quan khi đổi cách cài, chạy hoặc quy tắc nghiệp vụ.
+## Kiểm tra
 
-## Giấy phép
+```powershell
+dotnet build backend/Bcv.Api/Bcv.Api.csproj
+dotnet run --project backend/Bcv.Checks
+dotnet run --project backend/Bcv.StepChecks
+npm --prefix web run build
+```
 
-UNLICENSED © 2026 Nhóm ĐAHK1262703, Trường Đại học Mở Hà Nội. Mã nguồn phục vụ đồ án tốt nghiệp, chưa cấp phép sử dụng lại.
+Các kiểm tra integration cần PostgreSQL và kết nối riêng; đọc script trước khi chạy, ưu tiên database thử nghiệm. Kiểm tra Android qua helper [build-android-dev-v2.ps1](backend/build-android-dev-v2.ps1) và `testDebugUnitTest`. Kiểm tra thao tác thực tế gồm đăng nhập, chọn điểm chưa khám phá, hoàn thành, điểm nhiệm vụ, thông báo và thứ hạng. Thiết bị vật lý/Health Connect phải được kiểm tra riêng.
 
-Thành phần bên thứ ba giữ giấy phép riêng: biểu tượng Material Symbols (Apache 2.0, xem [android/THIRD_PARTY_NOTICES.md](android/THIRD_PARTY_NOTICES.md)), ảnh địa danh từ Wikimedia Commons (giấy phép theo từng tệp, xem [db/README.md](db/README.md#ghi-công)).
+## Tài liệu
+
+- [Danh sách lệnh triển khai DB](sql/README.md).
+- [Báo cáo thay đổi chức năng và CSDL](docs/BCV_V2_THAY_DOI_CHUC_NANG_VA_CSDL.docx).
+- [Tài liệu API thay đổi](docs/technical/api_changes.md).
+- [Quy tắc điểm và nhiệm vụ](docs/points/POINT_SYSTEM_DESIGN.md).
+- [Nguồn và ghi công ảnh](backend/Bcv.Api/Modules/Discovery/Domain/place-photo-credits.json).
+- [Backend](backend/README.md), [Android](android/README.md), [mô hình gợi ý](recommendation/README.md).
+
+Không commit `.env.local`, `dev.properties`, session file, log, backup DB hoặc output kiểm thử. Quyền sử dụng ảnh và tài nguyên theo từng nguồn được ghi trong manifest/tài liệu tương ứng.

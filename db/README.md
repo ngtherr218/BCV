@@ -1,4 +1,6 @@
-# Database Bước Chân Việt (*db*)
+# Lịch sử database Bước Chân Việt
+
+> Với nhánh bcv_v2, dùng **[bộ SQL triển khai hiện tại trong sql/](../sql/README.md)** để cài mới hoặc nâng cấp. Nội dung dưới đây ghi lại các bước lịch sử; không chạy toàn bộ danh sách này cho một bản triển khai v2 mới.
 
 Schema gốc 25 bảng; migration 021 thêm 3 bảng cho sở thích và snapshot đánh giá. Dữ liệu gồm 311 địa danh trong database `bcv` (PostgreSQL 18 + PostGIS 3.6).
 

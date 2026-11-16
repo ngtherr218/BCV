@@ -1,5 +1,7 @@
 # Đưa Bước Chân Việt lên Internet
 
+> Nhánh `bcv_v2` dùng [bộ SQL triển khai](sql/README.md). Push lên nhánh này không tự đổi nhánh nguồn của service Test đang theo dõi `Web`; cấu hình nhánh và database của service phải được kiểm tra riêng.
+
 Bộ cấu hình này phục vụ web quản trị và API trên cùng một tên miền HTTPS. Máy người dùng chỉ cần trình duyệt và tài khoản được cấp quyền; máy phát triển không cần bật sau khi triển khai xong. Database phải được đưa lên dịch vụ PostgreSQL có PostGIS trước khi ứng dụng chạy.
 
 ## Phương án dùng thử: Render + Neon
@@ -23,7 +25,7 @@ Tài liệu: [Render Free](https://render.com/docs/free), [PostGIS trên Neon](h
 
 3. Chọn **một** cách đưa dữ liệu lên:
    - **Giữ dữ liệu đang sử dụng:** dùng pgAdmin Backup dạng Custom, bỏ ownership/privileges khi restore vào database cloud trống. Kết nối cloud bằng thông tin Neon cung cấp, bật SSL; dùng `pg_dump`/`pg_restore` phiên bản tương thích nguồn. Không chạy lại bộ SQL khởi tạo sau khi restore.
-   - **Tạo bản demo mới:** nạp lần lượt các file SQL theo danh sách trong [db/README.md](db/README.md#tạo-database-mới), rồi kích hoạt nội dung cần sử dụng. Không nạp lại `001_schema.sql` lên database đã có bảng.
+   - **Cài mới v2:** chạy `sql/install.sql` trên DB trống theo [sql/README.md](sql/README.md). Nếu restore DB cũ, chạy `sql/upgrade.sql` sau khi kiểm tra điều kiện và backup. Không nạp schema/seed cài mới lên DB có dữ liệu.
 4. Kiểm tra database có đủ các bảng ứng dụng và PostGIS:
 
    ```sql
