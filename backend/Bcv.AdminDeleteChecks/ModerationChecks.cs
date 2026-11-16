@@ -119,7 +119,7 @@ static class ModerationChecks
         }
         finally
         {
-            await Exec("DELETE FROM media_report; DELETE FROM community_media WHERE user_id BETWEEN 950001 AND 950005; DELETE FROM notification WHERE user_id BETWEEN 950001 AND 950005; DELETE FROM quest_progress WHERE quest_id=950001; DELETE FROM quest WHERE quest_id=950001; DELETE FROM user_discovered_place WHERE user_id BETWEEN 950001 AND 950005; DELETE FROM place WHERE place_id=950020; DELETE FROM app_user WHERE user_id BETWEEN 950001 AND 950005; UPDATE place SET status='DRAFT' WHERE place_id=910001; UPDATE region SET status='DRAFT' WHERE region_id=910001");
+            await Exec("DELETE FROM media_report; DELETE FROM community_media WHERE user_id BETWEEN 950001 AND 950005; DELETE FROM notification WHERE user_id BETWEEN 950001 AND 950005; DELETE FROM quest_progress WHERE quest_id=950001; DELETE FROM quest WHERE quest_id=950001; DELETE FROM user_discovered_place WHERE user_id BETWEEN 950001 AND 950005; DELETE FROM place WHERE place_id=950020; DELETE FROM explorer_score_event WHERE user_id BETWEEN 950001 AND 950005; DELETE FROM app_user WHERE user_id BETWEEN 950001 AND 950005; UPDATE place SET status='DRAFT' WHERE place_id=910001; UPDATE region SET status='DRAFT' WHERE region_id=910001");
         }
     }
     sealed class ModerationSessions:ISessionStore

@@ -39,18 +39,18 @@ public sealed class LeaderboardRepository(NpgsqlDataSource db)
               GROUP BY e.user_id
             ), ranked AS (SELECT *,dense_rank() OVER(ORDER BY points DESC) AS rank FROM totals),
             top_rows AS (SELECT * FROM ranked ORDER BY points DESC,user_id LIMIT $4)
-            SELECT user_id,points,rank,false AS is_me FROM top_rows
-            UNION ALL SELECT user_id,points,rank,true FROM ranked WHERE user_id=$5
+            SELECT t.user_id,t.points,t.rank,false AS is_me,u.full_name FROM top_rows t JOIN app_user u USING(user_id)
+            UNION ALL SELECT r.user_id,r.points,r.rank,true,u.full_name FROM ranked r JOIN app_user u USING(user_id) WHERE r.user_id=$5
             """,connection);
         command.Parameters.AddWithValue(period.Start.ToUniversalTime());command.Parameters.AddWithValue(period.End.ToUniversalTime());
         command.Parameters.Add(new(){NpgsqlDbType=NpgsqlDbType.Bigint,Value=(object?)query.RegionId??DBNull.Value});
         command.Parameters.AddWithValue(query.Limit);command.Parameters.AddWithValue(userId);
         var top=new List<LeaderboardEntry>();
-        var me=new LeaderboardEntry(userId,$"Nhà khám phá {userId}",null,0);
+        var me=new LeaderboardEntry(userId,"Bạn",null,0);
         await using var reader=await command.ExecuteReaderAsync(ct);
         while(await reader.ReadAsync(ct))
         {
-            var id=reader.GetInt64(0);var entry=new LeaderboardEntry(id,$"Nhà khám phá {id}",reader.GetInt64(2),reader.GetInt64(1));
+            var id=reader.GetInt64(0);var entry=new LeaderboardEntry(id,string.IsNullOrWhiteSpace(reader.GetString(4)) ? "Nhà khám phá" : reader.GetString(4),reader.GetInt64(2),reader.GetInt64(1));
             if(reader.GetBoolean(3))me=entry;else top.Add(entry);
         }
         return new(period.Key,period.Start,period.End,query.RegionId,top.OrderBy(x=>x.Rank).ThenBy(x=>x.UserId).ToList(),me,rules);

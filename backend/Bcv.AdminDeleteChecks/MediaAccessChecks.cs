@@ -108,6 +108,9 @@ static class MediaAccessChecks
             await Upload(new byte[12], "video/mp4", HttpStatusCode.BadRequest);
             await Upload(System.Text.Encoding.ASCII.GetBytes("0000ftypisom0"), "video/mp4", HttpStatusCode.BadRequest);
             await Upload(new byte[] { 26, 69, 223, 163, 0, 0, 0, 0, 0, 0, 0, 0 }, "video/webm", HttpStatusCode.BadRequest);
+            // Let Kestrel reject oversized requests from headers before Windows writes the whole body.
+            // Otherwise an early rejection can surface as a socket reset rather than its HTTP status.
+            client.DefaultRequestHeaders.ExpectContinue = true;
             await Upload(new byte[10 * 1024 * 1024 + 1], "image/png", HttpStatusCode.BadRequest);
             using (var oversized = new ByteArrayContent(new byte[10*1024*1024 + 1]))
             {
@@ -115,6 +118,7 @@ static class MediaAccessChecks
                 using var response = await client.PostAsync("/api/places/951100/media", oversized);
                 Check(response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.RequestEntityTooLarge, "Community video size limit not enforced");
             }
+            client.DefaultRequestHeaders.ExpectContinue = false;
             Console.WriteLine("PASS community media anonymous/discovery/active-place/active-region/owner/admin permissions, report eligibility, list flags, legacy playback and new upload limits");
         }
         finally

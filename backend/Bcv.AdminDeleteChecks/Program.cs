@@ -30,6 +30,9 @@ try
         foreach (var table in tables) await Setup($"CREATE TABLE {schema}.{Q(table)} (LIKE public.{Q(table)} INCLUDING ALL)");
         foreach (var fk in foreignKeys)
             await Setup($"ALTER TABLE {schema}.{Q(fk.Table)} ADD CONSTRAINT {Q(fk.Name)} {fk.Definition.Replace("REFERENCES public.", $"REFERENCES {schema}.")}");
+        // Simulate an older DB for legacy-video access tests. Only the disposable fixture schema is changed;
+        // fresh deployments retain the photo-only MIME constraint.
+        await Setup($"ALTER TABLE {schema}.community_media DROP CONSTRAINT IF EXISTS community_media_photo_mime_check");
         // Older local databases may not yet have migration 021. Upgrade only the disposable schema.
         await Setup("ALTER TABLE recommendation_config ADD COLUMN IF NOT EXISTS settings jsonb; CREATE TABLE IF NOT EXISTS recommendation_rating_snapshot(recommendation_config_id bigint REFERENCES recommendation_config,place_id bigint REFERENCES place,rating numeric(3,2),rating_count integer,PRIMARY KEY(recommendation_config_id,place_id))");
         await Setup("""

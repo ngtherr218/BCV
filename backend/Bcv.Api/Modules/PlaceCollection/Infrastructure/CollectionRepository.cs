@@ -88,9 +88,9 @@ public sealed class CollectionRepository(NpgsqlDataSource db)
         await using var command = db.CreateCommand($"""
             SELECT c.card_id,c.place_id,c.name,c.image_key,{Owned} AS owned,{NewCard} AS is_new,
                    {PlaceAvailable} AS place_available
-            FROM public.card c
-            LEFT JOIN public.place p ON p.place_id = c.place_id
-            LEFT JOIN public.region r ON r.region_id = p.region_id
+            FROM card c
+            LEFT JOIN place p ON p.place_id = c.place_id
+            LEFT JOIN region r ON r.region_id = p.region_id
             WHERE {Eligible}
             ORDER BY is_new DESC,owned DESC,c.card_id
             """);

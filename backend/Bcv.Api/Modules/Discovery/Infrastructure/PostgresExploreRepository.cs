@@ -32,10 +32,10 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
                            WHERE d.user_id = $1 AND d.place_id = p.place_id),
                    ({GeoSql.VirtualLocationToPlaceMeters} / 1000.0)::numeric, p.introduction, p.highlights, r.name, p.rating, p.rating_count,
                    p.latitude, p.longitude, v.user_id
-            FROM public.place p
-            JOIN public.place_type pt ON pt.place_type_id = p.place_type_id
-            JOIN public.region r ON r.region_id = p.region_id
-            LEFT JOIN public.virtual_location v ON v.user_id = $1
+            FROM place p
+            JOIN place_type pt ON pt.place_type_id = p.place_type_id
+            JOIN region r ON r.region_id = p.region_id
+            LEFT JOIN virtual_location v ON v.user_id = $1
             WHERE p.place_id = $2 AND p.status = 'ACTIVE' AND r.status = 'ACTIVE'
             """, connection))
         {

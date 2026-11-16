@@ -7,7 +7,19 @@ using Microsoft.Extensions.Configuration;
 using Npgsql;
 using Bcv.Api.Modules.Account.Application;
 
+if (args.Contains("--ranking-integration"))
+{
+    await RankingIntegrationChecks.Run();
+    return;
+}
+
 void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
+Check(Bcv.Api.Modules.Journey.Infrastructure.JourneyRanking.Describe(8, 3).Contains("tăng 5 bậc"), "Rank improvement was not described");
+Check(Bcv.Api.Modules.Journey.Infrastructure.JourneyRanking.Describe(3, 3).Contains("giữ vị trí #3"), "Unchanged rank was not described");
+Check(Bcv.Api.Modules.Journey.Infrastructure.JourneyRanking.Describe(null, 2).Contains("vị trí #2"), "First rank was not described");
+Check(Bcv.Api.Modules.Journey.Infrastructure.JourneyRanking.Describe(2, 4).Contains("giảm 2 bậc"), "Rank decline was not described");
+Check(Bcv.Api.Modules.Journey.Infrastructure.JourneyRanking.Describe(null, null).Contains("chưa có thứ hạng"), "Unranked case was not described");
+Console.WriteLine("PASS: journey notification describes all rank transitions.");
 var interestRepository = new InterestFixture();
 var interestService = new InterestService(interestRepository);
 foreach (var ids in new[] { new long[] {201}, new long[] {201,202,203} })

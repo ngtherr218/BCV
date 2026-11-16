@@ -28,6 +28,9 @@ static class CollectionAvailabilityChecks
                 CREATE TABLE place(place_id bigint PRIMARY KEY,region_id bigint,place_type_id bigint,name text NOT NULL,
                     latitude numeric,longitude numeric,status text,introduction text,highlights text,rating numeric,rating_count integer);
                 CREATE TABLE virtual_location(user_id bigint PRIMARY KEY,latitude numeric,longitude numeric);
+                CREATE TABLE user_preference(user_id bigint,activity_level text);
+                INSERT INTO user_preference VALUES(42,'LOW');
+                CREATE TABLE recommendation_config AS SELECT * FROM public.recommendation_config;
                 CREATE TABLE card(card_id bigint PRIMARY KEY,place_id bigint NOT NULL,name text NOT NULL,image_key text,status text);
                 CREATE TABLE collection(collection_id bigint PRIMARY KEY,name text NOT NULL,description text,status text);
                 CREATE TABLE collection_card(collection_card_id bigint PRIMARY KEY,collection_id bigint,card_id bigint);
@@ -82,8 +85,10 @@ static class CollectionAvailabilityChecks
             Check(!detail.Cards.Any(c => c.CardId == 5), "An inactive card must stay hidden under the existing card policy.");
             await using (var storedOwnership = isolated.CreateCommand("SELECT EXISTS(SELECT 1 FROM user_card WHERE user_id=42 AND card_id=5)"))
                 Check((bool)(await storedOwnership.ExecuteScalarAsync())!, "Hiding an inactive card must not delete its ownership.");
-            Check(detail.Cards.Where(c => c.Owned).All(c => c.ImageUrl != null) &&
-                detail.Cards.Where(c => !c.Owned).All(c => c.ImageUrl == null), "Card artwork ownership gating changed.");
+            Check(detail.Cards.All(c => c.ImageUrl != null), "All eligible artwork must be visible for preview without granting ownership.");
+            var catalog = await cards.LoadCatalogAsync(42, default);
+            Check(catalog.TotalCards == detail.TotalCards && catalog.Cards.Where(c => !c.PlaceAvailable).Select(c => c.CardId).Order()
+                .SequenceEqual(new long[] { 6, 7, 9 }), "Catalog eligibility and retired-place navigation must match collection detail.");
             var retiredJson = JsonSerializer.SerializeToElement(detail.Cards.Single(c => c.CardId == 6),
                 new JsonSerializerOptions(JsonSerializerDefaults.Web));
             Check(!retiredJson.GetProperty("placeAvailable").GetBoolean(), "Availability flag is missing from the API contract.");

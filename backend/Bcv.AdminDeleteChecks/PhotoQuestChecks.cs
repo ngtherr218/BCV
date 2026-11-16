@@ -50,7 +50,7 @@ static class PhotoQuestChecks
             await MediaModeration.ReviewAsync(db, 951204, "APPROVED", "Khôi phục ảnh của chu kỳ cũ", "FLAGGED", 950005, default);
             Check(await Progress(951201, daily) == 1 && await Progress(951202, weekly) == 1 && await Progress(951203, daily) == 1, "Restore or a previous cycle approval was counted twice");
             await MediaModeration.ReviewAsync(db, 951202, "APPROVED", null, "PENDING", 950005, default);
-            Check(await Progress(951201, daily) == 2 && await Progress(951202, weekly) == 2 && await Progress(951203, daily) == 3, "Second photo progress incorrect");
+            Check(await Progress(951201, daily) == 2 && await Progress(951202, weekly) == 2 && await Progress(951203, daily) == 2, "Second photo must credit photo and legacy-compatible quests once; video contributes zero");
             Check(await Progress(951201, "2000-01-01") == 7 && await Progress(951202, "2000-W01") == 9, "Current approval changed a prior cycle");
             Check(await Scalar("SELECT count(*) FROM quest_progress WHERE user_id=950004 AND quest_id=951204") == 0, "Inactive photo quest received progress");
             Check(await Scalar("SELECT count(*) FROM notification WHERE user_id=950004 AND notification_type='QUEST_COMPLETED' AND content LIKE 'Media photo fixture%'") == 3, "Daily/weekly/compatibility completion notifications missing or duplicated");

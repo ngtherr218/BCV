@@ -163,6 +163,15 @@ public sealed class PostgresJourneyRepository(NpgsqlDataSource db) : IJourneyRep
         var cumulativeSteps = checked((int)request.CumulativeSteps);
         if (cumulativeSteps > previousSteps)
         {
+            // Determine completion before awarding any quests. Ordinary periodic syncs do not query the leaderboard.
+            var boosts = await SpeedShoesStore.LoadBoostsAsync(connection, transaction, userId, request.JourneyId, ct);
+            var bonus = SpeedShoes.Bonus(boosts, previousSteps, cumulativeSteps);
+            var newRecorded = (int)Math.Min(requiredSteps, (long)recordedSteps + cumulativeSteps - previousSteps + bonus);
+            var completed = newRecorded >= requiredSteps;
+            var rankingWeek = ExplorerWeek.Resolve(null, DateTimeOffset.UtcNow);
+            var rankBefore = completed
+                ? await JourneyRanking.LoadAsync(connection, transaction, userId, rankingWeek.Start, rankingWeek.End, ct)
+                : (long?)null;
             await using (var command = new NpgsqlCommand("""
                 INSERT INTO public.step_data
                     (user_id, source_data_id, step_count, start_time, end_time)
@@ -184,11 +193,6 @@ public sealed class PostgresJourneyRepository(NpgsqlDataSource db) : IJourneyRep
             await QuestProgress.RecordAsync(connection, transaction, userId, QuestProgress.StepCount,
                 cumulativeSteps - previousSteps, ct);
 
-            // Raw steps count once; an active speed-shoe boost adds its extra share to this journey only.
-            var boosts = await SpeedShoesStore.LoadBoostsAsync(connection, transaction, userId, request.JourneyId, ct);
-            var bonus = SpeedShoes.Bonus(boosts, previousSteps, cumulativeSteps);
-            var newRecorded = (int)Math.Min(requiredSteps, (long)recordedSteps + cumulativeSteps - previousSteps + bonus);
-            var completed = newRecorded >= requiredSteps;
             await using (var command = new NpgsqlCommand("""
                 UPDATE public.journey
                 SET recorded_steps = $1,
@@ -220,6 +224,9 @@ public sealed class PostgresJourneyRepository(NpgsqlDataSource db) : IJourneyRep
                 }
                 var rankingPoints=await PlaceUnlock.UnlockAsync(connection, transaction, userId, destinationPlaceId, ct, walking: true, journeyId: request.JourneyId);
 
+                await QuestProgress.RecordAsync(connection, transaction, userId, QuestProgress.CompleteJourney, 1, ct);
+                var rankAfter = await JourneyRanking.LoadAsync(connection, transaction, userId, rankingWeek.Start, rankingWeek.End, ct);
+
                 await using (var name = new NpgsqlCommand("SELECT name FROM public.place WHERE place_id = $1",
                     connection, transaction))
                 {
@@ -235,12 +242,12 @@ public sealed class PostgresJourneyRepository(NpgsqlDataSource db) : IJourneyRep
                     var hasCard = (bool)(await ownedCard.ExecuteScalarAsync(ct))!;
                     var celebration = $"Bạn đã hoàn thành hành trình và khám phá địa điểm {placeName}!";
                     if(rankingPoints>0)celebration += $"\n+{rankingPoints} điểm khám phá.";
+                    celebration += "\n" + JourneyRanking.Describe(rankBefore, rankAfter);
                     if (hasCard) celebration += $"\n\nThẻ địa danh {placeName} đã có trong bộ sưu tập của bạn.";
                     await Notifications.AddAsync(connection, transaction, userId, Notifications.JourneyCompleted,
                         "Hành trình hoàn thành", celebration, ct);
                 }
 
-                await QuestProgress.RecordAsync(connection, transaction, userId, QuestProgress.CompleteJourney, 1, ct);
             }
         }
 
