@@ -49,7 +49,7 @@ public sealed class CollectionRepository(NpgsqlDataSource db)
                    count(c.card_id) FILTER (WHERE {Owned}),
                    count(c.card_id),
                    (array_agg(c.image_key ORDER BY cc.collection_card_id)
-                        FILTER (WHERE {Owned} AND c.image_key IS NOT NULL))[1:4],
+                        FILTER (WHERE c.image_key IS NOT NULL))[1:4],
                    count(DISTINCT c.card_id) FILTER (WHERE {NewCard})
             FROM public.collection col
             JOIN public.collection_card cc ON cc.collection_id = col.collection_id
@@ -73,6 +73,23 @@ public sealed class CollectionRepository(NpgsqlDataSource db)
     }
 
     /// <summary>One collection with all its cards, owned ones first; null when it does not exist.</summary>
+    public async Task<CollectionDetail> LoadCatalogAsync(long userId, CancellationToken ct)
+    {
+        var cards = new List<CollectionCard>();
+        await using var command = db.CreateCommand($"""
+            SELECT c.card_id,c.place_id,c.name,c.image_key,{Owned} AS owned,{NewCard} AS is_new
+            FROM public.card c WHERE c.status='ACTIVE'
+            ORDER BY is_new DESC,owned DESC,c.card_id
+            """);
+        command.Parameters.AddWithValue(userId);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+            cards.Add(new(reader.GetInt64(0),reader.GetInt64(1),reader.GetString(2),
+                reader.IsDBNull(3)?null:reader.GetString(3),reader.GetBoolean(4),reader.GetBoolean(5)));
+        return new(0,"Tất cả thẻ","Xem trước những thẻ văn hóa đang chờ bạn. Hoàn thành hành trình để nhận thẻ.",
+            cards.Count(x=>x.Owned),cards.Count,cards);
+    }
+
     public async Task<CollectionDetail?> LoadDetailAsync(long userId, long collectionId, CancellationToken ct)
     {
         await using var connection = await db.OpenConnectionAsync(ct);
@@ -106,7 +123,7 @@ public sealed class CollectionRepository(NpgsqlDataSource db)
             {
                 var owned = reader.GetBoolean(4);
                 cards.Add(new CollectionCard(reader.GetInt64(0), reader.GetInt64(1), reader.GetString(2),
-                    owned && !reader.IsDBNull(3) ? reader.GetString(3) : null, owned, reader.GetBoolean(5)));
+                    !reader.IsDBNull(3) ? reader.GetString(3) : null, owned, reader.GetBoolean(5)));
             }
         }
         return new CollectionDetail(collectionId, name, description, cards.Count(c => c.Owned), cards.Count, cards);

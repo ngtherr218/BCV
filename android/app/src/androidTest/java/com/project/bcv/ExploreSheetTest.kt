@@ -4,8 +4,6 @@ import android.content.Intent
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
-import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
-import androidx.test.runner.lifecycle.Stage
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.project.bcv.feature.discovery.presentation.ExploreActivity
@@ -19,22 +17,11 @@ class ExploreSheetTest {
     @Test
     fun sheetFollowsDragAndSettlesInBothDirections() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        instrumentation.targetContext.startActivity(
+        val explore = instrumentation.startActivitySync(
             Intent(instrumentation.targetContext, ExploreActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        )
-        var activity: ExploreActivity? = null
-        for (attempt in 0 until 80) {
-            instrumentation.runOnMainSync {
-                activity = ActivityLifecycleMonitorRegistry.getInstance()
-                    .getActivitiesInStage(Stage.RESUMED)
-                    .filterIsInstance<ExploreActivity>()
-                    .firstOrNull()
-            }
-            if (activity != null) break
-            SystemClock.sleep(250)
-        }
-        val explore = requireNotNull(activity) { "ExploreActivity did not resume" }
+        ) as ExploreActivity
+        instrumentation.waitForIdleSync()
         try {
             SystemClock.sleep(500)
             val sheet = explore.findViewById<View>(R.id.bottomSheet)

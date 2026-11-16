@@ -21,7 +21,8 @@ data class ExploreJourney(
     val activeItem: ActiveItemEffect? = null,
     val startPlaceName: String? = null,
     /** Only provided by the server after the card is confirmed as owned. */
-    val awardedCard: JourneyCardReward? = null
+    val awardedCard: JourneyCardReward? = null,
+    val rankingPoints: Int = 0
 ) {
     val startLabel: String
         get() = startPlaceName?.takeIf(String::isNotBlank)
@@ -30,6 +31,9 @@ data class ExploreJourney(
 
     val progressPercent: Int
         get() = if (requiredSteps <= 0) 0 else (recordedSteps.toLong() * 100 / requiredSteps).toInt().coerceIn(0, 100)
+
+    val reachedMilestones: List<Int>
+        get() = if(requiredSteps <= 0) emptyList() else listOf(25,50,75,100).filter { progressPercent >= it }
 }
 
 data class JourneyCardReward(val id: Long, val name: String)
@@ -39,14 +43,18 @@ data class ExploreMapPlace(val id: Long, val name: String, val coordinates: Coor
 data class ActiveItemEffect(val itemType: String, val name: String, val multiplier: Double,
     val range: Int, val remainingSteps: Int)
 
-/** [imageUrls] is filled only once the place is discovered; [imageUrl] is the locked (blurred) preview. */
+/** The cover and basic content are previewable; gallery ownership remains server-controlled. */
 data class ExplorePlaceDetail(val id: Long, val name: String, val placeType: String,
     val imageUrl: String?, val isDiscovered: Boolean, val distanceKm: Double,
     val requiredSteps: Int, val introduction: String?, val highlights: String?,
     val regionName: String? = null, val imageUrls: List<String> = emptyList(),
-    val rating: Double? = null, val ratingCount: Int? = null, val videos: List<PlaceVideo> = emptyList())
+    val rating: Double? = null, val ratingCount: Int? = null,
+    val dailyStepTarget: Int? = null, val estimatedDays: Int? = null, val relativeDifficulty: String? = null,
+    val latitude: Double? = null, val longitude: Double? = null,
+    val imageCredits: List<PlaceImageCredit> = emptyList())
 
-data class PlaceVideo(val id: Long, val url: String, val durationSeconds: Double)
+data class PlaceImageCredit(val author: String,val license: String,val sourceUrl: String,val licenseUrl: String)
+
 
 data class ExploreSnapshot(val location: ExploreLocation?, val journey: ExploreJourney?,
     val places: List<ExploreMapPlace>)

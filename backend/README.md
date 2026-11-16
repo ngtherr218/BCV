@@ -100,7 +100,7 @@ Khi chưa cấu hình R2, ảnh được lưu thẳng trong cột ảnh của da
 
 ## Quy đổi khoảng cách thành số bước
 
-Theo mục 3.5.1.2 của tài liệu: **S = max(1, ⌈1000 · D · κ / L⌉)**, với D là khoảng cách (km) từ vị trí ảo tới điểm đến, L = 0,75 m/bước, **κ = 0,15**. Ví dụ 10 km cần 2.000 bước, 50 km cần 10.000 bước.
+Code hiện hành dùng **S = max(1, ⌈1000 · D · κ / L⌉)**, với D là khoảng cách (km) từ vị trí ảo tới điểm đến, L = 0,75 m/bước, **κ = 1**. Ví dụ 10 km cần 13.334 bước, 50 km cần 66.667 bước. Tài liệu cũ ghi κ = 0,15; phiên local v2 giữ công thức đang chạy, chỉ sửa mô tả cho khớp source.
 
 κ là hệ số tỉ lệ (0 < κ ≤ 1). κ = 1 giữ nguyên quãng đường thật; κ nhỏ hơn thu nhỏ hành trình (tài liệu ví dụ κ = 0,01). Mã: `Modules/StepLocation/Domain/StepConversion.cs`. Số bước được lưu khi tạo hành trình, nên đổi κ chỉ áp dụng cho hành trình mới.
 
@@ -246,3 +246,7 @@ Trang **Kiểm duyệt nội dung** (`#media`) có các bộ lọc trạng thái
 - Backend đọc metadata MP4/WebM, từ chối tệp không xác định được thời lượng/luồng video. WebM phải có Cluster chứa dữ liệu khung hình thuộc đúng track video; chỉ có metadata, block rỗng hoặc dữ liệu audio không đủ để được nhận. Đây là kiểm tra cấu trúc, không giải mã mọi frame để bảo đảm tệp phát được. Không tự nâng chất lượng, kéo dài hoặc chuyển mã tệp.
 - Các endpoint raw upload nâng giới hạn request body tương ứng để không bị chặn tại giới hạn mặc định 30 MB của Kestrel. Web dùng timeout upload 5 phút. Android gửi theo luồng, không nạp toàn bộ tệp lớn vào RAM.
 - Bộ test local có upload HTTP 31 MB, biên 60 giây/1080p (ngang/dọc), chặn trên 100 MB, 61 giây và 4K, cùng kiểm tra migration lặp lại khi đã có video 60 giây.
+
+## Cấu hình điểm xếp hạng v3
+
+Áp dụng db/027_explorer_reward_config.sql rồi db/028_unified_discovery_quest_points.sql trước khi chạy backend mới. Local vietnam_explorer_dev_v2 đã áp dụng. Chỉ có một mức khám phá (mặc định 150); điểm nhiệm vụ cấu hình riêng trong từng nhiệm vụ. Dừng binary cũ khi nâng cấp, giữ lịch sử và không backfill. Dữ liệu mẫu: db/seed_dev_v2_quest_rewards.sql. Thiết kế, migration và kiểm thử tại docs/points và docs/testing/POINT_SYSTEM_TEST_RESULTS.md.

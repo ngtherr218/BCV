@@ -44,8 +44,60 @@ void Error(string code, Action action)
 
 var checks = new (string Name, Action Run)[]
 {
+    ("Twelve standard interest types use valid model features including museums and craft", () => {
+        var catalog=Bcv.Api.Modules.Account.Application.InterestCatalog.Features;
+        Assert(catalog.Count==12 && Enumerable.Range(101,12).All(id=>catalog.ContainsKey(id)));
+        Assert(catalog.Values.All(codes=>codes.Length>0 && codes.All(Scores.FeatureCodes.Contains)));
+        Assert(catalog[101].Contains("kind__museum") && catalog[104].Contains("kind__craft"));
+    }),
+    ("Weekly quests and ranking agree at Vietnam midnight and ISO year boundaries", () => {
+        var instants = new[] { "2026-11-08T16:59:59Z", "2026-11-08T17:00:00Z", "2026-12-31T17:00:00Z", "2027-01-03T16:59:59Z", "2027-01-03T17:00:00Z" };
+        foreach (var value in instants) {
+            var instant = DateTimeOffset.Parse(value);
+            var cycle = Bcv.Api.Modules.QuestItem.Domain.QuestCycles.At(instant);
+            var period = Bcv.Api.Modules.StatsNotify.Infrastructure.ExplorerWeek.Resolve(null, instant);
+            Assert(cycle.Weekly == period.Key && instant >= period.Start && instant < period.End);
+            Assert(cycle.Daily == instant.ToOffset(TimeSpan.FromHours(7)).ToString("yyyy-MM-dd"));
+        }
+        Assert(Bcv.Api.Modules.QuestItem.Domain.QuestCycles.At(DateTimeOffset.Parse("2027-01-01T00:00:00Z")).Weekly == "2026-W53");
+    }),
+    ("Vietnam ranking weeks use Monday boundaries and ISO years", () => {
+        var sunday=Bcv.Api.Modules.StatsNotify.Infrastructure.ExplorerWeek.Resolve(null,DateTimeOffset.Parse("2026-11-08T16:59:59Z"));
+        var monday=Bcv.Api.Modules.StatsNotify.Infrastructure.ExplorerWeek.Resolve(null,DateTimeOffset.Parse("2026-11-08T17:00:00Z"));
+        Assert(sunday.End==monday.Start && monday.Key=="2026-W46");
+        var january=Bcv.Api.Modules.StatsNotify.Infrastructure.ExplorerWeek.Resolve(null,DateTimeOffset.Parse("2027-01-01T00:00:00Z"));
+        Assert(january.Key=="2026-W53" && january.End-january.Start==TimeSpan.FromDays(7));
+        Error("INVALID_WEEK",()=>Bcv.Api.Modules.StatsNotify.Infrastructure.ExplorerWeek.Resolve("2026-W54",DateTimeOffset.UtcNow));
+    }),
+    ("Discovery mix reserves one valid daily-target destination outside interests", () => {
+        var candidates = new[]{Place(1),Place(2),Place(3),Place(4,feature:"landform__coast"),Place(4,feature:"landform__coast")};
+        var result=Scores.Rank(candidates,[Preference()],"LOW",Weights(),500000,discoveryMix:true);
+        Assert(result.Select(p=>p.Place.PlaceId).SequenceEqual(new long[]{1,2,4}));
+        Assert(result.Select(p=>p.Place.PlaceId).Distinct().Count()==3);
+        Assert(result[2].MatchedPreferences.Count==0 && result[2].RequiredSteps<=3000);
+    }),
+    ("Discovery mix cannot promote discovered, distant or over-target surprise places", () => {
+        var candidates = new[]{Place(1),Place(2),Place(3),Place(4,meters:100000,feature:"landform__coast"),Place(5,discovered:true,feature:"landform__coast"),Place(6,meters:500001,feature:"landform__coast")};
+        var result=Scores.Rank(candidates,[Preference()],"LOW",Weights(),500000,discoveryMix:true);
+        Assert(result.Select(p=>p.Place.PlaceId).SequenceEqual(new long[]{1,2,3}));
+    }),
+    ("Discovery mix uses versioned thresholds and preserves genuine model scores", () => {
+        var candidates = new[]{Place(1),Place(2),Place(3),Place(4,meters:2000,feature:"landform__coast")};
+        var thresholds=new Dictionary<string,int>{{"LOW",1000},{"MEDIUM",6000},{"HIGH",10000}};
+        var result=Scores.Rank(candidates,[Preference()],"LOW",Weights(),500000,thresholds,discoveryMix:true);
+        Assert(result.All(p=>p.Place.PlaceId!=4));
+        var mixed=Scores.Rank(candidates,[Preference()],"LOW",Weights(),500000,discoveryMix:true);
+        var surprise=mixed.Single(p=>p.Place.PlaceId==4);
+        Near(surprise.Score,Scores.Combine(surprise.Criteria,Weights())!.Value);
+        Assert(surprise.Score<mixed[0].Score);
+    }),
+    ("Discovery mix handles fewer candidates and no matching interests", () => {
+        var result=Scores.Rank([Place(1,feature:"landform__coast")],[Preference()],"LOW",Weights(),500000,discoveryMix:true);
+        Assert(result.Count==1 && result[0].Place.PlaceId==1);
+        Assert(Scores.Rank([], [Preference()],"LOW",Weights(),500000,discoveryMix:true).Count==0);
+    }),
     ("Activity thresholds are versioned rather than fixed at 3000", () => {
-        var places = new[]{Place(1, meters:20000)};
+        var places = new[]{Place(1, meters:3000)};
         var custom = new Dictionary<string,int>{{"LOW",1000},{"MEDIUM",6000},{"HIGH",10000}};
         var result=Scores.Rank(places,[Preference()],"LOW",Weights(Scores.Activity),500000,custom);
         Assert(result[0].Criteria.Activity == .25);
@@ -77,8 +129,8 @@ var checks = new (string Name, Action Run)[]
         Assert(Rank(places, Weights(Scores.Preference), preference: Preference("landform__coast"))[0].Place.PlaceId == 2);
     }),
     ("Changing activity level changes the effort ranking", () => {
-        // With kappa=0.15, 40 km / 10 km require 8,000 / 2,000 steps.
-        var places = new[] { Place(1, 40000), Place(2, 10000) };
+        // Existing production code uses kappa=1: 6 km / 1.5 km require 8,000 / 2,000 steps.
+        var places = new[] { Place(1, 6000), Place(2, 1500) };
         Assert(Rank(places, Weights(Scores.Activity), activity: "LOW")[0].Place.PlaceId == 2);
         Assert(Rank(places, Weights(Scores.Activity), activity: "HIGH")[0].Place.PlaceId == 1);
     }),
@@ -143,8 +195,8 @@ var checks = new (string Name, Action Run)[]
         Error("NO_RECOMMENDATION_PREFERENCES", () => Recommend(Input(preferences: [])));
         Error("NO_ACTIVITY_LEVEL", () => Recommend(Input(activity: null)));
     }),
-    ("Required steps use kappa=0.15 with a minimum of one", () => {
-        Assert(StepConversion.RequiredSteps(50) == 10000);
+    ("Required steps preserve current kappa=1 with a minimum of one", () => {
+        Assert(StepConversion.RequiredSteps(50) == 66667);
         Assert(StepConversion.RequiredSteps(0) == 1);
     })
 };

@@ -1,5 +1,7 @@
 # App Android Bước Chân Việt (*android*)
 
+> Phiên local v2: xem [runbook](../docs/technical/local_v2_runbook.md). API cổng 5082, APK hiện dùng `http://127.0.0.1:5082/` qua `adb reverse tcp:5082 tcp:5082`. Build bằng `../backend/build-android-dev-v2.ps1`; không dùng URL deploy trong các hướng dẫn lịch sử bên dưới cho phiên demo local.
+
 App Kotlin cho người dùng: đọc số bước, đi hành trình ảo trên bản đồ Goong và mở khóa địa danh.
 
 App gọi Backend API qua HTTPS, không truy cập database trực tiếp. Mặc định dùng cùng backend/database với web quản trị tại `https://bcv-admin.onrender.com/`. Mã nguồn chia theo nghiệp vụ trong `feature/`; phần dùng chung nằm trong `core/`.

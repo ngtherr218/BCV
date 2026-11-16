@@ -86,7 +86,7 @@ class InterestsActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    /** Three rows of two placeholders for the six preference groups. */
+    /** Loading placeholders; the actual catalog is rendered dynamically from the API. */
     private fun buildSkeleton() {
         repeat(3) {
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }

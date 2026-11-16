@@ -20,6 +20,7 @@
     </queries>
 
     <application
+        android:name=".BcvApplication"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -32,6 +33,9 @@
         <service android:name=".feature.discovery.data.JourneyStepService"
             android:exported="false" android:foregroundServiceType="health" android:stopWithTask="false" />
         <activity android:name=".feature.discovery.presentation.ExploreActivity" android:exported="false" />
+        <activity android:name=".feature.discovery.presentation.PlaceSearchActivity" android:exported="false" />
+        <activity android:name=".feature.discovery.presentation.PassportActivity" android:exported="false" />
+        <activity android:name=".feature.discovery.presentation.LeaderboardActivity" android:exported="false" />
         <activity android:name=".feature.discovery.presentation.PlaceDetailActivity" android:exported="false" />
         <activity android:name=".feature.discovery.presentation.RecommendationActivity" android:exported="false" />
         <activity android:name=".feature.journey.presentation.JourneyActivity" android:exported="false" />
@@ -45,9 +49,9 @@
         <activity android:name=".feature.account.profile.presentation.ProfileActivity" android:exported="false" />
         <activity android:name=".feature.account.profile.presentation.EditProfileActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".feature.account.profile.presentation.ChangePasswordActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".feature.discovery.presentation.PlaceVideoActivity" android:exported="false" />
         <activity android:name=".feature.discovery.presentation.CommunityMediaActivity" android:exported="false" />
         <activity android:name=".feature.statsnotify.stats.presentation.StatsActivity" android:exported="false" />
+        <activity android:name=".feature.journey.completion.JourneyCompletionActivity" android:exported="false" android:theme="@style/Theme.BCV.Completion" />
         <activity android:name=".feature.journey.presentation.JourneyHistoryActivity" android:exported="false" />
         <activity android:name=".feature.statsnotify.notifications.presentation.NotificationsActivity" android:exported="false" />
         <activity android:name=".feature.account.healthconnect.presentation.HealthConnectActivity" android:exported="false" />

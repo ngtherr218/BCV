@@ -12,6 +12,12 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import com.project.bcv.core.ui.RemoteImages
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.google.android.material.snackbar.Snackbar
 import com.project.bcv.R
 import com.project.bcv.core.di.ExploreModule
@@ -37,6 +43,8 @@ class JourneyActivity : AppCompatActivity() {
     private lateinit var routeMap: JourneyRouteMap
     private var resumedOnce = false
     private var shownJourney: ExploreJourney? = null
+    private var coverJourneyId: Long? = null
+    private var coverJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -80,6 +88,28 @@ class JourneyActivity : AppCompatActivity() {
         binding.bottomNavigation.tabJourney.setOnClickListener { model.load() }
         binding.bottomNavigation.tabCollection.setOnClickListener { openTabToRight(CollectionActivity::class.java) }
         binding.bottomNavigation.tabQuest.setOnClickListener { openTabToRight(QuestActivity::class.java) }
+    }
+
+    private fun showMilestoneCover(journey: ExploreJourney) {
+        if (coverJourneyId == journey.id) return
+        coverJourneyId = journey.id
+        coverJob?.cancel()
+        binding.milestoneImage.setPhoto(null)
+        binding.milestoneImageStatus.text = "Đang tải ảnh địa danh…"
+        coverJob = lifecycleScope.launch {
+            try {
+                val id = journey.destinationPlaceId
+                val url = if (id == null) null else withContext(Dispatchers.IO) { ExploreModule.repository(this@JourneyActivity).loadPlace(id).imageUrl }
+                val photo = url?.let { RemoteImages.load(it, 2) }
+                binding.milestoneImage.setPhoto(photo)
+                binding.milestoneImageStatus.text = if (photo == null) "Chưa có ảnh để ghép. Tiến độ vẫn được giữ nguyên."
+                    else "Mỗi mốc 25%, 50%, 75%, 100% mở một mảnh ảnh từ tiến độ đã đồng bộ."
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                binding.milestoneImageStatus.text = "Chưa tải được ảnh địa danh. Chạm để thử lại."
+            }
+        }
+        binding.milestoneImageStatus.setOnClickListener { coverJourneyId = null; showMilestoneCover(shownJourney ?: journey) }
     }
 
     private var closing = false
@@ -187,19 +217,19 @@ class JourneyActivity : AppCompatActivity() {
             if (completed) color(R.color.teal) else 0xFF8FA196.toInt())
         unlockText.text = if (completed) "Đã mở khóa" else "Chưa mở khóa"
         unlockText.setTextColor(if (completed) color(R.color.teal) else 0xFF7C9086.toInt())
-        // An unlocked destination opens its photos and story; a locked one stays a plain card.
-        val placeId = journey.destinationPlaceId?.takeIf { completed }
+        // The destination may be previewed while walking; rewards still require server completion.
+        val placeId = journey.destinationPlaceId
         destinationChevron.visibility = if (placeId != null) View.VISIBLE else View.GONE
         destinationCard.isClickable = placeId != null
         destinationCard.foreground = if (placeId != null)
             ContextCompat.getDrawable(this@JourneyActivity, R.drawable.journey_card_ripple) else null
         destinationCard.contentDescription = if (placeId != null)
-            "Điểm đến ${journey.destinationName}, đã mở khóa. Xem nội dung địa danh" else null
+            "Điểm đến ${journey.destinationName}. Xem ${if(completed) "nội dung" else "trước"} địa danh" else null
         destinationCard.setOnClickListener(placeId?.let { id -> View.OnClickListener {
             startActivity(Intent(this@JourneyActivity, PlaceDetailActivity::class.java)
                 .putExtra(PlaceDetailActivity.EXTRA_PLACE_ID, id)
                 .putExtra(PlaceDetailActivity.EXTRA_PLACE_NAME, journey.destinationName)
-                .putExtra(PlaceDetailActivity.EXTRA_DISCOVERED, true))
+                .putExtra(PlaceDetailActivity.EXTRA_DISCOVERED, completed))
         } })
 
         val remaining = (journey.requiredSteps - journey.recordedSteps).coerceAtLeast(0)
@@ -216,7 +246,10 @@ class JourneyActivity : AppCompatActivity() {
         layoutProgress()
 
         noteLocation.text = if (completed) "Vị trí ảo đã chuyển tới điểm đến." else "Vị trí ảo chỉ đổi khi hoàn thành."
-        noteContent.text = if (completed) "Ảnh và nội dung đã được mở khóa." else "Ảnh và nội dung vẫn đang được khóa."
+        val milestones = listOf(25,50,75,100).joinToString("  ·  ") { "${if(it in journey.reachedMilestones) "✓" else "○"} $it%" }
+        noteContent.text = "$milestones\n" + if (completed) "Hoàn thành hành trình; phần thưởng do hệ thống xác nhận." else "Bạn có thể xem trước địa danh. Thẻ chỉ được cấp khi hoàn thành; các mốc trung gian không cấp vật phẩm."
+        milestoneImage.show(journey)
+        showMilestoneCover(journey)
 
         state.snapshot.location?.coordinates?.let { routeMap.show(it, journey) }
         if (firstShow) ScreenMotion.reveal(journeyContent)

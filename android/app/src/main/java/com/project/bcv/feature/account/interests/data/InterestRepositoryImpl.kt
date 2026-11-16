@@ -21,7 +21,8 @@ class InterestRepositoryImpl(
             (0 until types.length()).map { index ->
                 types.getJSONObject(index).let { PlaceType(it.getLong("id"), it.getString("name")) }
             },
-            (0 until selected.length()).map { selected.getLong(it) }.toSet()
+            (0 until selected.length()).map { selected.getLong(it) }.toSet(),
+            response.optBoolean("requiresReselection", false)
         )
     }
 

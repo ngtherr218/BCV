@@ -9,6 +9,18 @@ public static class CollectionEndpoints
 {
     public static void MapCollectionEndpoints(this WebApplication app)
     {
+        app.MapGet("/api/collections/all-cards", async (HttpRequest request, ISessionStore sessions,
+            CollectionRepository repository, ILoggerFactory logs, CancellationToken ct) =>
+        {
+            var user = CurrentUser.Get(request,sessions);
+            if(user is null) return Results.Unauthorized();
+            request.HttpContext.Response.Headers.CacheControl="no-store";
+            try { return Results.Ok(await repository.LoadCatalogAsync(user.UserId,ct)); }
+            catch(Exception ex) {
+                logs.CreateLogger("Collection").LogError(ex,"Card catalog failed");
+                return Results.Json(new ApiError("SERVER_ERROR","Chưa tải được album thẻ. Hãy thử lại."),statusCode:500);
+            }
+        });
         app.MapPost("/api/cards/{cardId:long}/seen", async (long cardId, HttpRequest request,
             ISessionStore sessions, CollectionRepository repository, ILoggerFactory logs, CancellationToken ct) =>
         {

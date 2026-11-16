@@ -7,9 +7,11 @@ public static class QuestCycles
 {
     private static readonly TimeZoneInfo Vietnam = FindVietnam();
 
-    public static (string Daily, string Weekly) Current()
+    public static (string Daily, string Weekly) Current() => At(DateTimeOffset.UtcNow);
+
+    public static (string Daily, string Weekly) At(DateTimeOffset instant)
     {
-        var local = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, Vietnam).Date;
+        var local = TimeZoneInfo.ConvertTime(instant, Vietnam).Date;
         return (local.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             $"{ISOWeek.GetYear(local)}-W{ISOWeek.GetWeekOfYear(local):00}");
     }

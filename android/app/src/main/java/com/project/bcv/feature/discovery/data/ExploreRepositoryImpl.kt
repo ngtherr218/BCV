@@ -35,10 +35,15 @@ class ExploreRepositoryImpl(
                 }.orEmpty(),
                 if (it.isNull("rating")) null else it.optDouble("rating").takeIf { value -> value.isFinite() },
                 if (it.isNull("ratingCount")) null else it.optInt("ratingCount"),
-                it.optJSONArray("videos")?.let { array -> (0 until array.length()).map { index ->
-                    val video = array.getJSONObject(index)
-                    com.project.bcv.feature.discovery.domain.PlaceVideo(video.getLong("videoId"), video.getString("url"), video.getDouble("durationSeconds"))
-                } }.orEmpty())
+                if(it.isNull("dailyStepTarget")) null else it.optInt("dailyStepTarget"),
+                if(it.isNull("estimatedDays")) null else it.optInt("estimatedDays"),
+                it.nullableText("relativeDifficulty"),
+                if(it.isNull("latitude")) null else it.optDouble("latitude"),
+                if(it.isNull("longitude")) null else it.optDouble("longitude"),
+                it.optJSONArray("imageCredits")?.let { rows -> (0 until rows.length()).map { i ->
+                    val row=rows.getJSONObject(i)
+                    com.project.bcv.feature.discovery.domain.PlaceImageCredit(row.getString("author"),row.getString("license"),row.getString("sourceUrl"),row.getString("licenseUrl"))
+                }}.orEmpty())
         }
 
     override fun loadRecommendations(): Recommendations =
@@ -90,7 +95,7 @@ class ExploreRepositoryImpl(
                 }, it.nullableText("startPlaceName"),
                 it.optJSONObject("awardedCard")?.let { card ->
                     JourneyCardReward(card.getLong("cardId"), card.getString("name"))
-                })
+                },it.optInt("rankingPoints",0))
         }
         val places = optJSONArray("places")?.let { array ->
             (0 until array.length()).map { index ->

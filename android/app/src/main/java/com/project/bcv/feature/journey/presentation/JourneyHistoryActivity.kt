@@ -85,7 +85,9 @@ class JourneyHistoryActivity : AppCompatActivity() {
         item.completedAt.setTextColor(if (journey.completedAt != null) teal else muted)
         item.root.contentDescription = "$label, từ ${journey.start} đến ${journey.destination}, " +
             "bắt đầu ${item.startedAt.text}, hoàn thành ${item.completedAt.text}"
+        if(journey.status=="COMPLETED") item.root.contentDescription="${item.root.contentDescription}. Chạm để xem thành quả."
         item.root.setOnClickListener {
+            if(journey.status=="COMPLETED"){startActivity(Intent(this,com.project.bcv.feature.journey.completion.JourneyCompletionActivity::class.java).putExtra(com.project.bcv.feature.journey.completion.JourneyCompletionActivity.EXTRA_JOURNEY_ID,journey.id));return@setOnClickListener}
             startActivity(Intent(this, PlaceDetailActivity::class.java)
                 .putExtra(PlaceDetailActivity.EXTRA_PLACE_ID, journey.destinationId)
                 .putExtra(PlaceDetailActivity.EXTRA_PLACE_NAME, journey.destination)

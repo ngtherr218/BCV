@@ -46,7 +46,7 @@ static class ModerationChecks
                 context.HttpContext.Items["AdminId"]=user.UserId;
                 try{return await next(context);}catch(AdminValidation error){return Microsoft.AspNetCore.Http.Results.BadRequest(new{message=error.Message});}
             });
-            PlaceVideos.MapEndpoints(videoAdmin,app);await app.StartAsync();
+            await app.StartAsync();
             using var client=new HttpClient{BaseAddress=new Uri(app.Urls.Single())};
             await MediaAccessChecks.Run(db,client);
             await PhotoQuestChecks.Run(db);
@@ -108,7 +108,7 @@ static class ModerationChecks
             await Send("/api/admin/community-media/950003/review",new{status="APPROVED",note="Lặp lại",expectedStatus="APPROVED"},HttpStatusCode.BadRequest);
             Console.WriteLine("PASS reports below auto-hide threshold can be dismissed while keeping content public without duplicate credit");
             await Send("/api/admin/community-media/users/950005/upload-access",new{blocked=true,note="Admin protected"},HttpStatusCode.BadRequest);
-            await PlaceVideoChecks.Run(db,client);
+
             await Exec("UPDATE community_media SET delete_after=CURRENT_TIMESTAMP-INTERVAL '1 hour' WHERE media_id=950002; UPDATE community_media SET created_at=CURRENT_TIMESTAMP-INTERVAL '31 days' WHERE status='PENDING' AND user_id=950001");
             await MediaMaintenance.SweepAsync(db,default);
             Check(await Scalar("SELECT count(*) FROM community_media WHERE media_id=950002 AND media_data IS NULL")==1,"Rejected file not cleaned");

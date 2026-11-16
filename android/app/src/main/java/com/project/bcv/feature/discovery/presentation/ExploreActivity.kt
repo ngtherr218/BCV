@@ -59,10 +59,7 @@ class ExploreActivity : AppCompatActivity() {
     private var sheetDragging = false
     private var mapLoaded = false
     private var mapFailed = false
-    private val searchMapFocus = Runnable {
-        if (binding.placeTypeSearch.text.isNotBlank()) goongMap.focusSearchResults()
-    }
-    private var placeTypeOptions = emptyList<String>()
+    private var advancedMapIds: Set<Long>? = null
     private var lastSnapshot: com.project.bcv.feature.discovery.domain.ExploreSnapshot? = null
     private var renderedStage: ExploreStage? = null
     private var shownStepsJourneyId: Long? = null
@@ -104,7 +101,13 @@ class ExploreActivity : AppCompatActivity() {
             Snackbar.LENGTH_LONG).show()
     }
     private val placeDetailLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == RESULT_OK) model.load()
+        if (result.resultCode == RESULT_OK) {
+            val ids = result.data?.getLongArrayExtra("mapPlaceIds")
+            if (ids != null) {
+                advancedMapIds = ids.toSet()
+                render(model.state.value ?: ExploreUiState()); goongMap.focusSearchResults()
+            } else model.load()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -115,7 +118,9 @@ class ExploreActivity : AppCompatActivity() {
             isAppearanceLightNavigationBars = true
         }
         binding = ActivityExploreBinding.inflate(layoutInflater)
+        advancedMapIds=savedInstanceState?.getLongArray("advancedMapIds")?.toSet()
         setContentView(binding.root)
+        binding.clearFiltersButton.setOnClickListener { advancedMapIds=null;render(model.state.value ?: ExploreUiState()) }
         sheetCollapsed = savedInstanceState?.getBoolean(SHEET_STATE_KEY) ?: false
         binding.bottomSheet.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
             if (sheetCollapsed && !sheetDragging) binding.bottomSheet.translationY = collapsedOffset()
@@ -174,17 +179,6 @@ class ExploreActivity : AppCompatActivity() {
             }
         }
         model.address.observe(this) { model.state.value?.let(::renderLocationName) }
-        binding.placeTypeSearch.threshold = 1
-        binding.placeTypeSearch.addTextChangedListener(object : android.text.TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                lastSnapshot = null
-                model.state.value?.let(::render)
-                handler.removeCallbacks(searchMapFocus)
-                handler.postDelayed(searchMapFocus, 400)
-            }
-            override fun afterTextChanged(s: android.text.Editable?) = Unit
-        })
         binding.recenterButton.setOnClickListener { goongMap.recenter() }
         binding.primaryButton.setOnClickListener { primaryAction() }
         binding.secondaryButton.setOnClickListener { secondaryAction() }
@@ -298,6 +292,7 @@ class ExploreActivity : AppCompatActivity() {
     override fun onLowMemory() { super.onLowMemory(); goongMap.onLowMemory() }
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
+        advancedMapIds?.let { outState.putLongArray("advancedMapIds",it.toLongArray()) }
         outState.putBoolean(SHEET_STATE_KEY, sheetCollapsed)
         outState.putBoolean(STEPS_PERMISSION_ASKED_KEY, stepsPermissionAsked)
         outState.putBoolean("activityPermissionAsked", activityPermissionAsked)
@@ -444,14 +439,9 @@ class ExploreActivity : AppCompatActivity() {
         }
         activeItemBanner.show(state.snapshot?.journey)
         state.snapshot?.let { snapshot ->
-            val options = snapshot.places.map { it.placeType }.filter(String::isNotBlank).distinct().sorted()
-            if (options != placeTypeOptions) {
-                placeTypeOptions = options
-                placeTypeSearch.setAdapter(android.widget.ArrayAdapter(this@ExploreActivity, android.R.layout.simple_dropdown_item_1line, options))
-            }
-            val query = placeTypeSearch.text.toString().trim()
-            val filtered = snapshot.copy(places = com.project.bcv.feature.discovery.domain.PlaceSearch.filter(snapshot.places, query))
-            filterSummary.text = if (query.isEmpty()) "${snapshot.places.size} địa danh · Chọn loại để lọc bản đồ" else "${filtered.places.size} địa danh phù hợp"
+            val filtered = snapshot.copy(places = snapshot.places.filter { advancedMapIds?.contains(it.id) ?: true })
+            mapFilterBar.visibility = if (advancedMapIds == null) View.GONE else View.VISIBLE
+            filterSummary.text = "${filtered.places.size} địa danh đã chọn trên bản đồ"
             if (filtered != lastSnapshot) {
                 goongMap.show(filtered)
                 lastSnapshot = filtered

@@ -7,7 +7,7 @@ public sealed record ExploreJourney(
     decimal DestinationLongitude, int RequiredSteps, int RecordedSteps,
     string Status, long StartedAtEpochSeconds, decimal StartLatitude, decimal StartLongitude,
     long DestinationPlaceId, int SourceSteps = 0, ExploreItemEffect? ActiveItem = null,
-    string? StartPlaceName = null, ExploreCardReward? AwardedCard = null);
+    string? StartPlaceName = null, ExploreCardReward? AwardedCard = null, int RankingPoints = 0);
 
 public sealed record ExploreItemEffect(string ItemType, string Name, decimal Multiplier, int Range, int RemainingSteps);
 
@@ -19,11 +19,12 @@ public sealed record ExploreMapPlace(long PlaceId, string Name, decimal Latitude
 /// ImageUrl stays the first photo for older clients. ImageUrls (every PLACE_IMAGE row)
 /// is only listed once the place is discovered, like the text content.
 /// </summary>
-public sealed record ExplorePlaceVideo(long VideoId,string Url,double DurationSeconds,int Width,int Height);
 
 public sealed record ExplorePlaceDetail(long PlaceId, string Name, string PlaceType, string? ImageUrl,
     bool IsDiscovered, decimal DistanceKm, int RequiredSteps, string? Introduction, string? Highlights,
-    string RegionName, IReadOnlyList<string> ImageUrls, decimal? Rating = null, int? RatingCount = null, IReadOnlyList<ExplorePlaceVideo>? Videos = null);
+    string RegionName, IReadOnlyList<string> ImageUrls, decimal? Rating = null, int? RatingCount = null,
+    decimal? Latitude = null, decimal? Longitude = null, int? DailyStepTarget = null, int? EstimatedDays = null, string? RelativeDifficulty = null,
+    IReadOnlyList<PlaceImageCredit>? ImageCredits = null);
 
 public sealed record ExploreSnapshot(ExploreLocation? Location, ExploreJourney? Journey,
     IReadOnlyList<ExploreMapPlace> Places);
@@ -44,9 +45,10 @@ public sealed class ExploreService(IExploreRepository repository)
     public Task<ExploreSnapshot> LoadAsync(long userId, CancellationToken ct) =>
         repository.LoadAsync(userId, ct);
 
-    public Task<ExplorePlaceDetail> LoadPlaceAsync(long userId, long placeId, CancellationToken ct)
+    public async Task<ExplorePlaceDetail> LoadPlaceAsync(long userId, long placeId, CancellationToken ct)
     {
         if (placeId <= 0) throw new ExploreException("INVALID_PLACE", "Địa danh không hợp lệ.");
-        return repository.LoadPlaceAsync(userId, placeId, ct);
+        var place=await repository.LoadPlaceAsync(userId,placeId,ct);
+        return place with { ImageCredits=PlacePhotoCredits.For(place.ImageUrls.Append(place.ImageUrl)) };
     }
 }

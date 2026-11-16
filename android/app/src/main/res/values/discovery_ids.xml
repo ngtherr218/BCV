@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="destinationQuery" type="id" />
+    <item name="destinationFilterToggle" type="id" />
+    <item name="destinationPreference" type="id" />
+</resources>

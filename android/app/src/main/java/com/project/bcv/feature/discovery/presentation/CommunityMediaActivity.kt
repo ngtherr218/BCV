@@ -1,10 +1,10 @@
 package com.project.bcv.feature.discovery.presentation
 
-import android.content.Intent
+
 import android.graphics.BitmapFactory
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.media.MediaMetadataRetriever
+
 import android.net.Uri
 import android.os.Bundle
 import android.text.InputFilter
@@ -67,20 +67,20 @@ class CommunityMediaActivity : AppCompatActivity() {
         root.addView(MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
             text = "‹ Quay lại"; contentDescription = "Quay lại chi tiết địa danh"; setOnClickListener { finish() }
         }, LinearLayout.LayoutParams(-2, -2))
-        root.addView(label("Ảnh và video cộng đồng", 23f).apply { setTypeface(typeface, Typeface.BOLD) })
+        root.addView(label("Ảnh cộng đồng", 23f).apply { setTypeface(typeface, Typeface.BOLD) })
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 0, 0, dp(20)) }
         root.addView(ScrollView(this).apply { addView(content); isFillViewport = true }, LinearLayout.LayoutParams(-1, 0, 1f))
         content.addView(label("Chia sẻ góc nhìn của bạn. Nội dung chỉ hiển thị cho cộng đồng sau khi được duyệt."))
-        content.addView(label("Ảnh JPEG/PNG/WebP tối đa 10 MB. Video MP4/WebM tối đa 100 MB, 60 giây, 1080p.", 13f))
+        content.addView(label("Ảnh JPEG/PNG/WebP tối đa 10 MB.", 13f))
         caption = EditText(this).apply {
-            hint = "Mô tả ảnh hoặc video (tối đa 500 ký tự)"
+            hint = "Mô tả ảnh (tối đa 500 ký tự)"
             filters = arrayOf(InputFilter.LengthFilter(500)); minLines = 2; maxLines = 4
             setText(savedInstanceState?.getString("caption").orEmpty())
             setTextColor(ContextCompat.getColor(context, R.color.forest))
         }
         content.addView(caption)
         upload = MaterialButton(this).apply {
-            text = "Chọn ảnh hoặc video để gửi"; isEnabled = false
+            text = "Chọn ảnh để gửi"; isEnabled = false
             setOnClickListener { picker.launch(MediaUploadPolicy.acceptedMimeTypes) }
         }
         content.addView(upload, LinearLayout.LayoutParams(-1, -2))
@@ -122,7 +122,7 @@ class CommunityMediaActivity : AppCompatActivity() {
     }
 
     private fun showItems(items: JSONArray, auth: String) {
-        status.text = if (items.length() == 0) "Chưa có nội dung. Bạn có thể gửi ảnh hoặc video đầu tiên." else "${items.length()} nội dung gần đây"
+        status.text = if (items.length() == 0) "Chưa có nội dung. Bạn có thể gửi ảnh đầu tiên." else "${items.length()} nội dung gần đây"
         for (i in 0 until items.length()) {
             val item = items.getJSONObject(i)
             val state = item.getString("status")
@@ -158,13 +158,6 @@ class CommunityMediaActivity : AppCompatActivity() {
                         if (bitmap != null) { image.setImageBitmap(bitmap); imageStatus.visibility = View.GONE }
                         else { image.visibility = View.GONE; imageStatus.text = "Ảnh chưa tải được hoặc không còn quyền xem. Hãy tải lại trạng thái." }
                     }
-                } else if (item.optString("mimeType") in setOf("video/mp4", "video/webm")) {
-                    card.addView(MaterialButton(this).apply {
-                        text = "▶ Xem video"
-                        setOnClickListener { startActivity(Intent(this@CommunityMediaActivity, PlaceVideoActivity::class.java)
-                            .putExtra(PlaceVideoActivity.EXTRA_CONTENT_PATH, path)
-                            .putExtra(PlaceVideoActivity.EXTRA_TITLE, description.ifBlank { "Video cộng đồng" })) }
-                    })
                 }
             } else if (state in setOf("REMOVED", "EXPIRED")) card.addView(label("Tệp không còn được lưu.", 13f))
             if (state == "APPROVED" && item.optBoolean("canReport", false) && !item.optBoolean("isOwner", true)) {
@@ -212,16 +205,15 @@ class CommunityMediaActivity : AppCompatActivity() {
                     val mime = contentResolver.getType(uri)?.lowercase() ?: error("Không xác định được định dạng tệp.")
                     val limit = MediaUploadPolicy.maximumBytes(mime)
                     val length = contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
-                    require(length <= limit) { "Tệp quá lớn: ảnh tối đa 10 MB, video tối đa 100 MB." }
+                    require(length <= limit) { "Tệp quá lớn: ảnh tối đa 10 MB." }
                     require(length != 0L) { "Tệp được chọn không có nội dung." }
-                    if (mime.startsWith("video/")) validateVideo(uri)
-                    else {
+                    run {
                         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                         val source = contentResolver.openInputStream(uri) ?: error("Không đọc được tệp ảnh.")
                         source.use { BitmapFactory.decodeStream(it, null, bounds) }
                         require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Tệp ảnh bị lỗi hoặc không đọc được." }
                     }
-                    // Stream large videos instead of keeping a 100 MB copy in the app heap.
+
                     // Unknown-length document providers use chunked transfer; the transport still enforces limit.
                     client().postStream("api/places/$placeId/media?caption=${URLEncoder.encode(text, "UTF-8")}", mime, auth, length, limit.toLong()) {
                         contentResolver.openInputStream(uri) ?: error("Không đọc được tệp.")
@@ -235,16 +227,4 @@ class CommunityMediaActivity : AppCompatActivity() {
         }
     }
 
-    private fun validateVideo(uri: Uri) {
-        val metadata = MediaMetadataRetriever()
-        try {
-            try { metadata.setDataSource(this, uri) }
-            catch (_: Exception) { error("Không đọc được video. Hãy chọn tệp MP4/WebM hợp lệ.") }
-            MediaUploadPolicy.validateVideo(
-                metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull(),
-                metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull(),
-                metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull(),
-                metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_VIDEO) == "yes")
-        } finally { metadata.release() }
-    }
 }

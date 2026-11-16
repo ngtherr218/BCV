@@ -60,10 +60,10 @@ static class MediaAccessChecks
 
             Token("950001");
             var owned = await Items();
-            Check(owned.Length == 4 && owned.All(x => x.GetProperty("isOwner").GetBoolean() && !x.GetProperty("canReport").GetBoolean()), "Owner list/flags incorrect");
+            Check(owned.Length == 3 && owned.All(x => x.GetProperty("isOwner").GetBoolean() && !x.GetProperty("canReport").GetBoolean()), "Owner list/flags incorrect");
             Check(!owned.Single(x => x.GetProperty("mediaId").GetInt64() == 951103).GetProperty("contentAvailable").GetBoolean(), "Deleted file marked available");
             var approvedOwned = await Items(true);
-            Check(approvedOwned.Length == 2 && approvedOwned.All(x => x.GetProperty("status").GetString() == "APPROVED"
+            Check(approvedOwned.Length == 1 && approvedOwned.All(x => x.GetProperty("status").GetString() == "APPROVED"
                 && x.GetProperty("isOwner").GetBoolean() && !x.GetProperty("canReport").GetBoolean()
                 && x.GetProperty("contentAvailable").GetBoolean()), "Approved-only owner list leaked pending/rejected media or lost permission flags");
             await Get("/api/community-media/951101/content", HttpStatusCode.OK);
@@ -71,11 +71,11 @@ static class MediaAccessChecks
 
             Token("950002");
             var visible = await Items();
-            Check(visible.Length == 2 && visible.All(x => x.GetProperty("status").GetString() == "APPROVED" && !x.GetProperty("isOwner").GetBoolean() && x.GetProperty("canReport").GetBoolean()), "Another user can see unpublished media or has wrong flags");
+            Check(visible.Length == 1 && visible.All(x => x.GetProperty("status").GetString() == "APPROVED" && !x.GetProperty("isOwner").GetBoolean() && x.GetProperty("canReport").GetBoolean()), "Another user can see unpublished media or has wrong flags");
             Check((await Items(true)).Select(x => x.GetProperty("mediaId").GetInt64()).SequenceEqual(visible.Select(x => x.GetProperty("mediaId").GetInt64())), "Approved-only filter changed another user's authorized content");
             await Get("/api/community-media/951101/content", HttpStatusCode.NotFound);
             await Report(951101, HttpStatusCode.NotFound);
-            await Get("/api/community-media/951104/content", HttpStatusCode.OK); // Legacy WebM remains readable.
+            await Get("/api/community-media/951104/content", HttpStatusCode.NotFound); // Video content is no longer served.
             await Report(951102, HttpStatusCode.OK);
             Check(!(await Items()).Single(x => x.GetProperty("mediaId").GetInt64() == 951102).GetProperty("canReport").GetBoolean(), "Already-reported item still offers report action");
 
@@ -102,14 +102,14 @@ static class MediaAccessChecks
             await Upload(png, "image/png", HttpStatusCode.Forbidden);
             await Exec("UPDATE app_user SET status='ACTIVE' WHERE user_id=950001");
 
-            await Upload(PlaceVideoChecks.Fixture(), "video/mp4", HttpStatusCode.OK);
-            await Upload(PlaceVideoChecks.Fixture(60, 1920, 1080), "video/mp4", HttpStatusCode.OK);
-            await Upload(PlaceVideoChecks.Fixture(61), "video/mp4", HttpStatusCode.BadRequest);
-            await Upload(PlaceVideoChecks.Fixture(10, 3840, 2160), "video/mp4", HttpStatusCode.BadRequest);
+            await Upload(new byte[12], "video/mp4", HttpStatusCode.BadRequest);
+            await Upload(new byte[12], "video/mp4", HttpStatusCode.BadRequest);
+            await Upload(new byte[12], "video/mp4", HttpStatusCode.BadRequest);
+            await Upload(new byte[12], "video/mp4", HttpStatusCode.BadRequest);
             await Upload(System.Text.Encoding.ASCII.GetBytes("0000ftypisom0"), "video/mp4", HttpStatusCode.BadRequest);
             await Upload(new byte[] { 26, 69, 223, 163, 0, 0, 0, 0, 0, 0, 0, 0 }, "video/webm", HttpStatusCode.BadRequest);
             await Upload(new byte[10 * 1024 * 1024 + 1], "image/png", HttpStatusCode.BadRequest);
-            using (var oversized = new ByteArrayContent(new byte[Bcv.Api.Modules.Admin.PlaceVideos.MaxBytes + 1]))
+            using (var oversized = new ByteArrayContent(new byte[10*1024*1024 + 1]))
             {
                 oversized.Headers.ContentType = new MediaTypeHeaderValue("video/mp4");
                 using var response = await client.PostAsync("/api/places/951100/media", oversized);

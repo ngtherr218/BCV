@@ -11,7 +11,7 @@ Check(!CommunityMediaEndpoints.ValidHeader("image/jpeg", new byte[16]), "Accepte
 Check(!CommunityMediaEndpoints.ValidHeader("video/mp4", Array.Empty<byte>()), "Accepted empty video");
 Check(!CommunityMediaEndpoints.ValidHeader("text/html", System.Text.Encoding.UTF8.GetBytes("<html>hello world</html>")), "Accepted active HTML");
 Check(CommunityMediaEndpoints.ValidHeader("image/png", new byte[]{137,80,78,71,13,10,26,10,0,0,0,0}), "Rejected PNG header");
-Check(CommunityMediaEndpoints.ValidHeader("video/mp4", System.Text.Encoding.ASCII.GetBytes("0000ftypisom")), "Rejected MP4 header");
+Check(!CommunityMediaEndpoints.ValidHeader("video/mp4", System.Text.Encoding.ASCII.GetBytes("0000ftypisom")), "Video header must be rejected");
 
 var builder = WebApplication.CreateBuilder();
 builder.Logging.ClearProviders();
@@ -35,6 +35,10 @@ using (var scope = app.Services.CreateScope()) {
 Console.WriteLine("PASS: users/items deletion rejected before any database operation.");
 await app.StartAsync();
 using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+foreach (var route in new[]{"/api/admin/place-videos/1","/api/explore/places/1/videos/1"}) {
+    using var response = await client.GetAsync(route);
+    Check(response.StatusCode == HttpStatusCode.NotFound, "Removed video route remains accessible");
+}
 foreach (var route in new[]{"/api/places/1/media","/api/community-media/1/content","/api/admin/community-media"}) {
     using var response = await client.GetAsync(route);
     Check(response.StatusCode == HttpStatusCode.Unauthorized, "Anonymous media access was not rejected");

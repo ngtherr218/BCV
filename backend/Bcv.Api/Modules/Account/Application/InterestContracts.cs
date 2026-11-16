@@ -1,7 +1,7 @@
 namespace Bcv.Api.Modules.Account.Application;
 
 public sealed record PlaceTypeOption(long Id, string Name);
-public sealed record InterestSnapshot(IReadOnlyList<PlaceTypeOption> PlaceTypes, IReadOnlyList<long> SelectedPlaceTypeIds);
+public sealed record InterestSnapshot(IReadOnlyList<PlaceTypeOption> PlaceTypes, IReadOnlyList<long> SelectedPlaceTypeIds, bool RequiresReselection = false);
 public sealed class InterestException(string code, string message) : Exception(message)
 {
     public string Code { get; } = code;

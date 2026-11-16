@@ -37,8 +37,8 @@ static class PhotoQuestChecks
             await MediaModeration.ReviewAsync(db, 951201, "APPROVED", null, "PENDING", 950005, default);
             Check(await Progress(951201, daily) == 1 && await Progress(951202, weekly) == 1, "First photo did not increment daily/weekly photo quests");
             Check(await Progress(951203, daily) == 1, "Photo did not preserve mixed-media quest compatibility");
-            await MediaModeration.ReviewAsync(db, 951203, "APPROVED", null, "PENDING", 950005, default);
-            Check(await Progress(951201, daily) == 1 && await Progress(951202, weekly) == 1 && await Progress(951203, daily) == 2, "Video incorrectly incremented photo quest or missed legacy media quest");
+            try { await MediaModeration.ReviewAsync(db, 951203, "APPROVED", null, "PENDING", 950005, default); throw new Exception("Video moderation accepted"); } catch (KeyNotFoundException) { }
+            Check(await Progress(951201, daily) == 1 && await Progress(951202, weekly) == 1 && await Progress(951203, daily) == 1, "Rejected video must not increment any quest");
             try
             {
                 await MediaModeration.ReviewAsync(db, 951201, "APPROVED", null, "PENDING", 950005, default);
@@ -48,7 +48,7 @@ static class PhotoQuestChecks
             await Exec("UPDATE community_media SET status='FLAGGED' WHERE media_id=951201");
             await MediaModeration.ReviewAsync(db, 951201, "APPROVED", "Đã xem lại", "FLAGGED", 950005, default);
             await MediaModeration.ReviewAsync(db, 951204, "APPROVED", "Khôi phục ảnh của chu kỳ cũ", "FLAGGED", 950005, default);
-            Check(await Progress(951201, daily) == 1 && await Progress(951202, weekly) == 1 && await Progress(951203, daily) == 2, "Restore or a previous cycle approval was counted twice");
+            Check(await Progress(951201, daily) == 1 && await Progress(951202, weekly) == 1 && await Progress(951203, daily) == 1, "Restore or a previous cycle approval was counted twice");
             await MediaModeration.ReviewAsync(db, 951202, "APPROVED", null, "PENDING", 950005, default);
             Check(await Progress(951201, daily) == 2 && await Progress(951202, weekly) == 2 && await Progress(951203, daily) == 3, "Second photo progress incorrect");
             Check(await Progress(951201, "2000-01-01") == 7 && await Progress(951202, "2000-W01") == 9, "Current approval changed a prior cycle");

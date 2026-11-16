@@ -5,7 +5,7 @@ public sealed record CollectionSummary(long CollectionId, string Name, string? D
 
 public sealed record CollectionOverview(int OwnedCards, int TotalCards, IReadOnlyList<CollectionSummary> Collections, int NewCards = 0);
 
-/// <summary>A card in a collection. ImageUrl is only sent once owned, like a locked place's content.</summary>
+/// <summary>Card artwork is visible for preview; Owned records the user's independently earned card.</summary>
 public sealed record CollectionCard(long CardId, long PlaceId, string Name, string? ImageUrl, bool Owned, bool IsNew = false);
 
 public sealed record CollectionDetail(long CollectionId, string Name, string? Description,

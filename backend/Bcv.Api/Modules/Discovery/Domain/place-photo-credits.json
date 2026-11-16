@@ -1,0 +1,72 @@
+[
+  {
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6b/Long_Beach%2C_Cam_Ranh.jpg/960px-Long_Beach%2C_Cam_Ranh.jpg",
+    "license": "CC BY-SA 4.0",
+    "placeName": "Bãi Dài Cam Ranh",
+    "file": "Long_Beach,_Cam_Ranh.jpg",
+    "placeId": 1,
+    "author": "L.K.Phung",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Long_Beach%2C_Cam_Ranh.jpg",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/"
+  },
+  {
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/fb/Dien_Khanh_front_gate.JPG/960px-Dien_Khanh_front_gate.JPG",
+    "license": "CC BY-SA 3.0",
+    "placeName": "Thành cổ Diên Khánh",
+    "file": "Dien_Khanh_front_gate.JPG",
+    "placeId": 3,
+    "author": "Vinhtantran",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Dien_Khanh_front_gate.JPG",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  {
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2d/Dien_Khanh_eastern_gate.JPG/960px-Dien_Khanh_eastern_gate.JPG",
+    "license": "CC BY-SA 3.0",
+    "placeName": "Thành cổ Diên Khánh",
+    "file": "Dien_Khanh_eastern_gate.JPG",
+    "placeId": 3,
+    "author": "Vinhtantran",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Dien_Khanh_eastern_gate.JPG",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  {
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5e/RungUMinh1.jpg/960px-RungUMinh1.jpg",
+    "license": "CC BY-SA 3.0",
+    "placeName": "Vườn quốc gia U Minh Thượng",
+    "file": "RungUMinh1.jpg",
+    "placeId": 9,
+    "author": "Mongnt",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:RungUMinh1.jpg",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  {
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ee/RungUMinh3.jpg/960px-RungUMinh3.jpg",
+    "license": "CC BY-SA 3.0",
+    "placeName": "Vườn quốc gia U Minh Thượng",
+    "file": "RungUMinh3.jpg",
+    "placeId": 9,
+    "author": "Mongnt",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:RungUMinh3.jpg",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  {
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7d/My_Son_Sanctuary_Vietnam_06.jpg/960px-My_Son_Sanctuary_Vietnam_06.jpg",
+    "license": "CC BY 4.0",
+    "placeName": "Thánh Địa Mỹ Sơn",
+    "file": "My_Son_Sanctuary_Vietnam_06.jpg",
+    "placeId": 80,
+    "author": "Philip Nalangan",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:My_Son_Sanctuary_Vietnam_06.jpg",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  {
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/94/A_far_view_of_the_ruins_at_My_Son_%2830992152933%29.jpg/960px-A_far_view_of_the_ruins_at_My_Son_%2830992152933%29.jpg",
+    "license": "CC BY 2.0",
+    "placeName": "Thánh Địa Mỹ Sơn",
+    "file": "A_far_view_of_the_ruins_at_My_Son_(30992152933).jpg",
+    "placeId": 80,
+    "author": "shankar s.",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:A_far_view_of_the_ruins_at_My_Son_%2830992152933%29.jpg",
+    "licenseUrl": "https://creativecommons.org/licenses/by/2.0/"
+  }
+]

@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:background="@drawable/destination_filter_sheet_bg">
+    <View android:layout_width="36dp" android:layout_height="4dp"
+        android:layout_gravity="center_horizontal" android:layout_marginTop="12dp"
+        android:background="@color/field_line" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical" android:paddingHorizontal="20dp">
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:text="Lọc điểm đến" android:textSize="22sp" android:textStyle="bold" android:textColor="@color/forest" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/closeFilters"
+            style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content"
+            android:layout_height="48dp" android:text="Đóng" android:textAllCaps="false" />
+    </LinearLayout>
+    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:fillViewport="true" android:clipToPadding="false">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical" android:paddingHorizontal="20dp" android:paddingBottom="16dp">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Đã chọn sẵn theo sở thích của bạn. Bạn có thể thêm hoặc bỏ chọn để khám phá theo ý mình."
+                android:textColor="@color/muted" android:textSize="14sp" android:lineSpacingExtra="3dp" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginTop="16dp">
+                <TextView android:id="@+id/typeSelectionSummary" android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:text="Loại địa danh" android:textSize="16sp"
+                    android:textStyle="bold" android:textColor="@color/forest" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/clearTypes"
+                    style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content"
+                    android:layout_height="48dp" android:text="Bỏ chọn tất cả" android:textAllCaps="false" />
+            </LinearLayout>
+            <com.google.android.material.chip.ChipGroup android:id="@+id/destinationTypes"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                app:chipSpacingHorizontal="8dp" app:chipSpacingVertical="4dp" app:singleSelection="false" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="8dp" android:text="Không chọn loại nào: hiển thị tất cả loại địa danh."
+                android:textColor="@color/muted" android:textSize="12sp" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="24dp" android:layout_marginBottom="12dp" android:text="Phù hợp hành trình"
+                android:textSize="16sp" android:textStyle="bold" android:textColor="@color/forest" />
+            <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:hint="Khoảng cách tối đa" app:suffixText="km"
+                app:boxBackgroundMode="outline" app:boxBackgroundColor="@color/field_bg" app:boxStrokeColor="@color/destination_field_stroke"
+                app:boxCornerRadiusTopStart="14dp" app:boxCornerRadiusTopEnd="14dp"
+                app:boxCornerRadiusBottomStart="14dp" app:boxCornerRadiusBottomEnd="14dp">
+                <com.google.android.material.textfield.TextInputEditText android:id="@+id/maxDistance"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:inputType="numberDecimal" android:maxLines="1" android:textColor="@color/forest" />
+            </com.google.android.material.textfield.TextInputLayout>
+            <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="16dp" android:hint="Thời gian tối đa"
+                app:suffixText="ngày" app:boxBackgroundMode="outline" app:boxBackgroundColor="@color/field_bg" app:boxStrokeColor="@color/destination_field_stroke"
+                app:boxCornerRadiusTopStart="14dp" app:boxCornerRadiusTopEnd="14dp"
+                app:boxCornerRadiusBottomStart="14dp" app:boxCornerRadiusBottomEnd="14dp">
+                <com.google.android.material.textfield.TextInputEditText android:id="@+id/maxDays"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:inputType="number" android:maxLines="1" android:textColor="@color/forest" />
+            </com.google.android.material.textfield.TextInputLayout>
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="8dp" android:text="Để trống nếu bạn không muốn giới hạn."
+                android:textSize="12sp" android:textColor="@color/muted" />
+        </LinearLayout>
+    </ScrollView>
+    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/field_line" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:paddingHorizontal="20dp" android:paddingTop="8dp" android:paddingBottom="20dp">
+        <com.google.android.material.button.MaterialButton android:id="@+id/resetFilters"
+            style="@style/Widget.Material3.Button.TextButton" android:layout_width="match_parent"
+            android:layout_height="48dp" android:text="Đặt lại theo sở thích" android:textAllCaps="false" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/showFilterResults"
+            android:layout_width="match_parent" android:layout_height="56dp" android:text="Xem kết quả"
+            android:textAllCaps="false" android:textSize="16sp" android:textStyle="bold" app:cornerRadius="16dp" />
+    </LinearLayout>
+</LinearLayout>

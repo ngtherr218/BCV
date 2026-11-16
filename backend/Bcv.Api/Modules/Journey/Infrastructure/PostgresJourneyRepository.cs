@@ -35,6 +35,18 @@ public sealed class PostgresJourneyRepository(NpgsqlDataSource db) : IJourneyRep
             startLongitude = reader.GetDecimal(2);
         }
 
+        // A discovered place is content to revisit, never a new journey destination.
+        // Validate before replacing an active journey so a stale selection cannot abandon it.
+        await using (var discovered = new NpgsqlCommand("""
+            SELECT EXISTS (SELECT 1 FROM public.user_discovered_place WHERE user_id=$1 AND place_id=$2)
+            """, connection, transaction))
+        {
+            discovered.Parameters.AddWithValue(userId);
+            discovered.Parameters.AddWithValue(request.PlaceId);
+            if ((bool)(await discovered.ExecuteScalarAsync(ct))!)
+                throw new JourneyException("PLACE_ALREADY_DISCOVERED", "Bạn đã khám phá địa danh này. Hãy chọn địa danh chưa khám phá để bắt đầu hành trình mới.");
+        }
+
         long? activeJourneyId = null;
         long? activePlaceId = null;
         await using (var command = new NpgsqlCommand("""
@@ -206,7 +218,7 @@ public sealed class PostgresJourneyRepository(NpgsqlDataSource db) : IJourneyRep
                     command.Parameters.Add(new NpgsqlParameter<long> { TypedValue = destinationPlaceId, NpgsqlDbType = NpgsqlDbType.Bigint });
                     await command.ExecuteNonQueryAsync(ct);
                 }
-                await PlaceUnlock.UnlockAsync(connection, transaction, userId, destinationPlaceId, ct);
+                var rankingPoints=await PlaceUnlock.UnlockAsync(connection, transaction, userId, destinationPlaceId, ct, walking: true, journeyId: request.JourneyId);
 
                 await using (var name = new NpgsqlCommand("SELECT name FROM public.place WHERE place_id = $1",
                     connection, transaction))
@@ -222,6 +234,7 @@ public sealed class PostgresJourneyRepository(NpgsqlDataSource db) : IJourneyRep
                     ownedCard.Parameters.Add(new NpgsqlParameter<long> { TypedValue = destinationPlaceId, NpgsqlDbType = NpgsqlDbType.Bigint });
                     var hasCard = (bool)(await ownedCard.ExecuteScalarAsync(ct))!;
                     var celebration = $"Bạn đã hoàn thành hành trình và khám phá địa điểm {placeName}!";
+                    if(rankingPoints>0)celebration += $"\n+{rankingPoints} điểm khám phá.";
                     if (hasCard) celebration += $"\n\nThẻ địa danh {placeName} đã có trong bộ sưu tập của bạn.";
                     await Notifications.AddAsync(connection, transaction, userId, Notifications.JourneyCompleted,
                         "Hành trình hoàn thành", celebration, ct);

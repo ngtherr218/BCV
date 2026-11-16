@@ -23,14 +23,14 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
         string name, placeType, regionName;
         string? introduction, highlights;
         bool discovered;
-        decimal distanceKm;
+        decimal distanceKm, latitude, longitude;
         decimal? rating;
         int? ratingCount;
         await using (var command = new NpgsqlCommand($"""
             SELECT p.place_id, p.name, pt.name,
                    EXISTS (SELECT 1 FROM public.user_discovered_place d
                            WHERE d.user_id = $1 AND d.place_id = p.place_id),
-                   ({GeoSql.VirtualLocationToPlaceMeters} / 1000.0)::numeric, p.introduction, p.highlights, r.name, p.rating, p.rating_count
+                   ({GeoSql.VirtualLocationToPlaceMeters} / 1000.0)::numeric, p.introduction, p.highlights, r.name, p.rating, p.rating_count, p.latitude, p.longitude
             FROM public.place p
             JOIN public.place_type pt ON pt.place_type_id = p.place_type_id
             JOIN public.region r ON r.region_id = p.region_id
@@ -49,10 +49,12 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
             discovered = reader.GetBoolean(3);
             distanceKm = reader.GetDecimal(4);
             introduction = !reader.IsDBNull(5) ? reader.GetString(5) : null;
-            highlights = discovered && !reader.IsDBNull(6) ? reader.GetString(6) : null;
+            highlights = !reader.IsDBNull(6) ? reader.GetString(6) : null;
             regionName = reader.GetString(7);
             rating = reader.IsDBNull(8) ? null : reader.GetDecimal(8);
             ratingCount = reader.IsDBNull(9) ? null : reader.GetInt32(9);
+            latitude = reader.GetDecimal(10);
+            longitude = reader.GetDecimal(11);
         }
 
         var images = new List<string>();
@@ -66,18 +68,13 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
             while (await reader.ReadAsync(ct)) images.Add(reader.GetString(0));
         }
 
-        var videos=new List<ExplorePlaceVideo>();
-        if(discovered)
-        {
-            await using var command=new NpgsqlCommand("SELECT video_id,duration_seconds,width,height FROM place_video WHERE place_id=$1 ORDER BY video_id",connection);
-            command.Parameters.AddWithValue(placeId);
-            await using var reader=await command.ExecuteReaderAsync(ct);
-            while(await reader.ReadAsync(ct))videos.Add(new ExplorePlaceVideo(reader.GetInt64(0),$"/api/explore/places/{placeId}/videos/{reader.GetInt64(0)}",reader.GetDouble(1),reader.GetInt32(2),reader.GetInt32(3)));
-        }
-        // The first photo stays visible (blurred) while locked; the gallery opens with the place.
+        // Preview reads do not unlock the place or award cards; the gallery remains gated.
+        var requiredSteps = distanceKm <= 0 ? 0 : StepConversion.RequiredSteps(distanceKm);
+        var target = await JourneyEffort.DailyTargetAsync(connection, userId, ct);
+        var days = JourneyEffort.Days(requiredSteps, target);
         return new ExplorePlaceDetail(id, name, placeType, images.FirstOrDefault(), discovered, distanceKm,
-            distanceKm <= 0 ? 0 : StepConversion.RequiredSteps(distanceKm), introduction, highlights, regionName,
-            discovered ? images : [], rating, ratingCount, videos);
+            requiredSteps, introduction, highlights, regionName,
+            discovered ? images : [], rating, ratingCount, latitude, longitude, target, days, JourneyEffort.Difficulty(days));
     }
 
     private static async Task<ExploreSnapshot> LoadSnapshotAsync(NpgsqlConnection connection,
@@ -130,6 +127,15 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
                     reader.GetDecimal(8), reader.GetDecimal(9), reader.GetInt64(10), reader.GetInt32(11),
                     StartPlaceName: reader.IsDBNull(12) ? null : reader.GetString(12),
                     AwardedCard: reader.IsDBNull(13) ? null : new ExploreCardReward(reader.GetInt64(13), reader.GetString(14)));
+        }
+        if (journey is { Status: "COMPLETED" })
+        {
+            await using var available = new NpgsqlCommand("SELECT to_regclass('public.explorer_score_event') IS NOT NULL",connection);
+            if((bool)(await available.ExecuteScalarAsync(ct))!) {
+                await using var points = new NpgsqlCommand("SELECT COALESCE(sum(points),0)::int FROM explorer_score_event WHERE user_id=$1 AND ((event_type='DISCOVERY' AND place_id=$3) OR (event_type='JOURNEY' AND source_key=$2))",connection);
+                points.Parameters.AddWithValue(userId);points.Parameters.AddWithValue($"journey:{journey.JourneyId}");points.Parameters.AddWithValue(journey.DestinationPlaceId);
+                journey=journey with { RankingPoints=(int)(await points.ExecuteScalarAsync(ct))! };
+            }
         }
         if (journey is { Status: "IN_PROGRESS" })
         {

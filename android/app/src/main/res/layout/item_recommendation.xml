@@ -19,13 +19,13 @@
             <com.google.android.material.imageview.ShapeableImageView android:id="@+id/image"
                 android:layout_width="match_parent" android:layout_height="match_parent"
                 android:background="#E3EAE2" android:importantForAccessibility="no"
-                android:scaleType="centerCrop"
+                android:scaleType="centerInside" android:src="@drawable/ic_place_outline" app:tint="#A7BBB0"
                 app:shapeAppearanceOverlay="@style/RecommendationImageShape" />
-            <FrameLayout android:layout_width="48dp" android:layout_height="48dp"
-                android:layout_gravity="center" android:background="@drawable/destination_lock_circle"
+            <FrameLayout android:id="@+id/rewardLock" android:layout_width="32dp" android:layout_height="32dp"
+                android:layout_gravity="bottom|end" android:background="@drawable/destination_lock_circle"
                 android:elevation="2dp">
                 <ImageView android:layout_width="22dp" android:layout_height="22dp"
-                    android:layout_gravity="center" android:contentDescription="Chưa mở khóa"
+                    android:layout_gravity="center" android:contentDescription="Địa danh chưa mở khóa"
                     android:src="@drawable/ic_lock" app:tint="@color/forest" />
             </FrameLayout>
         </FrameLayout>

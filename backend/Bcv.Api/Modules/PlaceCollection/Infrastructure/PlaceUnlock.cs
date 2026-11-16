@@ -10,9 +10,10 @@ namespace Bcv.Api.Modules.PlaceCollection.Infrastructure;
 /// </summary>
 public static class PlaceUnlock
 {
-    public static async Task UnlockAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
-        long userId, long placeId, CancellationToken ct)
+    public static async Task<int> UnlockAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
+        long userId, long placeId, CancellationToken ct, bool walking = false, long? journeyId = null)
     {
+        var firstDiscovery=false;
         await using (var discovery = new NpgsqlCommand("""
             INSERT INTO public.user_discovered_place (user_id, place_id)
             VALUES ($1, $2)
@@ -21,9 +22,17 @@ public static class PlaceUnlock
         {
             discovery.Parameters.Add(new NpgsqlParameter<long> { TypedValue = userId, NpgsqlDbType = NpgsqlDbType.Bigint });
             discovery.Parameters.Add(new NpgsqlParameter<long> { TypedValue = placeId, NpgsqlDbType = NpgsqlDbType.Bigint });
-            if (await discovery.ExecuteNonQueryAsync(ct) > 0)
-                await QuestProgress.RecordAsync(connection, transaction, userId, QuestProgress.DiscoverPlace, 1, ct);
+            firstDiscovery=await discovery.ExecuteNonQueryAsync(ct)>0;
+            if (walking && !firstDiscovery)
+                throw new Bcv.Api.Modules.Journey.Application.JourneyException("PLACE_ALREADY_DISCOVERED",
+                    "Bạn đã khám phá địa danh này. Không thể hoàn thành thêm hành trình đến địa danh đã khám phá.");
+            if (firstDiscovery)
+                await QuestProgress.RecordAsync(connection, transaction, userId, QuestProgress.DiscoverPlace, 1, ct, awardScore:walking);
         }
+        var rankingPoints=0;
+        if(walking)
+            rankingPoints=await Bcv.Api.Modules.StatsNotify.Infrastructure.ExplorerScoreEvents.WalkingAsync(connection,transaction,userId,placeId,firstDiscovery,
+                journeyId ?? throw new InvalidOperationException("A walking score requires its completed journey ID."),ct);
 
         await using var card = new NpgsqlCommand("""
             INSERT INTO public.user_card (user_id, card_id)
@@ -41,5 +50,6 @@ public static class PlaceUnlock
             await Bcv.Api.Modules.StatsNotify.Infrastructure.Notifications.AddAsync(connection, transaction, userId,
                 "CARD_RECEIVED", "Đã nhận thẻ mới", $"Thẻ {placeName} đã được thêm vào bộ sưu tập của bạn.", ct);
         }
+        return rankingPoints;
     }
 }

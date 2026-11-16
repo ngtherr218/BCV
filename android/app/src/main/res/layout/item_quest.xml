@@ -30,6 +30,10 @@
             android:layout_weight="1"
             android:orientation="vertical">
 
+            <TextView android:id="@+id/questCycle" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginBottom="4dp"
+                android:textColor="#62786D" android:textSize="12sp" />
+
             <TextView
                 android:id="@+id/questName"
                 android:layout_width="match_parent"
@@ -69,18 +73,21 @@
         app:trackStopIndicatorSize="0dp"
         app:trackThickness="8dp" />
 
+    <TextView android:id="@+id/questPoints" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:layout_marginTop="14dp"
+        android:textColor="@color/teal" android:textSize="15sp" android:textStyle="bold" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="14dp"
+        android:layout_marginTop="8dp"
         android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:orientation="vertical">
 
         <TextView
             android:id="@+id/questReward"
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
             android:drawablePadding="10dp"
             android:gravity="center_vertical"
             android:textColor="#A0702E"
@@ -90,6 +97,7 @@
             android:id="@+id/questStatus"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
             android:textColor="#7C9086"
             android:textSize="13sp" />
     </LinearLayout>

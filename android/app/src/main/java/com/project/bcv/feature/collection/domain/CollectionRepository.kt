@@ -21,7 +21,7 @@ data class CollectionOverview(
 
 data class NewCollectionCard(val card: CollectionCard, val collectionId: Long, val collectionName: String)
 
-/** A card in a collection; [imageUrl] is only known once the card is owned. */
+/** Artwork is available for preview; ownership is awarded independently. */
 data class CollectionCard(
     val id: Long,
     val placeId: Long,

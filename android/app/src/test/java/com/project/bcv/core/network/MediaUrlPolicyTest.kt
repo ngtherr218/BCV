@@ -8,7 +8,7 @@ class MediaUrlPolicyTest {
 
     @Test fun onlyOurMediaEndpointsReceiveAuthorization() {
         assertEquals("https://api.example/api/community-media/9/content", MediaUrlPolicy.authenticatedUrl(base, "/api/community-media/9/content"))
-        assertNotNull(MediaUrlPolicy.authenticatedUrl(base, "/api/explore/places/12/videos/4"))
+        assertNull(MediaUrlPolicy.authenticatedUrl(base, "/api/explore/places/12/videos/4"))
         assertNotNull(MediaUrlPolicy.authenticatedUrl(base, "/api/places/12/thumbnail"))
         assertNotNull(MediaUrlPolicy.authenticatedUrl(base, "https://API.EXAMPLE:443/api/community-media/9/content"))
         assertNotNull(MediaUrlPolicy.authenticatedUrl("http://10.0.2.2:5081/", "/api/community-media/9/content"))

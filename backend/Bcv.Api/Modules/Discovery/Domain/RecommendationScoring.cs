@@ -57,7 +57,7 @@ public static class RecommendationScoring
     public static IReadOnlyList<ScoredPlace> Rank(IReadOnlyList<RecommendationPlace> places,
         IReadOnlyList<PreferenceGroup> preferences, string? activityLevel,
         IReadOnlyDictionary<string, decimal> weights, decimal distanceLimitMeters,
-        IReadOnlyDictionary<string, int>? activityThresholds = null)
+        IReadOnlyDictionary<string, int>? activityThresholds = null, bool discoveryMix = false)
     {
         if (distanceLimitMeters <= 0) throw new ArgumentOutOfRangeException(nameof(distanceLimitMeters));
         if (!ValidWeights(weights)) throw new ArgumentException("Expected five nonnegative criterion weights summing to one", nameof(weights));
@@ -91,7 +91,22 @@ public static class RecommendationScoring
             var matched = preferences.Where(g => g.Matches(place)).Select(g => g.Name).ToList();
             ranked.Add(new ScoredPlace(place, steps, score.Value, criteria, matched, EffectiveWeights(criteria, weights)));
         }
-        return ranked.OrderByDescending(p => p.Score).ThenBy(p => p.Place.PlaceId).Take(MaxResults).ToList();
+        var ordered = ranked.OrderByDescending(p => p.Score).ThenBy(p => p.Place.PlaceId).ToList();
+        if (!discoveryMix || preferences.Count == 0 || threshold is null)
+            return ordered.Take(MaxResults).ToList();
+
+        // Keep the model scores intact. Reserve one slot only when an unfamiliar destination
+        // fits within the user's configured daily target; never expand eligibility to fill it.
+        var surprise = ordered.FirstOrDefault(p => p.MatchedPreferences.Count == 0 && p.RequiredSteps <= threshold.Value);
+        if (surprise is null) return ordered.Take(MaxResults).ToList();
+        var selected = ordered.Where(p => p.MatchedPreferences.Count > 0).Take(2).ToList();
+        selected.Add(surprise);
+        foreach (var candidate in ordered)
+        {
+            if (selected.Count >= MaxResults) break;
+            if (selected.All(p => p.Place.PlaceId != candidate.Place.PlaceId)) selected.Add(candidate);
+        }
+        return selected;
     }
 
     private static double? PreferenceScore(RecommendationPlace place, IReadOnlyList<PreferenceGroup> preferences) =>

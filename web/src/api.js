@@ -16,12 +16,12 @@ export async function api(path, options = {}) {
     const data = await response.json().catch(() => null);
     if (!response.ok) {
       if (response.status === 401 && path !== '/login') { session.set(null); window.dispatchEvent(new Event('bcv-session-expired')); }
-      throw new Error(data?.message || (response.status === 503 || response.status === 500 ? 'Không kết nối được backend hoặc cơ sở dữ liệu. Kiểm tra server cổng 5081.' : `Yêu cầu không thành công (${response.status}).`));
+      throw new Error(data?.message || (response.status === 503 || response.status === 500 ? 'Không kết nối được backend hoặc cơ sở dữ liệu. Kiểm tra server và địa chỉ API đã cấu hình.' : `Yêu cầu không thành công (${response.status}).`));
     }
     return data;
   } catch (error) {
     if (error.name === 'AbortError') throw new Error('Máy chủ phản hồi quá lâu. Vui lòng thử lại.');
-    if (error instanceof TypeError) throw new Error('Không kết nối được máy chủ. Kiểm tra backend đang chạy tại cổng 5081.');
+    if (error instanceof TypeError) throw new Error('Không kết nối được máy chủ. Kiểm tra backend và địa chỉ API đã cấu hình.');
     throw error;
   } finally { clearTimeout(timeout); }
 }

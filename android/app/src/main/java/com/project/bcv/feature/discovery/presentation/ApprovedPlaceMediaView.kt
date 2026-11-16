@@ -34,14 +34,14 @@ class ApprovedPlaceMediaView(private val activity: AppCompatActivity) : LinearLa
         placeId = id
         job?.cancel()
         removeAllViews()
-        addView(TextView(context).apply { text = "Ảnh/video cộng đồng đã duyệt"; textSize = 19f; setTypeface(typeface, android.graphics.Typeface.BOLD) })
+        addView(TextView(context).apply { text = "Ảnh cộng đồng đã duyệt"; textSize = 19f; setTypeface(typeface, android.graphics.Typeface.BOLD) })
         val status = TextView(context).apply { text = "Đang tải nội dung cộng đồng…" }
         addView(status)
         addView(Button(context).apply { text = "Tải lại nội dung cộng đồng"; setOnClickListener { load(placeId) } })
         val content = LinearLayout(context).apply { orientation = VERTICAL }
         addView(content)
         val allButton = Button(context).apply {
-            text = "Xem tất cả / Gửi ảnh, video"
+            text = "Xem tất cả / Gửi ảnh"
             isEnabled = false
             setOnClickListener { openAll() }
         }
@@ -57,7 +57,7 @@ class ApprovedPlaceMediaView(private val activity: AppCompatActivity) : LinearLa
                 val approved = (0 until items.length()).map { items.getJSONObject(it) }.filter {
                     it.optString("status") == "APPROVED" && it.optBoolean("contentAvailable", false)
                 }
-                status.text = if (approved.isEmpty()) "Chưa có ảnh/video cộng đồng được duyệt." else "Nội dung người dùng đóng góp · " + approved.size + " mục đã duyệt"
+                status.text = if (approved.isEmpty()) "Chưa có ảnh cộng đồng được duyệt." else "Nội dung người dùng đóng góp · " + approved.size + " mục đã duyệt"
                 for (item in approved.take(4)) {
                     val url = MediaUrlPolicy.authenticatedUrl(BuildConfig.API_BASE_URL, item.optString("contentUrl"))
                         ?: continue
@@ -71,7 +71,7 @@ class ApprovedPlaceMediaView(private val activity: AppCompatActivity) : LinearLa
                             if (bitmap != null) image.setImageBitmap(bitmap)
                             else { image.visibility = View.GONE; content.addView(TextView(context).apply { text = "Ảnh không còn khả dụng. Hãy tải lại." }) }
                         }
-                    } else content.addView(Button(context).apply { text = "▶ Xem video cộng đồng"; setOnClickListener { openAll() } })
+                    }
                 }
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) { status.text = error.message ?: "Chưa tải được nội dung cộng đồng. Nhấn Tải lại để thử." }

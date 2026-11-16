@@ -17,9 +17,16 @@ public static class QuestProgress
     public const string PhotoApproved = "PHOTO_APPROVED";
 
     public static async Task RecordAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
-        long userId, string conditionType, int amount, CancellationToken ct)
+        long userId, string conditionType, int amount, CancellationToken ct, bool awardScore = true)
     {
         if (amount <= 0) return;
+        // Serialize admin edits with the reward snapshot captured at completion.
+        await using (var rules = new NpgsqlCommand("SELECT quest_id FROM quest WHERE condition_type=$1 AND status='ACTIVE' ORDER BY quest_id FOR SHARE",connection,transaction))
+        {
+            rules.Parameters.AddWithValue(conditionType);
+            await using var rows=await rules.ExecuteReaderAsync(ct);
+            while(await rows.ReadAsync(ct)) { }
+        }
         var (daily, weekly) = QuestCycles.Current();
         await using var command = new NpgsqlCommand("""
             INSERT INTO quest_progress
@@ -39,13 +46,19 @@ public static class QuestProgress
                     CASE WHEN quest_progress.progress_value + EXCLUDED.progress_value >=
                               (SELECT target_value FROM quest WHERE quest_id = quest_progress.quest_id)
                          THEN CURRENT_TIMESTAMP END)
+            RETURNING quest_progress_id, completion_status AND completed_at=CURRENT_TIMESTAMP
             """, connection, transaction);
         command.Parameters.Add(new NpgsqlParameter<long> { TypedValue = userId, NpgsqlDbType = NpgsqlDbType.Bigint });
         command.Parameters.Add(new NpgsqlParameter<int> { TypedValue = amount, NpgsqlDbType = NpgsqlDbType.Integer });
         command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = daily, NpgsqlDbType = NpgsqlDbType.Varchar });
         command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = weekly, NpgsqlDbType = NpgsqlDbType.Varchar });
         command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = conditionType, NpgsqlDbType = NpgsqlDbType.Varchar });
-        await command.ExecuteNonQueryAsync(ct);
+        var completedIds=new List<long>();
+        await using(var reader=await command.ExecuteReaderAsync(ct))
+            while(await reader.ReadAsync(ct))
+                if(reader.GetBoolean(1))completedIds.Add(reader.GetInt64(0));
+        foreach(var id in completedIds)
+            await Bcv.Api.Modules.StatsNotify.Infrastructure.ExplorerScoreEvents.QuestAsync(connection,transaction,userId,id,ct,awardScore);
 
         // completed_at = CURRENT_TIMESTAMP only for quests this transaction completed (it is the
         // transaction start time); NOT EXISTS keeps a later call in the same transaction from repeating it.

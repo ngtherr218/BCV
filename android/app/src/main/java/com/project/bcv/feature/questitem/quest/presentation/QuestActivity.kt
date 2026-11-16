@@ -214,6 +214,7 @@ class QuestActivity : AppCompatActivity() {
         item.questIcon.backgroundTintList = ColorStateList.valueOf(if (done) 0xFFDDEAD6.toInt() else iconBox)
 
         item.questName.text = quest.name
+        item.questCycle.text = if (weekly) "HẰNG TUẦN" else "HẰNG NGÀY"
         val shownProgress = quest.progress.coerceAtMost(quest.target)
         item.questProgressText.text = "${format(shownProgress)} / ${format(quest.target)} $unit"
         item.questProgress.max = quest.target
@@ -222,7 +223,12 @@ class QuestActivity : AppCompatActivity() {
         item.root.setBackgroundResource(if (done) R.drawable.quest_done_bg else R.drawable.journey_card_bg)
 
         val rewardColor = if (done) teal else 0xFFA0702E.toInt()
-        item.questReward.text = quest.rewardName?.let { "$it × ${quest.rewardQuantity ?: 1}" } ?: "Không có phần thưởng"
+        val points = if (quest.completed) quest.awardedRankingPoints else quest.rankingPoints
+        item.questPoints.text = if (points>0) "+$points điểm xếp hạng${if(quest.completed) " · Đã cộng" else ""}"
+            else if(quest.completed) "Không nhận điểm xếp hạng" else "Không thưởng điểm xếp hạng"
+        item.questPoints.setTextColor(if(points>0) teal else 0xFF62786D.toInt())
+        item.questReward.text = quest.rewardName?.let { "${if(quest.rewardReceived) "Đã nhận" else "Vật phẩm"}: $it × ${quest.rewardQuantity ?: 1}" }.orEmpty()
+        item.questReward.visibility = if(quest.rewardName==null) View.GONE else View.VISIBLE
         item.questReward.setTextColor(rewardColor)
         // Same icons as the items in Túi đồ.
         val rewardIcon = if (quest.rewardType == "FLIGHT_TICKET") R.drawable.ic_flight else R.drawable.ic_sneaker
@@ -235,14 +241,14 @@ class QuestActivity : AppCompatActivity() {
 
         val percent = if (quest.target <= 0) 0 else (shownProgress * 100L / quest.target).toInt()
         item.questStatus.text = when {
-            done && quest.rewardReceived -> "Đã nhận thưởng"
+            done && quest.rewardReceived && (points>0 || quest.rewardName!=null) -> "Đã nhận thưởng"
             done -> "Đã hoàn thành"
             else -> "$percent% hoàn thành"
         }
         item.questStatus.setTextColor(if (done) teal else 0xFF7C9086.toInt())
         item.questStatus.setTypeface(null, if (done) Typeface.BOLD else Typeface.NORMAL)
         item.root.contentDescription = "${quest.name}, ${item.questProgressText.text}, ${item.questStatus.text}. " +
-            "Phần thưởng: ${item.questReward.text}"
+            "Phần thưởng: ${item.questPoints.text}. ${item.questReward.text}"
         return item
     }
 

@@ -134,6 +134,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="24dp"
                     android:accessibilityHeading="true"
+                    android:id="@+id/cardsSectionTitle"
                     android:text="Thẻ trong bộ sưu tập"
                     android:textColor="@color/forest"
                     android:textSize="18sp"

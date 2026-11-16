@@ -18,12 +18,6 @@ public static class CommunityMediaEndpoints
         using var moderationStream=typeof(CommunityMediaEndpoints).Assembly.GetManifestResourceStream("Bcv.MediaModerationMigration.sql")!;
         using var moderationReader=new StreamReader(moderationStream);
         await using(var migration=new NpgsqlCommand(await moderationReader.ReadToEndAsync(),conn,tx)) await migration.ExecuteNonQueryAsync();
-        using var videoStream=typeof(CommunityMediaEndpoints).Assembly.GetManifestResourceStream("Bcv.PlaceVideoMigration.sql")!;
-        using var videoReader=new StreamReader(videoStream);
-        await using(var migration=new NpgsqlCommand(await videoReader.ReadToEndAsync(),conn,tx))await migration.ExecuteNonQueryAsync();
-        using var limitsStream=typeof(CommunityMediaEndpoints).Assembly.GetManifestResourceStream("Bcv.VideoLimitsMigration.sql")!;
-        using var limitsReader=new StreamReader(limitsStream);
-        await using(var migration=new NpgsqlCommand(await limitsReader.ReadToEndAsync(),conn,tx))await migration.ExecuteNonQueryAsync();
         await tx.CommitAsync();
     }
 
@@ -77,12 +71,12 @@ public static class CommunityMediaEndpoints
             if ((caption?.Length ?? 0) > 500) return Results.BadRequest(new { message = "Mô tả tối đa 500 ký tự." });
             var mime = request.ContentType?.Split(';')[0].Trim().ToLowerInvariant();
             var bodyLimit=request.HttpContext.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
-            if(bodyLimit is {IsReadOnly:false})bodyLimit.MaxRequestBodySize=PlaceVideos.MaxBytes;
+            if(bodyLimit is {IsReadOnly:false})bodyLimit.MaxRequestBodySize=10 * 1024 * 1024;
             var image = mime is "image/jpeg" or "image/png" or "image/webp";
-            if (!image && mime is not ("video/mp4" or "video/webm"))
-                return Results.BadRequest(new { message = "Chọn ảnh JPEG/PNG/WebP hoặc video MP4/WebM." });
-            var limit = image ? 10 * 1024 * 1024 : PlaceVideos.MaxBytes;
-            if (request.ContentLength > limit) return Results.BadRequest(new { message = "Ảnh tối đa 10 MB; video tối đa 100 MB." });
+            if (!image)
+                return Results.BadRequest(new { message = "Chỉ hỗ trợ ảnh JPEG/PNG/WebP." });
+            var limit = 10 * 1024 * 1024;
+            if (request.ContentLength > limit) return Results.BadRequest(new { message = "Ảnh tối đa 10 MB." });
             await using var memory = new MemoryStream(request.ContentLength is >0?(int)request.ContentLength.Value:0);
             var buffer = new byte[81920];
             int count;
@@ -93,11 +87,7 @@ public static class CommunityMediaEndpoints
             }
             var bytes = memory.Length==memory.Capacity?memory.GetBuffer():memory.ToArray();
             if (!ValidHeader(mime!, bytes)) return Results.BadRequest(new { message = "Nội dung tệp không đúng định dạng." });
-            if (!image)
-            {
-                try { _ = mime == "video/webm" ? WebmMetadata.Inspect(bytes) : PlaceVideos.Inspect(bytes); }
-                catch (AdminValidation error) { return Results.BadRequest(new { message = error.Message }); }
-            }
+
             await using var uploadConnection=await db.OpenConnectionAsync(ct);
             await using var uploadTransaction=await uploadConnection.BeginTransactionAsync(ct);
             await using(var permission=new NpgsqlCommand("SELECT media_upload_blocked FROM app_user WHERE user_id=$1 AND status='ACTIVE' FOR SHARE",uploadConnection,uploadTransaction))
@@ -131,7 +121,7 @@ public static class CommunityMediaEndpoints
             await uploadTransaction.CommitAsync(ct);
             return id is null ? Results.NotFound(new { message = "Không tìm thấy địa danh đang hoạt động." })
                 : Results.Ok(new { mediaId = (long)id, status = "PENDING", message = "Đã gửi. Nội dung đang chờ quản trị viên duyệt." });
-        }).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(PlaceVideos.MaxBytes));
+        }).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(10 * 1024 * 1024));
 
         app.MapGet("/api/community-media/{id:long}/content", async (long id, HttpRequest request,
             ISessionStore sessions, NpgsqlDataSource db, CancellationToken ct) =>
@@ -144,7 +134,7 @@ public static class CommunityMediaEndpoints
                 SELECT m.mime_type,m.media_data FROM community_media m
                 JOIN place p ON p.place_id=m.place_id JOIN region r USING(region_id)
                 JOIN app_user viewer ON viewer.user_id=$2 AND viewer.status='ACTIVE'
-                WHERE m.media_id=$1 AND m.media_data IS NOT NULL AND
+                WHERE m.media_id=$1 AND m.mime_type LIKE 'image/%' AND m.media_data IS NOT NULL AND
                   (viewer.role='ADMIN' OR (p.status='ACTIVE' AND r.status='ACTIVE'
                     AND EXISTS(SELECT 1 FROM user_discovered_place d WHERE d.place_id=p.place_id AND d.user_id=$2)
                     AND (m.status='APPROVED' OR m.user_id=$2)))
@@ -219,7 +209,7 @@ public static class CommunityMediaEndpoints
                   AND NOT EXISTS(SELECT 1 FROM media_report report WHERE report.media_id=m.media_id AND report.reporter_id=$2) AS can_report
             FROM community_media m JOIN place p ON p.place_id=m.place_id JOIN app_user u ON u.user_id=m.user_id
             JOIN region r ON r.region_id=p.region_id
-            WHERE m.place_id=$1 AND (m.status='APPROVED' OR m.user_id=$2)
+            WHERE m.place_id=$1 AND m.mime_type LIKE 'image/%' AND (m.status='APPROVED' OR m.user_id=$2)
                 AND (NOT $3 OR m.status='APPROVED')
                 AND p.status='ACTIVE' AND r.status='ACTIVE'
                 AND EXISTS(SELECT 1 FROM user_discovered_place d JOIN app_user viewer ON viewer.user_id=d.user_id
@@ -246,8 +236,6 @@ public static class CommunityMediaEndpoints
         "image/jpeg" => bytes[0] == 255 && bytes[1] == 216 && bytes[2] == 255,
         "image/png" => bytes.AsSpan(0, 8).SequenceEqual(new byte[] {137,80,78,71,13,10,26,10}),
         "image/webp" => System.Text.Encoding.ASCII.GetString(bytes,0,4)=="RIFF" && System.Text.Encoding.ASCII.GetString(bytes,8,4)=="WEBP",
-        "video/mp4" => System.Text.Encoding.ASCII.GetString(bytes,4,4)=="ftyp",
-        "video/webm" => bytes[0]==26 && bytes[1]==69 && bytes[2]==223 && bytes[3]==163,
         _ => false
     };
 }

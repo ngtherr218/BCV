@@ -22,16 +22,16 @@ public static class MediaModeration
         var reason = Note(note, status != "APPROVED");
         await using var conn = await db.OpenConnectionAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
-        // Lock the parent first to serialize the video quota with official-video edits.
+        // Keep a consistent lock order with place edits.
         await using(var gate=new NpgsqlCommand("SELECT place_id FROM place WHERE place_id=(SELECT place_id FROM community_media WHERE media_id=$1) FOR UPDATE",conn,tx))
         {gate.Parameters.AddWithValue(id);await gate.ExecuteScalarAsync(ct);}
-        long owner; string previous, place; bool first, video, photo;long placeId;
-        await using (var cmd = new NpgsqlCommand("SELECT m.user_id,m.status,m.first_approved_at IS NULL,p.name,m.mime_type LIKE 'video/%',m.place_id,m.mime_type LIKE 'image/%' FROM community_media m JOIN place p USING(place_id) WHERE m.media_id=$1 FOR UPDATE OF m", conn, tx))
+        long owner; string previous, place; bool first, photo;
+        await using (var cmd = new NpgsqlCommand("SELECT m.user_id,m.status,m.first_approved_at IS NULL,p.name,m.mime_type LIKE 'image/%' FROM community_media m JOIN place p USING(place_id) WHERE m.media_id=$1 AND m.mime_type LIKE 'image/%' FOR UPDATE OF m", conn, tx))
         {
             cmd.Parameters.AddWithValue(id);
             await using var r = await cmd.ExecuteReaderAsync(ct);
             if (!await r.ReadAsync(ct)) throw new KeyNotFoundException("Không tìm thấy nội dung.");
-            owner=r.GetInt64(0); previous=r.GetString(1); first=r.GetBoolean(2); place=r.GetString(3);video=r.GetBoolean(4);placeId=r.GetInt64(5);photo=r.GetBoolean(6);
+            owner=r.GetInt64(0); previous=r.GetString(1); first=r.GetBoolean(2); place=r.GetString(3);photo=r.GetBoolean(4);
         }
         if (expectedStatus is not null && previous != expectedStatus) throw new AdminValidation("Trạng thái đã thay đổi. Hãy tải lại trước khi xử lý.");
         var valid = status switch {
@@ -48,12 +48,6 @@ public static class MediaModeration
         }
         if (!valid) throw new AdminValidation("Nội dung đã được xử lý hoặc không thể thực hiện thao tác này. Hãy tải lại.");
         if (status == "APPROVED" && previous != "PENDING") reason = Note(note, true);
-        if(status=="APPROVED" && previous!="APPROVED" && video)
-        {
-            await using var quota=new NpgsqlCommand("SELECT (SELECT count(*) FROM place_video WHERE place_id=$1)+(SELECT count(*) FROM community_media WHERE place_id=$1 AND status='APPROVED' AND mime_type LIKE 'video/%')",conn,tx);
-            quota.Parameters.AddWithValue(placeId);
-            if((long)(await quota.ExecuteScalarAsync(ct))!>=5)throw new AdminValidation("Địa danh đã đủ 5 video công khai. Không thể duyệt thêm video.");
-        }
         await using (var cmd = new NpgsqlCommand("UPDATE community_media SET status=$2,review_note=$3,reviewed_by=$4,reviewed_at=CURRENT_TIMESTAMP,media_data=CASE WHEN $2='REMOVED' THEN NULL ELSE media_data END,file_deleted_at=CASE WHEN $2='REMOVED' THEN CURRENT_TIMESTAMP ELSE file_deleted_at END,delete_after=CASE WHEN $2='REJECTED' THEN CURRENT_TIMESTAMP+INTERVAL '7 days' ELSE NULL END,first_approved_at=CASE WHEN $2='APPROVED' THEN COALESCE(first_approved_at,CURRENT_TIMESTAMP) ELSE first_approved_at END WHERE media_id=$1",conn,tx))
         {
             cmd.Parameters.AddWithValue(id); cmd.Parameters.AddWithValue(status); cmd.Parameters.AddWithValue(reason); cmd.Parameters.AddWithValue(actor); await cmd.ExecuteNonQueryAsync(ct);
@@ -61,10 +55,10 @@ public static class MediaModeration
         await using (var cmd = new NpgsqlCommand("UPDATE media_report SET status=CASE WHEN $3='REMOVED' THEN 'ACCEPTED' ELSE 'DISMISSED' END,resolved_at=CURRENT_TIMESTAMP,resolved_by=$2 WHERE media_id=$1 AND status='OPEN'",conn,tx))
         { cmd.Parameters.AddWithValue(id); cmd.Parameters.AddWithValue(actor); cmd.Parameters.AddWithValue(status); await cmd.ExecuteNonQueryAsync(ct); }
         var title = status switch {"APPROVED"=>previous=="PENDING"?"Nội dung đã được duyệt":previous=="APPROVED"?"Báo cáo nội dung đã được xử lý":"Nội dung đã được khôi phục", "REJECTED"=>"Nội dung bị từ chối", _=>"Nội dung đã bị gỡ"};
-        await Notify(conn,tx,owner,"MEDIA_"+status,title,$"Ảnh/video tại {place}. {reason}",ct);
+        await Notify(conn,tx,owner,"MEDIA_"+status,title,$"Ảnh tại {place}. {reason}",ct);
         if (status == "APPROVED" && first)
         {
-            // Keep existing mixed-media quests working; photo-only quests must never count a video.
+            // Preserve existing photo and legacy media quest progress.
             await QuestProgress.RecordAsync(conn,tx,owner,QuestProgress.MediaApproved,1,ct);
             if (photo) await QuestProgress.RecordAsync(conn,tx,owner,QuestProgress.PhotoApproved,1,ct);
         }
@@ -101,7 +95,7 @@ public static class MediaModeration
             SELECT m.user_id,m.status FROM community_media m
             JOIN place p ON p.place_id=m.place_id JOIN region r USING(region_id)
             JOIN app_user viewer ON viewer.user_id=$2 AND viewer.status='ACTIVE'
-            WHERE m.media_id=$1 AND m.media_data IS NOT NULL AND
+            WHERE m.media_id=$1 AND m.mime_type LIKE 'image/%' AND m.media_data IS NOT NULL AND
               (viewer.role='ADMIN' OR (p.status='ACTIVE' AND r.status='ACTIVE'
                 AND EXISTS(SELECT 1 FROM user_discovered_place d WHERE d.place_id=p.place_id AND d.user_id=$2)
                 AND (m.status='APPROVED' OR m.user_id=$2)))
@@ -126,7 +120,7 @@ public static class MediaModeration
             {
                 await using var hide=new NpgsqlCommand("UPDATE community_media SET status='FLAGGED' WHERE media_id=$1",conn,tx);
                 hide.Parameters.AddWithValue(id);await hide.ExecuteNonQueryAsync(ct);
-                await Notify(conn,tx,owner,"MEDIA_FLAGGED","Nội dung tạm ẩn để kiểm tra","Ảnh/video của bạn đang được quản trị viên xem xét sau khi có báo cáo.",ct);
+                await Notify(conn,tx,owner,"MEDIA_FLAGGED","Nội dung tạm ẩn để kiểm tra","Ảnh của bạn đang được quản trị viên xem xét sau khi có báo cáo.",ct);
             }
         }
         await tx.CommitAsync(ct);
@@ -141,7 +135,7 @@ public static class MediaModeration
     public static async Task<JsonElement> ListAsync(NpgsqlDataSource db,string? status,string? q,string? kind,bool reported,int page,int pageSize,CancellationToken ct,long? placeId=null)
     {
         status??="PENDING";q=(q??"").Trim();kind??="";
-        if(status!=""&&!Statuses.Contains(status)||kind is not ("" or "image" or "video")||q.Length>200)throw new AdminValidation("Bộ lọc không hợp lệ.");
+        if(status!=""&&!Statuses.Contains(status)||kind is not ("" or "image")||q.Length>200)throw new AdminValidation("Bộ lọc không hợp lệ.");
         if(placeId is <=0)throw new AdminValidation("Địa danh không hợp lệ.");
         page=Math.Clamp(page,1,100000);pageSize=Math.Clamp(pageSize,1,50);
         await using var cmd=db.CreateCommand("""
@@ -152,7 +146,7 @@ public static class MediaModeration
                 (SELECT count(*) FROM media_report r WHERE r.media_id=m.media_id AND r.status='OPEN') report_count,
                 (SELECT count(*) FROM media_report r WHERE r.media_id=m.media_id) total_reports
               FROM community_media m JOIN place p USING(place_id) JOIN app_user u ON u.user_id=m.user_id
-              LEFT JOIN app_user a ON a.user_id=m.reviewed_by
+              LEFT JOIN app_user a ON a.user_id=m.reviewed_by WHERE m.mime_type LIKE 'image/%'
             ), filtered AS (
               SELECT * FROM rows WHERE ($1='' OR status=$1) AND ($2='' OR place_name ILIKE '%'||$2||'%' OR author ILIKE '%'||$2||'%' OR caption ILIKE '%'||$2||'%')
                 AND ($3='' OR mime_type LIKE $3||'/%') AND (NOT $4 OR report_count>0) AND ($7::bigint IS NULL OR place_id=$7)

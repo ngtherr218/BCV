@@ -109,13 +109,17 @@
         </FrameLayout>
     </LinearLayout>
 
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:orientation="vertical" android:paddingHorizontal="20dp" android:paddingBottom="8dp">
-        <AutoCompleteTextView android:id="@+id/placeTypeSearch" android:layout_width="match_parent"
-            android:layout_height="48dp" android:singleLine="true" android:inputType="text"
-            android:hint="Tìm loại địa danh hoặc tên địa danh…" android:textSize="14sp" />
-        <TextView android:id="@+id/filterSummary" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:textSize="12sp" android:textColor="@color/teal" />
+    <LinearLayout android:id="@+id/mapFilterBar" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:orientation="horizontal"
+        android:gravity="center_vertical" android:paddingHorizontal="20dp"
+        android:paddingBottom="8dp" android:visibility="gone">
+        <TextView android:id="@+id/filterSummary" android:layout_width="0dp"
+            android:layout_height="wrap_content" android:layout_weight="1"
+            android:textSize="13sp" android:textColor="@color/teal" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/clearFiltersButton"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="wrap_content" android:layout_height="48dp"
+            android:text="Hiện tất cả" android:textAllCaps="false" />
     </LinearLayout>
     <FrameLayout
         android:id="@+id/mapContainer"

@@ -24,10 +24,10 @@ public sealed class QuestRepository(NpgsqlDataSource db)
                 WHERE qp.quest_id = q.quest_id AND qp.user_id = $1
                   AND qp.cycle_key IN ($2, $3, 'ONCE')
                   AND qp.completion_status AND NOT qp.reward_status
-                  AND q.reward_item_id IS NOT NULL
+
                 RETURNING q.reward_item_id AS item_id, q.reward_quantity AS quantity
             ), totals AS (
-                SELECT item_id, SUM(quantity)::int AS quantity FROM due GROUP BY item_id
+                SELECT item_id, SUM(quantity)::int AS quantity FROM due WHERE item_id IS NOT NULL GROUP BY item_id
             ), granted AS (
                 INSERT INTO public.user_item (user_id, item_id, quantity)
                 SELECT $1, item_id, quantity FROM totals
@@ -47,11 +47,12 @@ public sealed class QuestRepository(NpgsqlDataSource db)
         }
 
         var dailyQuests = new List<QuestView>();
+
         var weeklyQuests = new List<QuestView>();
         await using (var command = new NpgsqlCommand("""
             SELECT q.quest_id, q.name, q.cycle_type, q.condition_type, q.target_value,
                    COALESCE(qp.progress_value, 0), COALESCE(qp.completion_status, FALSE),
-                   COALESCE(qp.reward_status, FALSE), i.name, i.item_type, q.reward_quantity
+                   COALESCE(qp.reward_status, FALSE), i.name, i.item_type, q.reward_quantity,q.reward_points,COALESCE(qp.awarded_points,0)
             FROM public.quest q
             LEFT JOIN public.quest_progress qp
               ON qp.quest_id = q.quest_id AND qp.user_id = $1
@@ -70,7 +71,7 @@ public sealed class QuestRepository(NpgsqlDataSource db)
                 var quest = new QuestView(reader.GetInt64(0), reader.GetString(1), reader.GetString(2),
                     reader.GetString(3), reader.GetInt32(4), reader.GetInt32(5), reader.GetBoolean(6),
                     reader.GetBoolean(7), reader.IsDBNull(8) ? null : reader.GetString(8),
-                    reader.IsDBNull(9) ? null : reader.GetString(9), reader.IsDBNull(10) ? null : reader.GetInt32(10));
+                    reader.IsDBNull(9) ? null : reader.GetString(9), reader.IsDBNull(10) ? null : reader.GetInt32(10),reader.GetInt32(11),reader.GetInt32(12));
                 (quest.CycleType == "DAILY" ? dailyQuests : weeklyQuests).Add(quest);
             }
         }

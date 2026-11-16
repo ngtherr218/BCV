@@ -9,7 +9,7 @@ public sealed class PostgresInterestRepository(NpgsqlDataSource db) : IInterestR
     public async Task<InterestSnapshot> LoadAsync(long userId, CancellationToken ct)
     {
         var options = new List<PlaceTypeOption>();
-        await using (var command = db.CreateCommand("SELECT interest_group_id, name FROM public.interest_group ORDER BY interest_group_id"))
+        await using (var command = db.CreateCommand("SELECT g.interest_group_id, p.name FROM public.interest_group g JOIN public.place_type p ON p.place_type_id=g.interest_group_id WHERE g.interest_group_id BETWEEN 101 AND 112 AND g.code='PLACE_TYPE_'||p.place_type_id ORDER BY g.interest_group_id"))
         await using (var reader = await command.ExecuteReaderAsync(ct))
             while (await reader.ReadAsync(ct)) options.Add(new(reader.GetInt64(0), reader.GetString(1)));
 
@@ -24,7 +24,8 @@ public sealed class PostgresInterestRepository(NpgsqlDataSource db) : IInterestR
             await using var reader = await command.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct)) selected.Add(reader.GetInt64(0));
         }
-        return new(options, selected);
+        var offered = options.Select(option => option.Id).ToHashSet();
+        return new(options, selected.Where(offered.Contains).ToList(), selected.Any(id => !offered.Contains(id)));
     }
 
     public async Task<IReadOnlyList<long>> SaveAsync(long userId, IReadOnlyList<long> placeTypeIds, CancellationToken ct)

@@ -82,9 +82,9 @@ class CardDetailActivity : AppCompatActivity() {
         cardName.text = name
         cardFace.contentDescription = "Thẻ địa danh $name, " + if (owned) "đã sở hữu" else "chưa sở hữu"
 
-        cardLock.visibility = if (owned) View.GONE else View.VISIBLE
+        cardLock.visibility = View.GONE
         cardImageFrame.setBackgroundResource(if (owned) R.drawable.card_image_bg else R.drawable.collection_lock_placeholder)
-        imageUrl?.takeIf { owned }?.let { url ->
+        imageUrl?.let { url ->
             RemoteImages.cached(url, sample = 2)?.let(cardImage::setImageBitmap)
                 ?: lifecycleScope.launch { RemoteImages.load(url, sample = 2)?.let(cardImage::setImageBitmap) }
         }

@@ -29,7 +29,8 @@ class QuestRepositoryImpl(
                 item.getLong("questId"), item.getString("name"), item.getString("conditionType"),
                 item.getInt("targetValue"), item.getInt("progressValue"), item.getBoolean("completed"),
                 item.getBoolean("rewardReceived"), text("rewardName"), text("rewardType"),
-                if (item.isNull("rewardQuantity")) null else item.getInt("rewardQuantity")
+                if (item.isNull("rewardQuantity")) null else item.getInt("rewardQuantity"),
+                item.optInt("rankingPoints",0),item.optInt("awardedRankingPoints",0)
             )
         }
     }

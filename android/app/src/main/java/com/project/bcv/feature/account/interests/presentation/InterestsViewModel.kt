@@ -32,7 +32,8 @@ class InterestsViewModel(private val repository: InterestRepository) : ViewModel
         executor.execute {
             try {
                 val data = repository.load()
-                mutableState.postValue(InterestsUiState(loading = false, placeTypes = data.placeTypes, selectedIds = data.selectedIds))
+                mutableState.postValue(InterestsUiState(loading = false, placeTypes = data.placeTypes, selectedIds = data.selectedIds,
+                    error = if (data.requiresReselection) "Danh mục đã cập nhật thành 12 loại địa danh. Hãy chọn lại 1–3 loại bạn yêu thích." else null))
             } catch (error: Exception) {
                 mutableState.postValue(InterestsUiState(loading = false, error = message(error)))
             }

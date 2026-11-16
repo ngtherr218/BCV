@@ -38,7 +38,7 @@ public sealed class RecommendationService(IRecommendationRepository repository)
         if (input.Config.DistanceLimitMeters <= 0 || !RecommendationScoring.ValidWeights(input.Config.Weights))
             throw new ExploreException("INVALID_RECOMMENDATION_CONFIG", "Cấu hình gợi ý chưa hợp lệ. Vui lòng thử lại sau.");
         var ranked = RecommendationScoring.Rank(input.Places, input.Preferences, input.ActivityLevel,
-            input.Config.Weights, input.Config.DistanceLimitMeters, input.Config.Settings?.ActivityThresholds);
+            input.Config.Weights, input.Config.DistanceLimitMeters, input.Config.Settings?.ActivityThresholds, discoveryMix: true);
         var places = ranked.Select((p, index) =>
         {
             var used = p.EffectiveWeights.Keys.ToList();
@@ -59,6 +59,8 @@ public sealed class RecommendationService(IRecommendationRepository repository)
         bool Used(string code) => place.EffectiveWeights.ContainsKey(code);
         if (Used(RecommendationScoring.Preference) && place.MatchedPreferences.Count > 0)
             reasons.Add($"Hợp sở thích: {string.Join(", ", place.MatchedPreferences)}");
+        if (place.MatchedPreferences.Count == 0 && place.Criteria.Activity == 1)
+            reasons.Add("Khám phá ngoài sở thích, phù hợp mục tiêu vận động mỗi ngày");
         if (Used(RecommendationScoring.Cluster) && place.Criteria.Cluster >= 0.5)
             reasons.Add("Thuộc nhóm địa danh phù hợp sở thích");
         if (Used(RecommendationScoring.Activity) && place.Criteria.Activity == 1)

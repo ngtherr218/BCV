@@ -1,5 +1,7 @@
 # Bước Chân Việt (*BCV-Web*)
 
+> **Phiên bản local v2 (10/11/2026):** xem [hướng dẫn chạy và kiểm thử local](docs/technical/local_v2_runbook.md). Backend v2 dùng cổng **5082**, database **vietnam_explorer_dev_v2**, web **5173**; database `bcv` được giữ nguyên. Không dùng cấu hình/deploy online ở các mục lịch sử bên dưới cho phiên v2.
+
 Khám phá địa danh Việt Nam bằng bước chân thật: app Android, Backend API, web quản trị và mô hình gợi ý điểm đến.
 
 Người dùng đi bộ ngoài đời thực; app đọc số bước qua Health Connect và quy đổi thành tiến độ của một hành trình ảo tới các địa danh. Hoàn thành hành trình sẽ mở khóa ảnh, câu chuyện, thẻ sưu tập, kèm nhiệm vụ và vật phẩm. Mô hình K-Means phân cụm 311 địa danh theo 35 đặc trưng để gợi ý điểm đến hợp sở thích và mức vận động. Đây là đồ án tốt nghiệp nhóm **ĐAHK1262703**, Khoa Công nghệ Thông tin, Trường Đại học Mở Hà Nội. Thư mục kho mã có tên `BCV-Web`.
@@ -147,7 +149,7 @@ Quản lý người dùng, khu vực, địa danh (kèm bản đồ chọn tọa
 
 | Quy tắc | Giá trị | Nơi mô tả |
 | --- | --- | --- |
-| Quy đổi khoảng cách thành bước | S = max(1, ⌈1000 · D · κ / L⌉), κ = 0,1, L = 0,75 m | [backend/README.md](backend/README.md#quy-đổi-khoảng-cách-thành-số-bước) |
+| Quy đổi khoảng cách thành bước | S = max(1, ⌈1000 · D · κ / L⌉), κ = 1, L = 0,75 m theo code hiện hành | [backend/README.md](backend/README.md#quy-đổi-khoảng-cách-thành-số-bước) |
 | Điểm gợi ý | S = 0,35P + 0,15C + 0,3A + 0,1R + 0,1N, trả tối đa 3 địa danh | [backend/README.md](backend/README.md#gợi-ý-điểm-đến) |
 | Loại địa danh | 12 loại chuẩn, mỗi loại ánh xạ sang nhóm đặc trưng của mô hình | [db/README.md](db/README.md#loại-địa-danh) |
 | Phạm vi điểm xuất phát | Địa danh `ACTIVE` gần nhất trong bán kính 75 km | [android/README.md](android/README.md#luồng-sử-dụng) |

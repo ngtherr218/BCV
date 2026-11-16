@@ -14,7 +14,7 @@
             android:contentDescription="Quay lại bản đồ" android:padding="12dp"
             android:rotation="180" android:src="@drawable/ic_arrow" app:tint="@color/forest" />
         <TextView android:layout_width="match_parent" android:layout_height="match_parent"
-            android:gravity="center" android:text="Gợi ý điểm đến" android:textColor="@color/forest"
+            android:gravity="center" android:text="Khám phá tiếp" android:textColor="@color/forest"
             android:textSize="17sp" android:textStyle="bold" />
     </FrameLayout>
 
@@ -45,9 +45,17 @@
                     android:textSize="15sp" android:textStyle="bold" />
             </LinearLayout>
 
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:layout_marginTop="24dp" android:text="Điểm đến dành cho bạn"
-                android:textColor="#1C3F33" android:textSize="27sp" android:textStyle="bold" />
+            <LinearLayout android:id="@+id/discoveryFilters" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:orientation="vertical"
+                android:layout_marginTop="16dp" />
+
+            <LinearLayout android:id="@+id/resultActions" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:orientation="horizontal"
+                android:gravity="center_vertical" android:layout_marginTop="24dp">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:text="Điểm đến dành cho bạn"
+                    android:textColor="#1C3F33" android:textSize="22sp" android:textStyle="bold" />
+            </LinearLayout>
             <TextView android:id="@+id/subtitle" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:layout_marginTop="6dp"
                 android:textColor="@color/muted" android:textSize="14sp" />
@@ -56,10 +64,14 @@
                 android:layout_height="wrap_content" android:layout_marginTop="18dp"
                 android:orientation="vertical" />
 
+            <LinearLayout android:id="@+id/resultsFooter" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:orientation="vertical"
+                android:gravity="center_horizontal" />
+
             <TextView android:id="@+id/footer" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:layout_marginTop="10dp"
                 android:gravity="center" android:lineSpacingExtra="3dp"
-                android:text="Hoàn thành hành trình để mở khóa ảnh gốc\nvà nội dung địa danh."
+                android:text="Xem trước địa danh bạn yêu thích.\nHoàn thành hành trình để nhận thẻ khám phá."
                 android:textColor="@color/muted" android:textSize="13sp" />
         </LinearLayout>
     </ScrollView>

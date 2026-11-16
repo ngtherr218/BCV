@@ -35,7 +35,7 @@ class CollectionRepositoryImpl(
         val version = generation.get()
         val now = android.os.SystemClock.elapsedRealtime()
         val cached = details[collectionId]?.takeIf { now - it.first < 20_000 }
-        val json = cached?.second ?: remote.get("api/collections/$collectionId", token()).also {
+        val json = cached?.second ?: remote.get(if(collectionId == 0L) "api/collections/all-cards" else "api/collections/$collectionId", token()).also {
             if (generation.get() == version) details[collectionId] = android.os.SystemClock.elapsedRealtime() to it
         }
         val array = json.optJSONArray("cards")

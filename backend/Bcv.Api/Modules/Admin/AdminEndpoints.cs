@@ -29,6 +29,7 @@ public static class AdminEndpoints
         var group = app.MapGroup("/api/admin");
         group.AddEndpointFilter(async (context, next) =>
         {
+            context.HttpContext.Response.Headers.CacheControl = "no-store";
             var services = context.HttpContext.RequestServices;
             var sessions = services.GetRequiredService<ISessionStore>();
             var user = CurrentUser.Get(context.HttpContext.Request, sessions);
@@ -60,6 +61,7 @@ public static class AdminEndpoints
             }
         });
 
+        AdminExploration.Map(group);
         // These internal/offline routes inherit the ACTIVE ADMIN filter above.
         group.MapGet("/recommendations/dataset", (RecommendationAdmin service, CancellationToken ct) => service.Export(ct));
         group.MapPost("/recommendations/models", (ModelImport body, RecommendationAdmin service, CancellationToken ct) => service.Import(body, ct));
@@ -74,8 +76,8 @@ public static class AdminEndpoints
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             { return Results.Json(new { message = "Goong phản hồi quá lâu. Bạn có thể chọn khu vực trong biểu mẫu." }, statusCode: 503); }
         });
-        group.MapGet("/data/{resource}", (string resource, string? q, string? status, long? regionId, long? typeId, int? page, int? pageSize, AdminRepository repo, CancellationToken ct) =>
-            repo.List(resource, q, status, regionId, typeId, page ?? 1, pageSize ?? 12, ct));
+        group.MapGet("/data/{resource}", (string resource, string? q, string? status, string? cycle, long? regionId, long? typeId, int? page, int? pageSize, AdminRepository repo, CancellationToken ct) =>
+            repo.List(resource, q, status, regionId, typeId, page ?? 1, pageSize ?? 12, ct, cycle));
         group.MapGet("/data/{resource}/{id:long}", async (string resource, long id, AdminRepository repo, CancellationToken ct) =>
             await repo.Detail(resource, id, ct) is { } data ? Results.Ok(data) : Results.NotFound(new { message = "Không tìm thấy bản ghi." }));
         group.MapPost("/data/{resource}", (string resource, System.Text.Json.JsonElement body, HttpContext http, AdminRepository repo, CancellationToken ct) =>
@@ -88,7 +90,7 @@ public static class AdminEndpoints
             await repo.Delete(resource, id, ct);
             return Results.NoContent();
         });
-        PlaceVideos.MapEndpoints(group, app);
+
         // ?purpose=place|card picks the storage folder (places/, cards/), never the users' avatars/.
         group.MapPost("/images", async (HttpContext http, string? purpose, IImageStorage storage, CancellationToken ct) =>
         {

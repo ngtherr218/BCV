@@ -9,6 +9,9 @@ public static class JourneyEndpoints
 {
     public static void MapJourneyEndpoints(this WebApplication app)
     {
+        app.MapGet("/api/journeys/{journeyId:long}/completion",(long journeyId,HttpRequest request,ISessionStore sessions,
+            Npgsql.NpgsqlDataSource db,ILoggerFactory logs,CancellationToken ct) =>
+            Run(request,sessions,logs,user=>Bcv.Api.Modules.Journey.Infrastructure.JourneyCompletion.LoadAsync(db,user,journeyId,ct)));
         // Kept under /api/explore: the app's explore screen starts journeys and syncs steps.
         app.MapPost("/api/explore/journeys", (HttpRequest request, CreateJourneyCommand command, ISessionStore sessions,
             JourneyService service, ILoggerFactory logs, CancellationToken ct) =>

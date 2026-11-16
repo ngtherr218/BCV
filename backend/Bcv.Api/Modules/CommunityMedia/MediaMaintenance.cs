@@ -12,7 +12,6 @@ public sealed class MediaMaintenance(NpgsqlDataSource db,ILogger<MediaMaintenanc
               WHERE status='REJECTED' AND delete_after<=CURRENT_TIMESTAMP AND media_data IS NOT NULL;
             UPDATE community_media SET status='EXPIRED',media_data=NULL,file_deleted_at=CURRENT_TIMESTAMP
               WHERE status='PENDING' AND created_at<CURRENT_TIMESTAMP-INTERVAL '30 days';
-            DELETE FROM place_video WHERE place_id IS NULL AND created_at<CURRENT_TIMESTAMP-INTERVAL '24 hours';
             """,conn,tx);
         await cmd.ExecuteNonQueryAsync(ct);await tx.CommitAsync(ct);
     }

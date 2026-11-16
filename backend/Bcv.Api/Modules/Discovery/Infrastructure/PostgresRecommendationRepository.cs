@@ -66,8 +66,13 @@ public sealed class PostgresRecommendationRepository(NpgsqlDataSource db) : IRec
             while (await reader.ReadAsync(ct))
             {
                 activityLevel = reader.GetString(0);
-                if (!reader.IsDBNull(1) && config.Settings!.InterestFeatures.TryGetValue(reader.GetInt64(1), out var codes))
-                    preferences.Add(new PreferenceGroup(reader.GetString(2), codes.ToHashSet()));
+                if (!reader.IsDBNull(1))
+                {
+                    var interestId = reader.GetInt64(1);
+                    var codes = Bcv.Api.Modules.Account.Application.InterestCatalog.Features.GetValueOrDefault(interestId)
+                        ?? config.Settings!.InterestFeatures.GetValueOrDefault(interestId);
+                    if (codes is not null) preferences.Add(new PreferenceGroup(reader.GetString(2), codes.ToHashSet()));
+                }
             }
         }
 

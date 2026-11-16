@@ -9,6 +9,9 @@ class CardInbox(context: Context, session: SessionPreferences = SessionPreferenc
     private val preferences = context.applicationContext.getSharedPreferences(namespace, Context.MODE_PRIVATE)
     private val account = MessageDigest.getInstance("SHA-256")
         .digest(session.token.orEmpty().toByteArray()).joinToString("") { "%02x".format(it) }
+    private val presentationAccount = MessageDigest.getInstance("SHA-256")
+        .digest((com.project.bcv.BuildConfig.API_BASE_URL + "|" +
+            (session.userId?.toString() ?: session.token.orEmpty())).toByteArray()).joinToString("") { "%02x".format(it) }
 
     fun recordJourney(journeyId: Long, placeId: Long): Boolean = synchronized(lock) {
         if (preferences.getBoolean("$account:journey:$journeyId", false)) return false
@@ -34,8 +37,13 @@ class CardInbox(context: Context, session: SessionPreferences = SessionPreferenc
         preferences.edit().putBoolean("$account:seen:$cardId", true)
             .putStringSet("$account:places", places).apply()
     }
-    fun dialogShown(journeyId: Long) = preferences.getBoolean("$account:dialog:$journeyId", false)
-    fun markDialogShown(journeyId: Long) { preferences.edit().putBoolean("$account:dialog:$journeyId", true).apply() }
+    fun dialogShown(journeyId: Long):Boolean {
+        val stable=preferences.getBoolean("$presentationAccount:completion:$journeyId",false)
+        val legacy=preferences.getBoolean("$account:dialog:$journeyId",false)
+        if(legacy && !stable)markDialogShown(journeyId)
+        return stable || legacy
+    }
+    fun markDialogShown(journeyId: Long) { preferences.edit().putBoolean("$presentationAccount:completion:$journeyId", true).apply() }
 
     private companion object { val lock = Any() }
 }

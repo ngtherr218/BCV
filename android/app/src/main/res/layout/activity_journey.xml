@@ -446,6 +446,29 @@
                             android:text="Vị trí ảo chỉ đổi khi hoàn thành." />
 
                         <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="14dp"
+                            android:text="Mảnh ảnh hành trình"
+                            android:textColor="@color/forest"
+                            android:textStyle="bold" />
+
+                        <com.project.bcv.feature.journey.presentation.JourneyMilestoneImage
+                            android:id="@+id/milestoneImage"
+                            android:layout_width="match_parent"
+                            android:layout_height="180dp"
+                            android:layout_marginTop="8dp"
+                            android:importantForAccessibility="yes" />
+
+                        <TextView
+                            android:id="@+id/milestoneImageStatus"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Đang tải ảnh địa danh…"
+                            android:textColor="@color/forest"
+                            android:accessibilityLiveRegion="polite" />
+
+                        <TextView
                             android:id="@+id/noteContent"
                             style="@style/JourneyNote"
                             android:layout_marginTop="10dp"

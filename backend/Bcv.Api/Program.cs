@@ -33,6 +33,7 @@ var connectionString = builder.Configuration.GetConnectionString("Bcv")
 
 builder.Services.AddSingleton(NpgsqlDataSource.Create(connectionString));
 builder.Services.AddScoped<AdminRepository>();
+builder.Services.AddScoped<AdminExploration>();
 builder.Services.AddScoped<RecommendationAdmin>();
 builder.Services.AddHttpClient<GoongGeocoder>(client => client.Timeout = TimeSpan.FromSeconds(10))
     .RemoveAllLoggers();
@@ -66,15 +67,18 @@ builder.Services.AddScoped<IProfileRepository, PostgresProfileRepository>();
 builder.Services.AddScoped<ProfileService>();
 builder.Services.AddScoped<IExploreRepository, PostgresExploreRepository>();
 builder.Services.AddScoped<ExploreService>();
+builder.Services.AddScoped<PlaceSearchRepository>();
 builder.Services.AddScoped<IRecommendationRepository, PostgresRecommendationRepository>();
 builder.Services.AddScoped<RecommendationService>();
 builder.Services.AddScoped<IJourneyRepository, PostgresJourneyRepository>();
 builder.Services.AddScoped<JourneyService>();
 builder.Services.AddScoped<CollectionRepository>();
+builder.Services.AddScoped<PassportRepository>();
 builder.Services.AddScoped<QuestRepository>();
 builder.Services.AddScoped<InventoryRepository>();
 builder.Services.AddScoped<ItemUseRepository>();
 builder.Services.AddScoped<StatisticsRepository>();
+builder.Services.AddScoped<LeaderboardRepository>();
 builder.Services.AddScoped<NotificationRepository>();
 // Avatars, place photos and card art go to Cloudflare R2 (one folder per purpose, see ImageFolder) when
 // R2__* is set (see run-local.ps1); otherwise they stay inline in the database.
@@ -90,7 +94,8 @@ else
     builder.Services.AddSingleton<IImageStorage, InlineImageStorage>();
 }
 
-builder.Services.AddHostedService<Bcv.Api.Modules.CommunityMedia.MediaMaintenance>();
+if (builder.Configuration.GetValue("Media:MaintenanceEnabled", true))
+    builder.Services.AddHostedService<Bcv.Api.Modules.CommunityMedia.MediaMaintenance>();
 var app = builder.Build();
 app.UseDefaultFiles();
 app.UseStaticFiles();
@@ -126,8 +131,11 @@ app.MapGet("/health", async (NpgsqlDataSource db, CancellationToken cancellation
 {
     try
     {
-        await using var command = db.CreateCommand("SELECT 1");
-        await command.ExecuteScalarAsync(cancellationToken);
+        await using var command = db.CreateCommand("SELECT current_database()");
+        var database = await command.ExecuteScalarAsync(cancellationToken);
+        // Local QA verifies the actual API connection before registering fixtures or changing data.
+        // Production health retains its existing response and does not disclose deployment metadata.
+        if (app.Environment.IsDevelopment()) return Results.Ok(new { status = "ok", database });
         return Results.Ok(new { status = "ok" });
     }
     catch
@@ -151,10 +159,17 @@ app.MapItemUseEndpoints();
 app.MapStatsNotifyEndpoints();
 app.MapAdminEndpoints();
 Bcv.Api.Modules.CommunityMedia.CommunityMediaEndpoints.MapCommunityMedia(app);
+if (builder.Configuration.GetValue("Database:ApplyStartupMigrations", true))
+{
 await AccountSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
 await Bcv.Api.Modules.PlaceCollection.Infrastructure.CollectionSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
 await Bcv.Api.Modules.StatsNotify.Infrastructure.NotificationSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
 await RecommendationSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
 await Bcv.Api.Modules.CommunityMedia.CommunityMediaEndpoints.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
 await Bcv.Api.Modules.Admin.PlaceTypeFeatureSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
+}
+else
+{
+    app.Logger.LogWarning("Automatic schema migrations are disabled. Apply only explicitly approved migrations before using schema-dependent features.");
+}
 app.Run();

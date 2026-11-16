@@ -2,8 +2,6 @@ package com.project.bcv.feature.discovery.presentation
 
 import android.app.Activity
 import android.graphics.Bitmap
-import android.graphics.RenderEffect
-import android.graphics.Shader
 import android.graphics.drawable.GradientDrawable
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -34,7 +32,6 @@ import com.project.bcv.feature.discovery.domain.ExplorePlaceDetail
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
-import kotlin.math.max
 
 class PlaceDetailActivity : AppCompatActivity() {
     private lateinit var binding: ActivityPlaceDetailBinding
@@ -170,6 +167,11 @@ class PlaceDetailActivity : AppCompatActivity() {
     }
 
     private fun showPlace(place: ExplorePlaceDetail) = with(binding) {
+        photoCredits.visibility=if((place.imageUrl!=null || place.imageUrls.isNotEmpty()) && place.imageCredits.isNotEmpty()) View.VISIBLE else View.GONE
+        photoCredits.text=android.text.Html.fromHtml(place.imageCredits.distinct().joinToString("<br>") { credit ->
+            "Ảnh: ${android.text.TextUtils.htmlEncode(credit.author)} · <a href=\"${android.text.TextUtils.htmlEncode(credit.licenseUrl)}\">${android.text.TextUtils.htmlEncode(credit.license)}</a> · <a href=\"${android.text.TextUtils.htmlEncode(credit.sourceUrl)}\">Nguồn</a> (ảnh thu nhỏ)"
+        },android.text.Html.FROM_HTML_MODE_LEGACY)
+        photoCredits.movementMethod=android.text.method.LinkMovementMethod.getInstance()
         // A discovered place opens its content page; a locked one stays the destination picker.
         lockedContent.visibility = if (place.isDiscovered) View.GONE else View.VISIBLE
         unlockedContent.visibility = if (place.isDiscovered) View.VISIBLE else View.GONE
@@ -204,11 +206,14 @@ class PlaceDetailActivity : AppCompatActivity() {
             ratingText(place),
             place.regionName?.takeIf(String::isNotBlank)?.let { "Khu vực: $it" },
             place.placeType.takeIf(String::isNotBlank)?.let { "Loại địa danh: $it" },
-            "Giới thiệu\n${place.introduction ?: "Chưa có dữ liệu giới thiệu."}")
+            place.estimatedDays?.let { "Ước tính: $it ngày · ${place.dailyStepTarget ?: 0} bước/ngày" },
+            place.relativeDifficulty?.let { "Độ khó: ${when(it) { "EASY" -> "Nhẹ nhàng"; "MODERATE" -> "Vừa sức"; else -> "Thử thách" }}" },
+            if(place.latitude != null && place.longitude != null) "Vị trí: ${place.latitude}, ${place.longitude}" else null,
+            "Giới thiệu\n${place.introduction ?: "Chưa có dữ liệu giới thiệu."}",
+            place.highlights?.takeIf(String::isNotBlank)?.let { "Điểm nổi bật\n$it" })
             .filter(String::isNotBlank).joinToString("\n\n")
         if (Build.VERSION.SDK_INT >= 31) {
-            placeImage.setRenderEffect(if (place.isDiscovered) null else
-                RenderEffect.createBlurEffect(12f, 12f, Shader.TileMode.CLAMP))
+            placeImage.setRenderEffect(null)
         }
         if (place.imageUrl != shownImageUrl) {
             shownImageUrl = place.imageUrl
@@ -218,15 +223,6 @@ class PlaceDetailActivity : AppCompatActivity() {
     }
 
     private fun showUnlocked(place: ExplorePlaceDetail) = with(binding) {
-        officialVideos.removeAllViews()
-        officialVideos.visibility = if (place.videos.isEmpty()) View.GONE else View.VISIBLE
-        place.videos.forEachIndexed { index, video ->
-            officialVideos.addView(android.widget.Button(this@PlaceDetailActivity).apply {
-                text = "▶ Video địa danh " + (index + 1) + " · " + video.durationSeconds.toInt() + " giây"
-                setOnClickListener { startActivity(android.content.Intent(this@PlaceDetailActivity, PlaceVideoActivity::class.java)
-                    .putExtra("place_id", place.id).putExtra("video_id", video.id)) }
-            })
-        }
         unlockedName.text = place.name
         regionText.text = place.regionName
         regionText.visibility = if (place.regionName.isNullOrBlank()) View.GONE else View.VISIBLE
@@ -331,15 +327,7 @@ class PlaceDetailActivity : AppCompatActivity() {
     }
 
     private fun showHeroBitmap(bitmap: Bitmap) {
-        val displayed = if (Build.VERSION.SDK_INT < 31 && model.state.value?.place?.isDiscovered == false)
-            blurFallback(bitmap) else bitmap
-        binding.placeImage.setImageBitmap(displayed)
-    }
-
-    private fun blurFallback(source: Bitmap): Bitmap {
-        val small = Bitmap.createScaledBitmap(source,
-            max(1, source.width / 16), max(1, source.height / 16), true)
-        return Bitmap.createScaledBitmap(small, source.width, source.height, true)
+        binding.placeImage.setImageBitmap(bitmap)
     }
 
     companion object {

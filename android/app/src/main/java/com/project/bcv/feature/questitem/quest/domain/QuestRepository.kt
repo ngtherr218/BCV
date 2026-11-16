@@ -11,7 +11,9 @@ data class Quest(
     val rewardReceived: Boolean,
     val rewardName: String?,
     val rewardType: String?,
-    val rewardQuantity: Int?
+    val rewardQuantity: Int?,
+    val rankingPoints: Int = 0,
+    val awardedRankingPoints: Int = 0
 )
 
 data class QuestOverview(val updatedAtMillis: Long, val daily: List<Quest>, val weekly: List<Quest>)

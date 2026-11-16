@@ -10,6 +10,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
@@ -17,6 +19,11 @@ import java.security.MessageDigest
 
 /** Public HTTPS/data images can be cached; authenticated content is always revalidated. */
 object RemoteImages {
+    @Volatile private var disk: PublicImageDiskCache? = null
+    private val publicLocks = Array(64) { Mutex() }
+    fun initialize(context: android.content.Context) {
+        disk = PublicImageDiskCache(java.io.File(context.applicationContext.cacheDir, "public-images-v1"))
+    }
     private const val MAX_IMAGE_BYTES = 16 * 1024 * 1024
     private val dataHeader = Regex("data:image/(jpeg|png|webp);base64,")
     private val downloads = Semaphore(4)
@@ -41,7 +48,18 @@ object RemoteImages {
         val bitmap = withContext(Dispatchers.IO) {
             try {
                 if (url.startsWith("data:")) decodeDataImage(url, sample)
-                else downloads.withPermit { decode(download(url), sample) }
+                else publicLocks[(url.hashCode() and Int.MAX_VALUE) % publicLocks.size].withLock {
+                    cached(url, sample)?.let { return@withLock it }
+                    val stored = disk?.read(url)
+                    val bytes = stored ?: downloads.withPermit { download(url) }
+                    val decoded = decode(bytes, sample)
+                    if(decoded != null) {
+                        // Only successfully decoded public content is persisted; no token or private URL.
+                        if(stored == null) disk?.write(url, bytes)
+                        cache.put(cacheKey(url, sample), decoded)
+                    }
+                    decoded
+                }
             } catch (error: CancellationException) { throw error }
             catch (_: Exception) { null }
         }
