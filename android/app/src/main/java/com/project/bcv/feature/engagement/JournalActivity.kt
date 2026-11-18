@@ -1,5 +1,6 @@
 package com.project.bcv.feature.engagement
 
+import com.project.bcv.feature.engagement.EngagementUi.leadingIcon
 import android.content.Intent
 import android.graphics.Typeface
 import android.os.Bundle
@@ -69,17 +70,29 @@ class JournalActivity : AppCompatActivity() {
         }
     }
 
-    private fun render(items: JSONArray) {
+    /** A page counts as written once it has a note or at least one photo. */
+    private fun written(item: JSONObject) = item.optString("note").isNotBlank() || item.optInt("photoCount") > 0
+
+    private fun render(items: JSONArray, force: Boolean = false) {
         val json = items.toString()
-        if (json == shown) return
+        if (json == shown && !force) return
         shown = json
         body.removeAllViews()
-        body.full(intro(items), 4)
-        if (items.length() == 0) return
+        // The intro only explains an empty journal; once pages exist the filter's counts say it all.
+        if (items.length() == 0) { body.full(intro(items), 4); return }
+
+        val all = (0 until items.length()).map(items::getJSONObject)
+        val todo = all.count { !written(it) }
+        body.full(filterBar(all.size, todo, all.size - todo) { filter = it; render(items, force = true) }, 4)
+        val visible = all.filter { when (filter) { FILTER_TODO -> !written(it); FILTER_DONE -> written(it); else -> true } }
+        if (visible.isEmpty()) {
+            body.full(text(if (filter == FILTER_TODO) "Tuyệt! Trang nào cũng đã có kỷ niệm của bạn." else "Chưa có trang nào được ghi.",
+                15f, MUTED).apply { gravity = Gravity.CENTER; setPadding(0, dp(28), 0, dp(28)) })
+            return
+        }
 
         var month = ""
-        for (i in 0 until items.length()) {
-            val item = items.getJSONObject(i)
+        for (item in visible) {
             val date = LocalDateTime.parse(item.getString("discoveredAt").take(19))
             val label = "THÁNG ${date.monthValue}/${date.year}"
             if (label != month) {
@@ -95,25 +108,49 @@ class JournalActivity : AppCompatActivity() {
         orientation = LinearLayout.VERTICAL
         background = rounded(GOLD_SOFT, 20, null, context)
         setPadding(dp(16), dp(14), dp(16), dp(14))
-        addView(text("📖  Nhật ký hành trình", 17f, FOREST, true))
+        addView(text("Nhật ký hành trình", 17f, FOREST, true).leadingIcon(com.project.bcv.R.drawable.ic_m3_menu_book, FOREST, 20, 8))
         // The explanation is for newcomers; once pages exist a one-line summary is enough.
         if (items.length() == 0) addView(text("Mỗi nơi bạn đến tận nơi (check-in) là một trang riêng. Ghi lại cảm nhận, thêm ảnh " +
             "của bạn để xem lại sau hoặc tạo thẻ chia sẻ. Chỉ mình bạn xem được.", 13f, 0xFF7A6234.toInt()).apply {
             setPadding(0, dp(4), 0, 0); setLineSpacing(dp(2).toFloat(), 1f) })
         if (items.length() > 0) {
-            val written = (0 until items.length()).count { items.getJSONObject(it).optString("note").isNotBlank() }
-            val photos = (0 until items.length()).sumOf { items.getJSONObject(it).optInt("photoCount") }
-            addView(text("${items.length()} trang · $written đã viết · $photos ảnh · chỉ mình bạn xem", 12f, GOLD, true).apply { setPadding(0, dp(4), 0, 0) })
+            val todo = (0 until items.length()).count { !written(items.getJSONObject(it)) }
+            addView(text(if (todo == 0) "${items.length()} trang, trang nào cũng đã có kỷ niệm · chỉ mình bạn xem"
+                else "${items.length()} trang · còn $todo trang chưa ghi · chỉ mình bạn xem", 12f, GOLD, true).apply { setPadding(0, dp(4), 0, 0) })
         } else {
             addView(text("Khi đứng tại một địa danh ngoài đời, bấm Check-in ở trang địa danh để mở trang nhật ký đầu tiên.", 13f, MUTED).apply {
                 setPadding(0, dp(8), 0, 0) })
         }
     }
 
+    /** Tất cả / Chưa ghi / Đã ghi: the "Chưa ghi" chip is orange so pages still waiting stand out. */
+    private fun filterBar(total: Int, todo: Int, done: Int, onPick: (Int) -> Unit) = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        listOf(Triple(FILTER_ALL, "Tất cả", total), Triple(FILTER_TODO, "Chưa ghi", todo), Triple(FILTER_DONE, "Đã ghi", done))
+            .forEachIndexed { i, (key, label, count) ->
+                val on = filter == key
+                val accent = if (key == FILTER_TODO) TODO_ORANGE else TEAL
+                addView(text("$label  $count", 13f, if (on) 0xFFFFFFFF.toInt() else accent, true).apply {
+                    gravity = Gravity.CENTER
+                    background = rounded(if (on) accent else 0xFFFFFFFF.toInt(), 18, if (on) null else LINE, context)
+                    setPadding(dp(14), dp(8), dp(14), dp(8))
+                    isClickable = true
+                    contentDescription = "$label, $count trang" + if (on) ", đang chọn" else ""
+                    setOnClickListener { if (!on) onPick(key) }
+                }, LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) marginStart = dp(8) })
+            }
+    }
+
     /** One page: cover photo, place and date, the first lines of the note (or an invitation to write). */
     private fun entryCard(item: JSONObject, date: LocalDateTime): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        background = rounded(0xFFFFFFFF.toInt(), 20, LINE, context)
+        val done = written(item)
+        // Written: a solid white page. Still empty: a dashed orange outline, like a page waiting to be filled.
+        background = if (done) rounded(0xFFFFFFFF.toInt(), 20, LINE, context)
+            else android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFFFFFCF6.toInt()); cornerRadius = dp(20).toFloat()
+                setStroke(dp(2), 0xFFF0C08A.toInt(), dp(7).toFloat(), dp(5).toFloat())
+            }
         clipToOutline = true
         isClickable = true
 
@@ -130,16 +167,26 @@ class JournalActivity : AppCompatActivity() {
         cover.addView(text("%02d/%02d".format(date.dayOfMonth, date.monthValue), 12f, FOREST, true).apply {
             background = rounded(0xF2FFFFFF.toInt(), 12, null, context); setPadding(dp(9), dp(4), dp(9), dp(4))
         }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { setMargins(dp(12), dp(12), 0, 0) })
-        if (item.optInt("photoCount") > 0) cover.addView(text("📷 ${item.getInt("photoCount")}", 12f, 0xFFFFFFFF.toInt(), true).apply {
-            background = rounded(0x80000000.toInt(), 12, null, context); setPadding(dp(9), dp(4), dp(9), dp(4))
+        // Status, top right: green "Đã ghi" (with the photo count) or orange "Chưa ghi".
+        val photoCount = item.optInt("photoCount")
+        val status = if (done) "Đã ghi" + (if (photoCount > 0) " · $photoCount ảnh" else "") else "Chưa ghi"
+        cover.addView(text(status, 12f, 0xFFFFFFFF.toInt(), true).apply {
+            leadingIcon(if (done) com.project.bcv.R.drawable.ic_m3_check else com.project.bcv.R.drawable.ic_m3_edit, 0xFFFFFFFF.toInt(), 13, 4)
+            background = rounded(if (done) TEAL else TODO_ORANGE, 12, null, context); setPadding(dp(10), dp(4), dp(10), dp(4))
         }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply { setMargins(0, dp(12), dp(12), 0) })
+        if (!done) {
+            // Not yet written: a quieter, desaturated cover so the written pages read as the "full" ones.
+            image.colorFilter = android.graphics.ColorMatrixColorFilter(android.graphics.ColorMatrix().apply { setSaturation(0.25f) })
+            image.alpha = 0.75f
+        }
         addView(cover, LinearLayout.LayoutParams(-1, dp(128)))
-        // Own photo first; otherwise the place's official image; the book icon only as a last resort.
+        // Same rule as the page's banner: the place's own image, so a cover never changes with your photos;
+        // your first photo only for a place without one; the book icon as a last resort.
         lifecycleScope.launch {
-            val own = item.optString("coverUrl").takeIf { it.isNotBlank() && it != "null" }?.let { url ->
+            val place = api.placeImage(item.optString("placeImageUrl"), 2)
+            (place ?: item.optString("coverUrl").takeIf { it.isNotBlank() && it != "null" }?.let { url ->
                 RemoteImages.loadAuthenticated(BuildConfig.API_BASE_URL, url, api.photoToken(), 2)
-            }
-            (own ?: api.placeImage(item.optString("placeImageUrl"), 2))?.let {
+            })?.let {
                 image.imageTintList = null; image.setPadding(0, 0, 0, 0)
                 image.scaleType = ImageView.ScaleType.CENTER_CROP; image.setImageBitmap(it)
             }
@@ -152,14 +199,26 @@ class JournalActivity : AppCompatActivity() {
         texts.addView(title)
         texts.addView(text(item.getString("regionName"), 12f, MUTED).apply { setPadding(0, dp(2), 0, 0) })
         val note = item.optString("note")
-        texts.addView(if (note.isNotBlank())
-            text("“${note.trim()}”", 15f, 0xFF4F6559.toInt()).apply {
-                setTypeface(Typeface.SERIF, Typeface.ITALIC); maxLines = 3; ellipsize = TextUtils.TruncateAt.END
-                setLineSpacing(dp(2).toFloat(), 1f); setPadding(0, dp(10), 0, 0) }
-        else text("✎  Chưa viết gì — chạm để ghi lại kỷ niệm", 13f, TEAL, true).apply { setPadding(0, dp(10), 0, 0) })
+        when {
+            // The note as a quoted strip of paper with a gold margin line.
+            note.isNotBlank() -> texts.addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(android.view.View(context).apply { background = rounded(GOLD, 2, null, context) },
+                    LinearLayout.LayoutParams(dp(3), -1))
+                addView(text("“${note.trim()}”", 15f, 0xFF4F6559.toInt()).apply {
+                    setTypeface(Typeface.SERIF, Typeface.ITALIC); maxLines = 3; ellipsize = TextUtils.TruncateAt.END
+                    setLineSpacing(dp(2).toFloat(), 1f); setPadding(dp(12), dp(2), 0, dp(2))
+                }, LinearLayout.LayoutParams(0, -2, 1f))
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+            done -> texts.addView(text("Có $photoCount ảnh · chưa viết cảm nhận", 13f, MUTED).apply { setPadding(0, dp(10), 0, 0) })
+            else -> texts.addView(text("Ghi lại kỷ niệm", 14f, TODO_ORANGE, true).leadingIcon(com.project.bcv.R.drawable.ic_m3_edit, TODO_ORANGE, 17).apply {
+                gravity = Gravity.CENTER
+                background = rounded(0xFFFCEEDD.toInt(), 14, null, context); setPadding(dp(14), dp(9), dp(14), dp(9))
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+        }
         addView(texts)
 
-        contentDescription = "${item.getString("name")}, ${if (note.isNotBlank()) "đã viết" else "chưa viết"}"
+        contentDescription = "${item.getString("name")}, ${if (done) "đã ghi" else "chưa ghi"}"
         setOnClickListener {
             startActivity(Intent(this@JournalActivity, JournalEntryActivity::class.java)
                 .putExtra(JournalEntryActivity.EXTRA_PLACE_ID, item.getLong("placeId"))
@@ -169,5 +228,10 @@ class JournalActivity : AppCompatActivity() {
 
     companion object {
         private var cached: JSONArray? = null
+        private var filter = 0
+        private const val FILTER_ALL = 0
+        private const val FILTER_TODO = 1
+        private const val FILTER_DONE = 2
+        private const val TODO_ORANGE = 0xFFD9822B.toInt()
     }
 }

@@ -45,12 +45,21 @@ class PlaceDetailActivity : AppCompatActivity() {
     private var shownError: String? = null
     private var renderedPlaceId: Long? = null
     private val bitmaps = mutableMapOf<String, Bitmap>()
-    private var galleryUrls = emptyList<String>()
+    /** Top gallery: the place's photos, then its videos (unlocked only), shown together. */
+    private sealed class Media {
+        data class Photo(val url: String) : Media()
+        data class Clip(val video: com.project.bcv.feature.discovery.domain.PlaceVideo) : Media()
+    }
+    private var galleryItems = emptyList<Media>()
     private var galleryIndex = 0
+    /** Play button and length over the hero while a video is selected. */
+    private var heroPlay: View? = null
     private var preparingPlaceId: Long? = null
     /** Place whose journal page exists (it has a real check-in), and the place last asked about. */
     private var journalOpen: Long? = null
     private var journalChecked: Long? = null
+    /** Debug-only "🧪" button; shown with Check-in, i.e. only at the journey's destination. */
+    private var testCheckinButton: View? = null
     override fun onResume() {
         super.onResume()
     }
@@ -61,7 +70,7 @@ class PlaceDetailActivity : AppCompatActivity() {
         else Snackbar.make(binding.root, "Cần quyền vị trí để xác nhận bạn đang ở địa danh.", Snackbar.LENGTH_LONG).show()
     }
 
-    /** F77: being physically at the place (≤ 300 m, checked by the server) unlocks it with a real-visit stamp. */
+    /** F77: being physically at the place (≤ 750 m, checked by the server) unlocks it with a real-visit stamp. */
     private fun checkIn() {
         val placeId = intent.getLongExtra(EXTRA_PLACE_ID, 0L)
         val fine = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) ==
@@ -79,19 +88,18 @@ class PlaceDetailActivity : AppCompatActivity() {
             if (coordinates == null) {
                 binding.checkinButton.isEnabled = true
                 binding.checkinButton.text = "Check-in"
-                Snackbar.make(binding.root, "Chưa lấy được vị trí. Hãy bật GPS và thử lại ngoài trời.", Snackbar.LENGTH_LONG).show()
+                com.project.bcv.feature.engagement.CheckinSuccessDialog.showFailure(this@PlaceDetailActivity, "NO_LOCATION",
+                    "Chưa lấy được vị trí của bạn. Hãy bật GPS và thử lại ở nơi thoáng.") { checkIn() }
                 return@findCurrent
             }
             lifecycleScope.launch {
-                val message = runCatching {
+                val result = runCatching {
                     com.project.bcv.feature.engagement.EngagementApi(this@PlaceDetailActivity)
                         .checkIn(placeId, coordinates.latitude, coordinates.longitude)
-                }.fold({ it }, { it.message ?: "Không check-in được." })
+                }
                 binding.checkinButton.isEnabled = true
                 binding.checkinButton.text = "Check-in"
-                Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG).show()
-                journalChecked = null
-                model.load(placeId)
+                checkedIn(placeId, result, test = false)
             }
         }
     }
@@ -101,13 +109,31 @@ class PlaceDetailActivity : AppCompatActivity() {
         val placeId = intent.getLongExtra(EXTRA_PLACE_ID, 0L)
         binding.checkinButton.isEnabled = false
         lifecycleScope.launch {
-            val message = runCatching {
+            val result = runCatching {
                 com.project.bcv.feature.engagement.EngagementApi(this@PlaceDetailActivity).checkIn(placeId, 0.0, 0.0, test = true)
-            }.fold({ "[Thử] $it" }, { it.message ?: "Không check-in thử được." })
+            }
             binding.checkinButton.isEnabled = true
-            Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG).show()
-            journalChecked = null
-            model.load(placeId)
+            checkedIn(placeId, result, test = true)
+        }
+    }
+
+    /** New check-in → celebration dialog; already today or failed → a short snackbar. */
+    private fun checkedIn(placeId: Long, result: Result<org.json.JSONObject>, test: Boolean) {
+        val body = result.getOrElse {
+            if (!isFinishing && !isDestroyed) com.project.bcv.feature.engagement.CheckinSuccessDialog.showFailure(this,
+                (it as? com.project.bcv.core.network.ApiFailure)?.code ?: if (it is java.io.IOException) "NETWORK_ERROR" else null,
+                if (it is java.io.IOException) "Không kết nối được tới máy chủ." else it.message) { if (test) testCheckIn() else checkIn() }
+            return
+        }
+        journalChecked = null
+        model.refresh(placeId)
+        if (body.optBoolean("alreadyToday")) {
+            Snackbar.make(binding.root, body.optString("message", "Hôm nay bạn đã check-in ở đây."), Snackbar.LENGTH_LONG).show()
+            return
+        }
+        if (isFinishing || isDestroyed) return
+        com.project.bcv.feature.engagement.CheckinSuccessDialog.show(this, body, test) {
+            binding.communityMediaButton.performClick()
         }
     }
 
@@ -144,8 +170,9 @@ class PlaceDetailActivity : AppCompatActivity() {
         // Test builds: a small "🧪" button checks in as if standing at the place (no GPS needed).
         if (BuildConfig.STEP_TEST_ENABLED) binding.bottomBar.addView(
             com.google.android.material.button.MaterialButton(this, null,
-                com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-                text = "🧪"; textSize = 17f; minWidth = 0; minimumWidth = 0
+                com.google.android.material.R.attr.materialButtonOutlinedStyle).also { testCheckinButton = it }.apply {
+                visibility = View.GONE
+                text = ""; setIconResource(com.project.bcv.R.drawable.ic_m3_science); iconGravity = com.google.android.material.button.MaterialButton.ICON_GRAVITY_TEXT_START; iconPadding = 0; minWidth = 0; minimumWidth = 0
                 setPadding(0, 0, 0, 0); cornerRadius = (16 * resources.displayMetrics.density).toInt()
                 contentDescription = "Check-in thử (chỉ bản thử nghiệm)"
                 androidx.appcompat.widget.TooltipCompat.setTooltipText(this, "Check-in thử")
@@ -174,7 +201,14 @@ class PlaceDetailActivity : AppCompatActivity() {
                     showLoading(state.error, state.unavailable)
                     if (state.unavailable) setResult(RESULT_PLACE_UNAVAILABLE)
                 }
-                renderedPlaceId == place.id -> showPlace(place)
+                renderedPlaceId == place.id -> {
+                    // Already drawn once: make sure no placeholder is left over it.
+                    if (binding.loadingContent.visibility == View.VISIBLE) {
+                        Skeleton.hide(binding.loadingSkeleton)
+                        binding.loadingContent.visibility = View.GONE
+                    }
+                    showPlace(place)
+                }
                 else -> prepare(place)
             }
             // A failed first load is shown in the loading block; later errors (e.g. saving) use a snackbar.
@@ -273,7 +307,10 @@ class PlaceDetailActivity : AppCompatActivity() {
         statusText.setTextColor(ContextCompat.getColor(this@PlaceDetailActivity, if (discovered) R.color.teal else R.color.forest))
 
         // At a glance.
-        ratingValue.text = place.rating?.takeIf { (place.ratingCount ?: 0) > 0 }?.let { "★ " + String.format(Locale.forLanguageTag("vi-VN"), "%.1f", it) } ?: "★ —"
+        ratingValue.text = place.rating?.takeIf { (place.ratingCount ?: 0) > 0 }?.let { String.format(Locale.forLanguageTag("vi-VN"), "%.1f", it) } ?: "—"
+        ratingValue.compoundDrawablePadding = (4 * resources.displayMetrics.density).toInt()
+        ratingValue.setCompoundDrawablesRelative(ContextCompat.getDrawable(this@PlaceDetailActivity, R.drawable.ic_m3_star)!!.mutate().apply {
+            setTint(0xFFC9962B.toInt()); val s = (20 * resources.displayMetrics.density).toInt(); setBounds(0, 0, s, s) }, null, null, null)
         ratingLabel.text = place.ratingCount?.takeIf { it > 0 }?.let { "${number.format(it)} đánh giá" } ?: "Chưa có đánh giá"
         distanceText.text = if (place.distanceKm < 1) "${(place.distanceKm * 1000).toInt()} m"
             else String.format(Locale.forLanguageTag("vi-VN"), "%.1f km", place.distanceKm)
@@ -282,8 +319,11 @@ class PlaceDetailActivity : AppCompatActivity() {
 
         // Locked: what the walk unlocks.
         unlockCard.visibility = if (discovered) View.GONE else View.VISIBLE
-        unlockHint.text = if (place.distanceKm <= 0.001) "Bạn đang ở đây — check-in để mở khóa ngay."
-            else "Khoảng ${number.format(place.requiredSteps)} bước từ vị trí của bạn, hoặc check-in khi đến nơi."
+        unlockHint.text = when {
+            place.isJourneyDestination -> "Điểm đến của hành trình bạn đang đi. Đi đủ bước để mở khóa, hoặc check-in khi đến nơi thật."
+            place.distanceKm <= 0.001 -> "Vị trí ảo của bạn đang ở đây. Đến nơi thật thì check-in để đóng dấu hộ chiếu."
+            else -> "Khoảng ${number.format(place.requiredSteps)} bước từ vị trí của bạn. Chọn làm điểm đến để bắt đầu hành trình."
+        }
 
         storyText.text = place.introduction ?: "Nội dung về địa danh này đang được cập nhật."
         val fact = place.highlights?.removePrefix("Bạn có biết?")?.trim()
@@ -292,20 +332,12 @@ class PlaceDetailActivity : AppCompatActivity() {
         factCard.visibility = if (fact.isNullOrEmpty()) View.GONE else View.VISIBLE
         factText.text = fact
 
-        officialVideos.removeAllViews()
-        officialVideos.visibility = if (discovered && place.videos.isNotEmpty()) View.VISIBLE else View.GONE
-        if (discovered) place.videos.forEachIndexed { index, video ->
-            officialVideos.addView(com.google.android.material.button.MaterialButton(this@PlaceDetailActivity, null,
-                com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-                text = "▶  Video ${index + 1} · ${video.durationSeconds.toInt()} giây"
-                isAllCaps = false; cornerRadius = (14 * resources.displayMetrics.density).toInt()
-                setTextColor(ContextCompat.getColor(context, R.color.teal))
-                setOnClickListener { startActivity(android.content.Intent(this@PlaceDetailActivity, PlaceVideoActivity::class.java)
-                    .putExtra("place_id", place.id).putExtra("video_id", video.id)) }
-            })
-        }
+        showVideos(place)
 
-        // Bottom bar: check-in always; journal once discovered, otherwise pick as destination.
+        // Check-in only at the journey's destination or where the virtual location stands (the server enforces the same).
+        checkinButton.visibility = if (place.canCheckIn) View.VISIBLE else View.GONE
+        testCheckinButton?.visibility = checkinButton.visibility
+        // Bottom bar: journal once checked in here, otherwise pick as destination.
         // The journal is for real visits only: its button appears once the user has checked in here.
         communityMediaButton.visibility = if (journalOpen == place.id) View.VISIBLE else View.GONE
         if (journalChecked != place.id) {
@@ -314,46 +346,97 @@ class PlaceDetailActivity : AppCompatActivity() {
                 val open = runCatching { com.project.bcv.feature.engagement.EngagementApi(this@PlaceDetailActivity).journalEntry(place.id) }.isSuccess
                 journalOpen = if (open) place.id else null
                 communityMediaButton.visibility = if (open) View.VISIBLE else View.GONE
+                updateBottomBar()
             }
         }
-        selectButton.visibility = if (discovered) View.GONE else View.VISIBLE
+        // Offer to pick it unless it is already the destination: for a locked place, or an unlocked one
+        // whose card still has to be walked for (cards come only from finishing a journey).
+        selectButton.visibility = if ((!discovered || place.cardPending) && !place.isJourneyDestination) View.VISIBLE else View.GONE
+        updateBottomBar()
 
-        val urls = photosOf(place)
-        heroPlaceholder.visibility = if (urls.isEmpty()) View.VISIBLE else View.GONE
-        if (urls != galleryUrls) {
-            galleryUrls = urls
+        val items = photosOf(place).map { Media.Photo(it) } +
+            (if (discovered) place.videos.map { Media.Clip(it) } else emptyList())
+        heroPlaceholder.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+        if (items != galleryItems) {
+            galleryItems = items
             buildThumbnails()
             selectImage(0)
         }
     }
 
+    /** Videos sit in the top gallery once unlocked; before that, one line says how many unlocking adds. */
+    private fun showVideos(place: ExplorePlaceDetail) = with(binding) {
+        officialVideos.removeAllViews()
+        val locked = !place.isDiscovered && place.videoCount > 0
+        officialVideos.visibility = if (locked) View.VISIBLE else View.GONE
+        if (!locked) return@with
+        val density = resources.displayMetrics.density
+        officialVideos.addView(android.widget.TextView(this@PlaceDetailActivity).apply {
+            text = "${place.videoCount} video về ${place.name}. Mở khóa địa danh để xem."
+            compoundDrawablePadding = (8 * density).toInt()
+            setCompoundDrawablesRelative(ContextCompat.getDrawable(context, com.project.bcv.R.drawable.ic_m3_lock)!!.mutate().apply {
+                setTint(0xFF5F7468.toInt()); setBounds(0, 0, (18 * density).toInt(), (18 * density).toInt()) }, null, null, null)
+            textSize = 15f; setTextColor(0xFF5F7468.toInt())
+            background = GradientDrawable().apply { setColor(0xFFF1F5F1.toInt()); cornerRadius = 16 * density }
+            setPadding((14 * density).toInt(), (12 * density).toInt(), (14 * density).toInt(), (12 * density).toInt())
+        })
+    }
+
+    /** The bar hides itself when none of its buttons applies (e.g. discovered, not a destination, no journal). */
+    private fun updateBottomBar() = with(binding) {
+        if (placeContent.visibility != View.VISIBLE) return@with
+        val any = listOf(checkinButton, communityMediaButton, selectButton).any { it.visibility == View.VISIBLE }
+        bottomBar.visibility = if (any) View.VISIBLE else View.GONE
+    }
+
     private fun buildThumbnails() = with(binding) {
         galleryThumbs.removeAllViews()
-        galleryThumbRow.visibility = if (galleryUrls.size > 1) View.VISIBLE else View.GONE
-        if (galleryUrls.size <= 1) return@with
+        galleryThumbRow.visibility = if (galleryItems.size > 1) View.VISIBLE else View.GONE
+        if (galleryItems.size <= 1) return@with
         val density = resources.displayMetrics.density
-        galleryUrls.forEachIndexed { index, url ->
-            val thumb = ImageView(this@PlaceDetailActivity).apply {
-                scaleType = ImageView.ScaleType.CENTER_CROP
+        fun dp(v: Int) = (v * density).toInt()
+        galleryItems.forEachIndexed { index, item ->
+            val image = ImageView(this@PlaceDetailActivity).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
+            val thumb = android.widget.FrameLayout(this@PlaceDetailActivity).apply {
                 clipToOutline = true
-                val inset = (2 * density).toInt()
+                val inset = dp(2)
                 setPadding(inset, inset, inset, inset)
-                contentDescription = "Ảnh ${index + 1} trên ${galleryUrls.size}"
+                isClickable = true
                 setOnClickListener { selectImage(index) }
+                addView(image, android.widget.FrameLayout.LayoutParams(-1, -1))
             }
-            galleryThumbs.addView(thumb, LinearLayout.LayoutParams((76 * density).toInt(), (58 * density).toInt())
-                .apply { if (index > 0) marginStart = (8 * density).toInt() })
-            lifecycleScope.launch { loadBitmap(url, sample = 4)?.let(thumb::setImageBitmap) }
+            when (item) {
+                is Media.Photo -> {
+                    thumb.contentDescription = "Ảnh ${index + 1} trên ${galleryItems.size}"
+                    lifecycleScope.launch { loadBitmap(item.url, sample = 4)?.let(image::setImageBitmap) }
+                }
+                is Media.Clip -> {
+                    thumb.contentDescription = "Video ${index + 1} trên ${galleryItems.size}, ${item.video.durationSeconds.toInt()} giây"
+                    image.setBackgroundColor(0xFF19473B.toInt())
+                    thumb.addView(playButton(16), android.widget.FrameLayout.LayoutParams(dp(26), dp(26), android.view.Gravity.CENTER))
+                    thumb.addView(android.widget.TextView(this@PlaceDetailActivity).apply {
+                        text = duration(item.video.durationSeconds); textSize = 10f; setTextColor(0xFFFFFFFF.toInt())
+                        setTypeface(typeface, android.graphics.Typeface.BOLD)
+                        background = GradientDrawable().apply { setColor(0x99000000.toInt()); cornerRadius = 6 * density }
+                        setPadding(dp(4), dp(1), dp(4), dp(1))
+                    }, android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.BOTTOM or android.view.Gravity.END).apply {
+                        setMargins(0, 0, dp(5), dp(4)) })
+                    lifecycleScope.launch { videoFrame(item.video)?.let(image::setImageBitmap) }
+                }
+            }
+            galleryThumbs.addView(thumb, LinearLayout.LayoutParams(dp(76), dp(58))
+                .apply { if (index > 0) marginStart = dp(8) })
         }
     }
 
-    /** Shows photo [index] in the hero; thumbnails mark the one on screen. */
+    private fun duration(seconds: Double) = seconds.toInt().let { String.format(Locale.ROOT, "%d:%02d", it / 60, it % 60) }
+
+    /** Shows item [index] in the hero: a photo, or a video's own frame with a play button; thumbnails mark it. */
     private fun selectImage(index: Int) = with(binding) {
         galleryIndex = index
-        val url = galleryUrls.getOrNull(index)
-        galleryCounter.text = String.format(Locale.ROOT, "%d / %d", index + 1, galleryUrls.size)
-        galleryCounter.visibility = if (galleryUrls.size > 1) View.VISIBLE else View.GONE
-        placeImage.contentDescription = "Ảnh ${placeName.text}"
+        val item = galleryItems.getOrNull(index)
+        galleryCounter.text = String.format(Locale.ROOT, "%d / %d", index + 1, galleryItems.size)
+        galleryCounter.visibility = if (galleryItems.size > 1) View.VISIBLE else View.GONE
         val density = resources.displayMetrics.density
         for (position in 0 until galleryThumbs.childCount) {
             galleryThumbs.getChildAt(position).background = GradientDrawable().apply {
@@ -364,16 +447,159 @@ class PlaceDetailActivity : AppCompatActivity() {
                 else setStroke((1 * density).toInt(), 0xFFE2E8DF.toInt())
             }
         }
-        if (url == null) {
-            placeImage.setImageDrawable(null)
-            return@with
+        heroPlay?.let { heroCard.removeView(it) }
+        heroPlay = null
+        heroCard.setOnClickListener(null); heroCard.isClickable = false
+        when (item) {
+            null -> placeImage.setImageDrawable(null)
+            is Media.Photo -> {
+                placeImage.contentDescription = "Ảnh ${placeName.text}, chạm để xem toàn màn hình"
+                heroCard.isClickable = true
+                heroCard.setOnClickListener { viewPhotos(item.url) }
+                // Cached photos (the first is preloaded before the page shows) are set without a frame of gap.
+                bitmaps["2|${item.url}"]?.let { placeImage.setImageBitmap(it); return@with }
+                lifecycleScope.launch {
+                    val bitmap = loadBitmap(item.url, sample = 2)
+                    if (galleryIndex == index && bitmap != null) placeImage.setImageBitmap(bitmap)
+                }
+            }
+            is Media.Clip -> {
+                val video = item.video
+                placeImage.contentDescription = "Video ${placeName.text}, chạm để phát"
+                placeImage.setImageBitmap(bitmaps["frame|${video.id}"])
+                val play = heroPlayOverlay(video)
+                heroCard.addView(play, heroCard.indexOfChild(statusTag))
+                heroPlay = play
+                heroCard.isClickable = true
+                heroCard.setOnClickListener { openVideo(video) }
+                if (bitmaps["frame|${video.id}"] == null) lifecycleScope.launch {
+                    val frame = videoFrame(video)
+                    if (galleryIndex == index && frame != null) placeImage.setImageBitmap(frame)
+                }
+            }
         }
-        // Cached photos (the first is preloaded before the page shows) are set without a frame of gap.
-        bitmaps["2|$url"]?.let { placeImage.setImageBitmap(it); return@with }
-        lifecycleScope.launch {
-            val bitmap = loadBitmap(url, sample = 2)
-            if (galleryIndex == index && bitmap != null) placeImage.setImageBitmap(bitmap)
+    }
+
+    /**
+     * The place's photos full screen on black: swipe between them, "i / n" on top, close button.
+     * Opens on [startUrl]; images load at full size (the hero keeps its smaller copy).
+     */
+    private fun viewPhotos(startUrl: String) {
+        val urls = galleryItems.filterIsInstance<Media.Photo>().map { it.url }
+        if (urls.isEmpty()) return
+        val density = resources.displayMetrics.density
+        fun dp(v: Int) = (v * density).toInt()
+        val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        val root = android.widget.FrameLayout(this).apply { setBackgroundColor(0xFF000000.toInt()) }
+        val counter = android.widget.TextView(this).apply {
+            textSize = 15f; setTextColor(0xFFFFFFFF.toInt()); setTypeface(typeface, android.graphics.Typeface.BOLD)
+            gravity = android.view.Gravity.CENTER
         }
+        val pager = androidx.viewpager2.widget.ViewPager2(this)
+        pager.adapter = object : androidx.recyclerview.widget.RecyclerView.Adapter<androidx.recyclerview.widget.RecyclerView.ViewHolder>() {
+            override fun getItemCount() = urls.size
+            override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int) =
+                object : androidx.recyclerview.widget.RecyclerView.ViewHolder(ImageView(parent.context).apply {
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    layoutParams = android.view.ViewGroup.LayoutParams(-1, -1)
+                }) {}
+            override fun onBindViewHolder(holder: androidx.recyclerview.widget.RecyclerView.ViewHolder, position: Int) {
+                val image = holder.itemView as ImageView
+                val url = urls[position]
+                image.setImageBitmap(bitmaps["1|$url"] ?: bitmaps["2|$url"])
+                lifecycleScope.launch { loadBitmap(url, sample = 1)?.let { if (holder.bindingAdapterPosition == position) image.setImageBitmap(it) } }
+            }
+        }
+        pager.registerOnPageChangeCallback(object : androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) { counter.text = "${position + 1} / ${urls.size}" }
+        })
+        root.addView(pager, android.widget.FrameLayout.LayoutParams(-1, -1))
+        val start = urls.indexOf(startUrl).coerceAtLeast(0)
+        pager.setCurrentItem(start, false)
+        counter.text = "${start + 1} / ${urls.size}"
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(40), dp(16), dp(12))
+            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0x99000000.toInt(), 0x00000000))
+        }
+        bar.addView(android.widget.FrameLayout(this).apply {
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0x33FFFFFF) }
+            isClickable = true; contentDescription = "Đóng"
+            addView(ImageView(context).apply {
+                setImageResource(R.drawable.ic_close); imageTintList = android.content.res.ColorStateList.valueOf(0xFFFFFFFF.toInt())
+            }, android.widget.FrameLayout.LayoutParams(dp(22), dp(22), android.view.Gravity.CENTER))
+            setOnClickListener { dialog.dismiss() }
+        }, LinearLayout.LayoutParams(dp(44), dp(44)))
+        bar.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = android.view.Gravity.CENTER_HORIZONTAL
+            addView(android.widget.TextView(context).apply {
+                text = binding.placeName.text; textSize = 13f; setTextColor(0xCCFFFFFF.toInt()); maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END; gravity = android.view.Gravity.CENTER
+            })
+            addView(counter)
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        bar.addView(View(this), LinearLayout.LayoutParams(dp(44), dp(44)))
+        root.addView(bar, android.widget.FrameLayout.LayoutParams(-1, -2, android.view.Gravity.TOP))
+        dialog.setContentView(root)
+        dialog.show()
+    }
+
+    /** White round button with the Material Symbols play_arrow icon in it. */
+    private fun playButton(iconDp: Int) = android.widget.FrameLayout(this).apply {
+        background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0xF2FFFFFF.toInt()) }
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        val size = (iconDp * resources.displayMetrics.density).toInt()
+        addView(ImageView(context).apply {
+            setImageResource(R.drawable.ic_m3_play_arrow)
+            imageTintList = android.content.res.ColorStateList.valueOf(ContextCompat.getColor(context, R.color.forest))
+        }, android.widget.FrameLayout.LayoutParams(size, size, android.view.Gravity.CENTER))
+    }
+
+    /** Big play button in the middle of the hero and the length in a corner. */
+    private fun heroPlayOverlay(video: com.project.bcv.feature.discovery.domain.PlaceVideo) =
+        android.widget.FrameLayout(this).apply {
+            val density = resources.displayMetrics.density
+            fun dp(v: Int) = (v * density).toInt()
+            addView(playButton(36), android.widget.FrameLayout.LayoutParams(dp(68), dp(68), android.view.Gravity.CENTER).apply { bottomMargin = dp(30) })
+            addView(android.widget.TextView(context).apply {
+                text = "Video · ${duration(video.durationSeconds)}"; textSize = 12f; setTextColor(0xFFFFFFFF.toInt())
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                background = GradientDrawable().apply { setColor(0x99000000.toInt()); cornerRadius = 10 * density }
+                setPadding(dp(10), dp(5), dp(10), dp(5))
+            }, android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.TOP or android.view.Gravity.END).apply {
+                setMargins(0, dp(52), dp(14), 0) })
+            layoutParams = android.widget.FrameLayout.LayoutParams(-1, -1)
+        }
+
+    private fun openVideo(video: com.project.bcv.feature.discovery.domain.PlaceVideo) {
+        val placeId = model.state.value?.place?.id ?: intent.getLongExtra(EXTRA_PLACE_ID, 0L)
+        startActivity(android.content.Intent(this, PlaceVideoActivity::class.java)
+            .putExtra("place_id", placeId).putExtra("video_id", video.id)
+            .putExtra(PlaceVideoActivity.EXTRA_TITLE, model.state.value?.place?.name))
+    }
+
+    /** A real frame of the video (about one second in), read over the authenticated stream and cached. */
+    private suspend fun videoFrame(video: com.project.bcv.feature.discovery.domain.PlaceVideo): Bitmap? {
+        val key = "frame|${video.id}"
+        bitmaps[key]?.let { return it }
+        val url = MediaUrlPolicy.authenticatedUrl(BuildConfig.API_BASE_URL, video.url) ?: return null
+        val token = SessionPreferences(this).token ?: return null
+        val frame = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val retriever = android.media.MediaMetadataRetriever()
+            val result = runCatching {
+                retriever.setDataSource(url, mapOf("Authorization" to "Bearer $token"))
+                val at = (minOf(1.0, video.durationSeconds / 2) * 1_000_000).toLong()
+                retriever.getFrameAtTime(at, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)?.let { raw ->
+                    val scale = minOf(1f, 960f / maxOf(raw.width, raw.height))
+                    if (scale < 1f) Bitmap.createScaledBitmap(raw, (raw.width * scale).toInt(), (raw.height * scale).toInt(), true)
+                    else raw
+                }
+            }.getOrNull()
+            runCatching { retriever.release() }
+            result
+        }
+        if (frame != null) bitmaps[key] = frame
+        return frame
     }
 
     /** Downloads and decodes once per URL and sample size; later calls reuse the bitmap. */

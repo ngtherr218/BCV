@@ -23,7 +23,8 @@ public sealed record ExplorePlaceVideo(long VideoId,string Url,double DurationSe
 
 public sealed record ExplorePlaceDetail(long PlaceId, string Name, string PlaceType, string? ImageUrl,
     bool IsDiscovered, decimal DistanceKm, int RequiredSteps, string? Introduction, string? Highlights,
-    string RegionName, IReadOnlyList<string> ImageUrls, decimal? Rating = null, int? RatingCount = null, IReadOnlyList<ExplorePlaceVideo>? Videos = null);
+    string RegionName, IReadOnlyList<string> ImageUrls, decimal? Rating = null, int? RatingCount = null, IReadOnlyList<ExplorePlaceVideo>? Videos = null,
+    bool IsJourneyDestination = false, bool CardPending = false, int VideoCount = 0, bool CanCheckIn = false);
 
 public sealed record ExploreSnapshot(ExploreLocation? Location, ExploreJourney? Journey,
     IReadOnlyList<ExploreMapPlace> Places);

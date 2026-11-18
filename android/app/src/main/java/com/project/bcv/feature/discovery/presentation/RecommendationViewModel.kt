@@ -49,6 +49,14 @@ class RecommendationViewModel(
 
     fun load() = loadInto(mutableRecommendations) { repository.loadRecommendations() }
 
+    /** Reloads without the loading state, so the cards on screen stay put while it runs. */
+    fun refresh() {
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { repository.loadRecommendations() } }
+                .onSuccess { mutableRecommendations.value = Remote.Ready(it) }
+        }
+    }
+
     fun select(placeId: Long, placeName: String, replaceActive: Boolean = false) {
         if (mutableSavingPlaceId.value != null) return
         mutableSavingPlaceId.value = placeId

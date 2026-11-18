@@ -89,11 +89,11 @@ public static class AdminEndpoints
             return Results.NoContent();
         });
         PlaceVideos.MapEndpoints(group, app);
-        // ?purpose=place|card picks the storage folder (places/, cards/), never the users' avatars/.
+        // ?purpose=place|card|badge picks the storage folder (places/, cards/, badges/), never the users' avatars/.
         group.MapPost("/images", async (HttpContext http, string? purpose, IImageStorage storage, CancellationToken ct) =>
         {
             var folder = ImageFolder.ForAdminPurpose(purpose)
-                ?? throw new AdminValidation("Thiếu mục đích ảnh: place (địa danh) hoặc card (thẻ).");
+                ?? throw new AdminValidation("Thiếu mục đích ảnh: place (địa danh), card (thẻ) hoặc badge (huy hiệu).");
             const int maxBytes = 5 * 1024 * 1024;
             if (http.Request.ContentType != "image/jpeg") throw new AdminValidation("Chỉ chấp nhận ảnh JPEG.");
             if (http.Request.ContentLength is > maxBytes) throw new AdminValidation("Ảnh không được vượt quá 5 MB.");

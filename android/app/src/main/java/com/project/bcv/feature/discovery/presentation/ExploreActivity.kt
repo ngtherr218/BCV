@@ -114,8 +114,15 @@ class ExploreActivity : AppCompatActivity() {
         if (result.resultCode == RESULT_OK) model.load()
     }
 
+    /** Hành trình (opened from Hồ sơ) sends the user back here to see the journey on the map. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.getBooleanExtra(JourneyActivity.EXTRA_FOCUS_MAP, false)) focusMapOnReturn = true
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null && intent.getBooleanExtra(JourneyActivity.EXTRA_FOCUS_MAP, false)) focusMapOnReturn = true
         enableEdgeToEdge()
         WindowCompat.getInsetsController(window, window.decorView).apply {
             isAppearanceLightStatusBars = true
@@ -485,7 +492,7 @@ class ExploreActivity : AppCompatActivity() {
             binding.quizMapButton.contentDescription = if (open.isNotEmpty()) "Trạm câu hỏi: ${open.size} câu đang chờ trả lời" else "Trạm câu hỏi"
             if (announce && newlyOpen != null) {
                 val stop = newlyOpen.getInt("number")
-                Snackbar.make(binding.root, "📍 Bạn đã tới Trạm câu hỏi $stop!", Snackbar.LENGTH_LONG)
+                Snackbar.make(binding.root, "Bạn đã tới Trạm câu hỏi $stop!", Snackbar.LENGTH_LONG)
                     .setAction("Trả lời") { openQuiz(stop) }.show()
             }
         }

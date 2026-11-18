@@ -1,5 +1,6 @@
 package com.project.bcv.feature.engagement
 
+import com.project.bcv.feature.engagement.EngagementUi.icon
 import android.content.Context
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -86,7 +87,7 @@ internal object LeaderboardViews {
             2 -> listOf(SILVER_RING, 0xFFEEF1F5.toInt(), 0xFF5D6B7C.toInt(), FOREST)
             else -> listOf(BRONZE_RING, 0xFFF9EAE2.toInt(), 0xFF8E4F32.toInt(), FOREST)
         }
-        if (rank == 1) col.addView(text("👑", 20f).apply { gravity = Gravity.CENTER })
+        if (rank == 1) col.addView(icon(com.project.bcv.R.drawable.ic_m3_workspace_premium, GOLD_RING, 24), LinearLayout.LayoutParams(dp(24), dp(24)).apply { gravity = Gravity.CENTER_HORIZONTAL })
         val size = if (rank == 1) 64 else 54
         col.addView(avatar(this, scope, row, ring, size), LinearLayout.LayoutParams(dp(size), dp(size)))
         col.addView(text(row?.optString("name")?.let { if (row.optBoolean("isMe")) "$it (bạn)" else it } ?: "—", 13f, FOREST).apply {
@@ -137,8 +138,8 @@ internal object LeaderboardViews {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(12), dp(10), dp(14), dp(10))
             background = rounded(if (isMe) SOFT else 0xFFFFFFFF.toInt(), 14, if (isMe) TEAL else 0xFFE3EBE3.toInt(), context)
-            addView(text("${row.getInt("rank")}", 15f, MUTED, true).apply { gravity = Gravity.CENTER },
-                LinearLayout.LayoutParams(dp(30), -2))
+            addView(text(number(row.getInt("rank")), if (row.getInt("rank") >= 100) 13f else 15f, MUTED, true).apply {
+                gravity = Gravity.CENTER; maxLines = 1 }, LinearLayout.LayoutParams(dp(36), -2))
             addView(avatar(this@with, scope, row, 0xFFE3EBE3.toInt(), 40), LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginStart = dp(4) })
             addView(text(row.getString("name") + if (isMe) " (bạn)" else "", 15f, FOREST, isMe).apply {
                 maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(12), 0, dp(8), 0)

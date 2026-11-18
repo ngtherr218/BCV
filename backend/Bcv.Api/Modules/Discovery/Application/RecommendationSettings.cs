@@ -11,8 +11,6 @@ public sealed record RecommendationSettings(string DatasetVersion, string ModelV
         && !string.IsNullOrWhiteSpace(MappingVersion) && MappingVersion.Length <= 100
         && ModelSha256 is { Length: 64 } && ModelSha256.All(Uri.IsHexDigit)
         && ActivityThresholds is { Count: 3 }
-        && new[]{"LOW","MEDIUM","HIGH"}.All(k => ActivityThresholds.TryGetValue(k,out var v) && v>0 && v<=100000)
-        && InterestFeatures is { Count: 6 }
-        && Enumerable.Range(201,6).All(k => InterestFeatures.TryGetValue(k,out var v)
-            && v is { Length: >0 } && v.Distinct().Count()==v.Length && v.All(RecommendationScoring.FeatureCodes.Contains));
+        && new[]{"LOW","MEDIUM","HIGH"}.All(k => ActivityThresholds.TryGetValue(k,out var v) && v>0 && v<=100000);
+    // InterestFeatures is no longer used: users pick place types, matched through place_type_feature.
 }

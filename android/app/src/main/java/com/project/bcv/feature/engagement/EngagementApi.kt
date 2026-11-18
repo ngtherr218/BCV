@@ -32,13 +32,11 @@ class EngagementApi(context: Context) {
         }
     }
     suspend fun leaderboard(scope: String): JSONObject = io { client.get("api/engagement/leaderboard?scope=$scope", token()) }
-    suspend fun pause(days: Int): JSONObject = io { client.post("api/activity/pause", JSONObject().put("days", days), token()) }
-    suspend fun endPause(): JSONObject = io { client.delete("api/activity/pause", token()) }
 
-    suspend fun checkIn(placeId: Long, latitude: Double, longitude: Double, test: Boolean = false): String = io {
+    /** The server's result: message, alreadyToday, points, newDiscovery, newCard, province stamp… */
+    suspend fun checkIn(placeId: Long, latitude: Double, longitude: Double, test: Boolean = false): JSONObject = io {
         client.post("api/explore/places/$placeId/checkin",
             JSONObject().put("latitude", latitude).put("longitude", longitude).put("test", test), token())
-            .optString("message", "Đã check-in.")
     }
 
     suspend fun dismiss(placeId: Long) = io { client.post("api/explore/places/$placeId/dismiss", JSONObject(), token()) }
@@ -108,8 +106,5 @@ class EngagementApi(context: Context) {
                 Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2)
             return 6371.0 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
         }
-
-        val ZONE_ORDER = listOf("TAY_BAC", "DONG_BAC", "SONG_HONG", "BAC_TRUNG_BO",
-            "NAM_TRUNG_BO", "TAY_NGUYEN", "DONG_NAM_BO", "TAY_NAM_BO")
     }
 }

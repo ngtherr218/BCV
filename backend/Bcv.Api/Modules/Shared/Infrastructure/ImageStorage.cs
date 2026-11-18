@@ -6,19 +6,22 @@ namespace Bcv.Api.Modules.Shared.Infrastructure;
 
 /// <summary>
 /// Storage folders by purpose, so the bucket stays readable:
-/// <c>avatars/{userId}/</c> for profile pictures, <c>places/</c> for place photos, <c>cards/</c> for card art.
+/// <c>avatars/{userId}/</c> for profile pictures, <c>places/</c> for place photos, <c>cards/</c> for card art,
+/// <c>badges/</c> for badge art.
 /// </summary>
 public static class ImageFolder
 {
     public static string Avatar(long userId) => $"avatars/{userId}";
     public const string Places = "places";
     public const string Cards = "cards";
+    public const string Badges = "badges";
 
     /// <summary>The folder for an admin upload's <c>purpose</c>; null when the purpose is unknown.</summary>
     public static string? ForAdminPurpose(string? purpose) => purpose?.ToLowerInvariant() switch
     {
         "place" => Places,
         "card" => Cards,
+        "badge" => Badges,
         _ => null
     };
 }

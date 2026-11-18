@@ -1,5 +1,8 @@
 package com.project.bcv.feature.engagement
 
+import com.project.bcv.feature.engagement.EngagementUi.icon
+import com.project.bcv.feature.engagement.EngagementUi.cardDialog
+import com.project.bcv.feature.engagement.EngagementUi.leadingIcon
 import android.content.Intent
 import android.graphics.Typeface
 import android.widget.FrameLayout
@@ -119,10 +122,20 @@ class JournalEntryActivity : AppCompatActivity() {
 
     }
 
-    /** Cover (own photo, else the place's image) with the place, date and journey facts on it. */
+    /**
+     * Banner with the place, date and visits on it. It always shows the place's own image (your photos live in
+     * "Ảnh của bạn"), so it looks the same every time; only a place without an image falls back to your first photo.
+     */
     private fun hero(info: JSONObject): FrameLayout = FrameLayout(this).apply {
-        background = rounded(0xFF2E5A4C.toInt(), 22, null, context); clipToOutline = true
-        val image = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
+        background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            intArrayOf(0xFF2E7D67.toInt(), 0xFF19473B.toInt())).apply { cornerRadius = dp(22).toFloat() }
+        clipToOutline = true
+        // Faded initial behind the text: the banner still has a face before (or without) a photo.
+        addView(text(info.getString("name").trim().take(1).uppercase(), 120f, 0x1FFFFFFF).apply {
+            typeface = android.graphics.Typeface.create(android.graphics.Typeface.SERIF, android.graphics.Typeface.BOLD)
+            gravity = Gravity.END or Gravity.TOP; setPadding(0, 0, dp(18), 0); includeFontPadding = false
+        }, FrameLayout.LayoutParams(-1, -1))
+        val image = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; alpha = 0f }
         addView(image, FrameLayout.LayoutParams(-1, -1))
         addView(android.view.View(context).apply {
             background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.BOTTOM_TOP,
@@ -130,7 +143,7 @@ class JournalEntryActivity : AppCompatActivity() {
         }, FrameLayout.LayoutParams(-1, -1))
         val texts = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), 0, dp(16), dp(14)) }
         val date = LocalDateTime.parse(info.getString("discoveredAt").take(19))
-        texts.addView(pill("★ Đã đến tận nơi", GOLD, 0xFFFFFFFF.toInt()),
+        texts.addView(pill("Đã đến tận nơi", GOLD, 0xFFFFFFFF.toInt()).leadingIcon(com.project.bcv.R.drawable.ic_m3_location_on, GOLD, 13, 4),
             LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = dp(8) })
         texts.addView(text(info.getString("name"), 26f, 0xFFFFFFFF.toInt(), true).apply { maxLines = 2 })
         val facts = mutableListOf(info.getString("regionName"),
@@ -139,8 +152,8 @@ class JournalEntryActivity : AppCompatActivity() {
         texts.addView(text(facts.joinToString(" · "), 13f, 0xE6FFFFFF.toInt()).apply { setPadding(0, dp(2), 0, 0) })
         addView(texts, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
         lifecycleScope.launch {
-            val cover = photosCover() ?: api.placeImage(info.optString("placeImageUrl"), 2)
-            cover?.let(image::setImageBitmap)
+            val cover = api.placeImage(info.optString("placeImageUrl"), 2) ?: photosCover()
+            cover?.let { image.setImageBitmap(it); image.animate().alpha(1f).setDuration(180).start() }
         }
     }
 
@@ -174,7 +187,7 @@ class JournalEntryActivity : AppCompatActivity() {
                 addView(text("Bạn chưa viết gì cho trang này.", 15f, FOREST, true))
                 addView(text("Hôm ấy bạn thấy gì, ăn gì, đi cùng ai? Vài dòng thôi cũng đủ để sau này đọc lại.", 13f, MUTED).apply {
                     setPadding(0, dp(4), 0, dp(12)) })
-                addView(primaryButton("✎  Viết cảm nhận").apply { setOnClickListener { showEditor() } })
+                addView(primaryButton("Viết cảm nhận").apply { setIconResource(com.project.bcv.R.drawable.ic_m3_edit); setOnClickListener { showEditor() } })
             })
             return
         }
@@ -221,15 +234,27 @@ class JournalEntryActivity : AppCompatActivity() {
         root.addView(pager, FrameLayout.LayoutParams(-1, -1))
         pager.setCurrentItem(start, false)
         counter.text = "${start + 1} / ${shown.size}"
-        root.addView(counter, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(36) })
-        val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(16), dp(16), dp(16), dp(28)) }
-        bar.addView(text("Đóng", 15f, 0xFFFFFFFF.toInt(), true).apply {
-            isClickable = true; setPadding(dp(8), dp(8), dp(8), dp(8)); setOnClickListener { dialog.dismiss() } },
-            LinearLayout.LayoutParams(0, -2, 1f))
-        bar.addView(text("Xoá ảnh", 15f, 0xFFFF8A80.toInt(), true).apply {
-            isClickable = true; setPadding(dp(8), dp(8), dp(8), dp(8))
-            setOnClickListener { dialog.dismiss(); confirmDelete(shown[pager.currentItem].first) } })
-        root.addView(bar, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+        fun roundButton(iconRes: Int, tint: Int, label: String, onClick: () -> Unit) = FrameLayout(this).apply {
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(0x33FFFFFF)
+            }
+            isClickable = true; contentDescription = label
+            addView(icon(iconRes, tint, 22), FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
+            setOnClickListener { onClick() }
+        }
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(40), dp(16), dp(12))
+            background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(0x99000000.toInt(), 0x00000000))
+        }
+        bar.addView(roundButton(com.project.bcv.R.drawable.ic_close, 0xFFFFFFFF.toInt(), "Đóng") { dialog.dismiss() },
+            LinearLayout.LayoutParams(dp(44), dp(44)))
+        bar.addView(counter.apply { gravity = Gravity.CENTER }, LinearLayout.LayoutParams(0, -2, 1f))
+        bar.addView(roundButton(com.project.bcv.R.drawable.ic_delete_outline, 0xFFFF8A80.toInt(), "Xoá ảnh này") {
+            confirmDelete(shown[pager.currentItem].first) { dialog.dismiss() }
+        }, LinearLayout.LayoutParams(dp(44), dp(44)))
+        root.addView(bar, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
         dialog.setContentView(root)
         dialog.show()
     }
@@ -377,17 +402,48 @@ class JournalEntryActivity : AppCompatActivity() {
         return ByteArrayOutputStream().use { out -> scaled.compress(Bitmap.CompressFormat.JPEG, 85, out); out.toByteArray() }
     }
 
-    private fun confirmDelete(photoId: Long) {
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Xoá ảnh này khỏi nhật ký?")
-            .setMessage("Ảnh sẽ bị xoá vĩnh viễn và không khôi phục được.")
-            .setNegativeButton("Giữ lại", null)
-            .setPositiveButton("Xoá") { _, _ ->
-                lifecycleScope.launch {
-                    runCatching { api.deletePhoto(photoId) }.onSuccess { photos.removeAll { it.first == photoId }; renderPhotos() }
-                        .onFailure { Snackbar.make(body, it.message ?: "Không xoá được.", Snackbar.LENGTH_LONG).show() }
-                }
-            }.show()
+    /** "Xoá ảnh này?" as a card showing the photo itself; [deleted] runs once it is gone. */
+    private fun confirmDelete(photoId: Long, deleted: () -> Unit = {}) {
+        val bitmap = photos.firstOrNull { it.first == photoId }?.second
+        lateinit var remove: com.google.android.material.button.MaterialButton
+        lateinit var keep: com.google.android.material.button.MaterialButton
+        val dialog = cardDialog { dlg ->
+            addView(FrameLayout(context).apply {
+                background = rounded(SOFT, 18, null, context); clipToOutline = true
+                if (bitmap != null) addView(ImageView(context).apply {
+                    scaleType = ImageView.ScaleType.CENTER_CROP; setImageBitmap(bitmap)
+                }, FrameLayout.LayoutParams(-1, -1))
+                else addView(icon(com.project.bcv.R.drawable.ic_m3_photo_camera, MUTED, 36),
+                    FrameLayout.LayoutParams(dp(36), dp(36), Gravity.CENTER))
+            }, LinearLayout.LayoutParams(dp(132), dp(132)))
+            addView(text("Xoá ảnh này?", 20f, FOREST, true).apply { gravity = Gravity.CENTER },
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
+            addView(text("Ảnh sẽ bị xoá khỏi nhật ký ${entry?.optString("name").orEmpty()} và không khôi phục được.", 15f, MUTED).apply {
+                gravity = Gravity.CENTER }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+            remove = primaryButton("Xoá ảnh").apply {
+                backgroundTintList = android.content.res.ColorStateList.valueOf(0xFFC0473A.toInt())
+                setIconResource(com.project.bcv.R.drawable.ic_delete_outline)
+            }
+            addView(remove, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
+            keep = outlinedButton("Giữ lại").apply { setOnClickListener { dlg.dismiss() } }
+            addView(keep, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        }
+        remove.setOnClickListener {
+            remove.isEnabled = false; keep.isEnabled = false; remove.text = "Đang xoá…"
+            lifecycleScope.launch {
+                runCatching { api.deletePhoto(photoId) }
+                    .onSuccess {
+                        photos.removeAll { it.first == photoId }; renderPhotos()
+                        dialog.dismiss(); deleted()
+                        Snackbar.make(body, "Đã xoá ảnh.", Snackbar.LENGTH_SHORT).show()
+                    }
+                    .onFailure {
+                        remove.isEnabled = true; keep.isEnabled = true; remove.text = "Xoá ảnh"
+                        Snackbar.make(body, it.message ?: "Không xoá được.", Snackbar.LENGTH_LONG).show()
+                    }
+            }
+        }
+        dialog.show()
     }
 
     private fun share(note: String) {

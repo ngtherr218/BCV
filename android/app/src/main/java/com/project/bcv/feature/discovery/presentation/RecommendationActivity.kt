@@ -98,24 +98,52 @@ class RecommendationActivity : AppCompatActivity() {
         binding.regionName.text = model.address.value ?: region.orEmpty()
     }
 
+    /**
+     * Cards already on screen are kept (no image reload, no jump) and restyled for their new rank;
+     * only places that are new get a card, which fades in.
+     */
     private fun showCards(places: List<RecommendedPlace>) {
-        binding.cards.removeAllViews()
-        cards.clear()
+        val wanted = places.map { it.id }.toSet()
+        cards.keys.filter { it !in wanted }.forEach { id -> cards.remove(id)?.let { binding.cards.removeView(it.root) } }
         places.forEachIndexed { index, place ->
-            val item = ItemRecommendationBinding.inflate(LayoutInflater.from(this), binding.cards, true)
-            cards[place.id] = item
-            val best = index == 0
-            val accent = STATUS_COLORS[index % STATUS_COLORS.size]
-            item.card.setCardBackgroundColor(if (best) 0xFFF0F6EE.toInt() else 0xFFFFFFFF.toInt())
-            item.card.strokeColor = if (best) 0xFFA9CBB0.toInt() else 0xFFDCE6DD.toInt()
-            item.rank.text = "%02d".format(place.rank)
-            item.rank.setTextColor(if (best) 0xFF07836D.toInt() else 0xFF85968F.toInt())
+            val existing = cards[place.id]
+            val item = existing ?: createCard(place).also { cards[place.id] = it }
+            val at = binding.cards.indexOfChild(item.root)
+            if (at != index) {
+                if (at >= 0) binding.cards.removeViewAt(at)
+                binding.cards.addView(item.root, index)
+            }
+            styleCard(item, place, index)
+            if (existing == null && shownOnce) item.root.apply { alpha = 0f; animate().alpha(1f).setDuration(220).start() }
+        }
+        shownOnce = true
+        renderSaving(model.savingPlaceId.value)
+    }
+
+    private var shownOnce = false
+
+    /** Rank-dependent look: the first card is the highlighted one. */
+    private fun styleCard(item: ItemRecommendationBinding, place: RecommendedPlace, index: Int) {
+        val best = index == 0
+        val accent = STATUS_COLORS[index % STATUS_COLORS.size]
+        item.card.setCardBackgroundColor(if (best) 0xFFF0F6EE.toInt() else 0xFFFFFFFF.toInt())
+        item.card.strokeColor = if (best) 0xFFA9CBB0.toInt() else 0xFFDCE6DD.toInt()
+        item.rank.text = "%02d".format(place.rank)
+        item.rank.setTextColor(if (best) 0xFF07836D.toInt() else 0xFF85968F.toInt())
+        item.status.setTextColor(if (place.isSurprise) 0xFFC9962B.toInt() else accent)
+        item.selectButton.backgroundTintList = ColorStateList.valueOf(
+            if (best) 0xFF07836D.toInt() else 0xFFEFF2EA.toInt())
+        item.selectButton.setTextColor(if (best) 0xFFFFFFFF.toInt() else 0xFF07836D.toInt())
+    }
+
+    private fun createCard(place: RecommendedPlace): ItemRecommendationBinding {
+        val item = ItemRecommendationBinding.inflate(LayoutInflater.from(this), binding.cards, false)
+        run {
             item.status.text = when {
-                place.isSurprise -> "✨ THỬ ĐIỀU MỚI"
+                place.isSurprise -> "THỬ ĐIỀU MỚI"
                 place.isDiscovered -> "ĐÃ MỞ KHÓA"
                 else -> "CHƯA MỞ KHÓA"
             }
-            item.status.setTextColor(if (place.isSurprise) 0xFFC9962B.toInt() else accent)
             item.name.text = place.name
             item.distance.text = "${distanceText(place.distanceKm)} · ~${stepsText(place.requiredSteps)} bước"
             val reasons = place.reasons.ifEmpty {
@@ -130,9 +158,6 @@ class RecommendationActivity : AppCompatActivity() {
             item.dismissButton.setOnClickListener { dismiss(place) }
             // Keeps its line when empty so every card has the skeleton's height.
             item.matched.visibility = if (reasons.isEmpty()) View.INVISIBLE else View.VISIBLE
-            item.selectButton.backgroundTintList = ColorStateList.valueOf(
-                if (best) 0xFF07836D.toInt() else 0xFFEFF2EA.toInt())
-            item.selectButton.setTextColor(if (best) 0xFFFFFFFF.toInt() else 0xFF07836D.toInt())
             item.selectButton.contentDescription = "Chọn ${place.name} làm điểm đến"
             item.selectButton.setOnClickListener { model.select(place.id, place.name) }
             item.card.isFocusable = true
@@ -149,7 +174,7 @@ class RecommendationActivity : AppCompatActivity() {
             item.lockBadge.visibility = if (place.isDiscovered) android.view.View.GONE else android.view.View.VISIBLE
             place.imageUrl?.let { url -> loadImage(item, url, place.isDiscovered) }
         }
-        renderSaving(model.savingPlaceId.value)
+        return item
     }
 
     /** F74: hide for 30 days, refill the list, and let the user undo right away. */
@@ -158,16 +183,33 @@ class RecommendationActivity : AppCompatActivity() {
         cards[place.id]?.dismissButton?.isEnabled = false
         lifecycleScope.launch {
             runCatching { api.dismiss(place.id) }.onSuccess {
-                model.load()
+                collapse(place.id) { model.refresh() }
                 Snackbar.make(binding.root, "Đã ẩn ${place.name} khỏi gợi ý trong 30 ngày.", Snackbar.LENGTH_LONG)
                     .setAction("Hoàn tác") {
-                        lifecycleScope.launch { runCatching { api.undoDismiss(place.id) }; model.load() }
+                        lifecycleScope.launch { runCatching { api.undoDismiss(place.id) }; model.refresh() }
                     }.show()
             }.onFailure {
                 cards[place.id]?.dismissButton?.isEnabled = true
                 Snackbar.make(binding.root, it.message ?: "Không cập nhật được.", Snackbar.LENGTH_LONG).show()
             }
         }
+    }
+
+    /** Fades the card out and folds its height away, so the cards below slide up instead of jumping. */
+    private fun collapse(placeId: Long, then: () -> Unit) {
+        val item = cards.remove(placeId) ?: return then()
+        val view = item.root
+        val height = view.height
+        view.animate().alpha(0f).setDuration(160).withEndAction {
+            android.animation.ValueAnimator.ofInt(height, 0).apply {
+                duration = 220
+                addUpdateListener { view.layoutParams = view.layoutParams.apply { this.height = it.animatedValue as Int }; view.requestLayout() }
+                addListener(object : android.animation.AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: android.animation.Animator) { binding.cards.removeView(view); then() }
+                })
+                start()
+            }
+        }.start()
     }
 
     private fun loadImage(item: ItemRecommendationBinding, url: String, discovered: Boolean) {

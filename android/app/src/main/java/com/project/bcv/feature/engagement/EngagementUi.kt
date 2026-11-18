@@ -46,6 +46,52 @@ internal object EngagementUi {
         if (bold) setTypeface(typeface, Typeface.BOLD)
     }
 
+    /**
+     * A centred white card dialog (28dp corners, 24dp margins) for celebrations and details;
+     * [build] fills its vertical, centred column.
+     */
+    fun Activity.cardDialog(build: LinearLayout.(android.app.Dialog) -> Unit): android.app.Dialog {
+        val dialog = android.app.Dialog(this)
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+            background = rounded(0xFFFFFFFF.toInt(), 28, null, context)
+            setPadding(dp(22), dp(24), dp(22), dp(18))
+        }
+        box.build(dialog)
+        dialog.setContentView(box)
+        dialog.window?.apply {
+            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+            setLayout((resources.displayMetrics.widthPixels - dp(48)).coerceAtMost(dp(400)), android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        return dialog
+    }
+
+    /** Springs a view in: scaled up from small with a little overshoot. */
+    fun View.popIn(delay: Long = 80) {
+        scaleX = 0.4f; scaleY = 0.4f; alpha = 0f
+        animate().scaleX(1f).scaleY(1f).alpha(1f).setStartDelay(delay).setDuration(420)
+            .setInterpolator(android.view.animation.OvershootInterpolator(1.6f)).start()
+    }
+
+    /** A Material Symbols icon (res/drawable/ic_m3_*), tinted; replaces emoji used as UI icons. */
+    fun Context.icon(res: Int, color: Int = FOREST, sizeDp: Int = 20) = android.widget.ImageView(this).apply {
+        setImageResource(res)
+        imageTintList = android.content.res.ColorStateList.valueOf(color)
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        layoutParams = LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp))
+    }
+
+    /** Puts a tinted Material Symbols icon before a line of text. */
+    fun TextView.leadingIcon(res: Int, color: Int = currentTextColor, sizeDp: Int = 16, gapDp: Int = 6) = apply {
+        val size = (sizeDp * resources.displayMetrics.density).toInt()
+        val drawable = androidx.core.content.ContextCompat.getDrawable(context, res)!!.mutate().apply {
+            setTint(color); setBounds(0, 0, size, size)
+        }
+        setCompoundDrawablesRelative(drawable, null, null, null)
+        compoundDrawablePadding = (gapDp * resources.displayMetrics.density).toInt()
+        gravity = gravity or Gravity.CENTER_VERTICAL
+    }
+
     fun Context.card(vertical: Boolean = true, color: Int = 0xFFFFFFFF.toInt()) = LinearLayout(this).apply {
         orientation = if (vertical) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
         background = rounded(color, 20, LINE, this@card)

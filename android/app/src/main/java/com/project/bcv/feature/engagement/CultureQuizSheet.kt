@@ -22,6 +22,8 @@ import com.project.bcv.feature.engagement.EngagementUi.MUTED
 import com.project.bcv.feature.engagement.EngagementUi.SOFT
 import com.project.bcv.feature.engagement.EngagementUi.TEAL
 import com.project.bcv.feature.engagement.EngagementUi.dp
+import com.project.bcv.feature.engagement.EngagementUi.icon
+import com.project.bcv.feature.engagement.EngagementUi.leadingIcon
 import com.project.bcv.feature.engagement.EngagementUi.full
 import com.project.bcv.feature.engagement.EngagementUi.number
 import com.project.bcv.feature.engagement.EngagementUi.pill
@@ -115,21 +117,23 @@ class CultureQuizSheet(
         legend.addView(text("Điểm đến", 11f, MUTED).apply { gravity = Gravity.END }, LinearLayout.LayoutParams(0, -2, 1f))
         body.addView(legend)
 
-        // Rewards shown here: explorer points only.
-        val perCorrect = data.getInt("pointsPerCorrect")
+        // Rewards shown here: explorer points only, more for harder questions.
+        val byDifficulty = data.optJSONObject("pointsByDifficulty")
         val rewards = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             background = rounded(SOFT, 16, null, context)
             setPadding(dp(14), dp(12), dp(14), dp(12))
         }
-        rewards.addView(text("⭐ ${number(data.getInt("earnedPoints"))} điểm khám phá", 15f, FOREST, true), LinearLayout.LayoutParams(0, -2, 1f))
-        rewards.addView(text("+$perCorrect điểm / câu đúng", 12f, MUTED))
+        rewards.addView(text("${number(data.getInt("earnedPoints"))} điểm khám phá", 15f, FOREST, true)
+            .leadingIcon(com.project.bcv.R.drawable.ic_m3_star, 0xFFC9962B.toInt(), 18), LinearLayout.LayoutParams(0, -2, 1f))
+        rewards.addView(text(if (byDifficulty == null) "" else "Dễ +${byDifficulty.optInt("easy")} · Vừa +${byDifficulty.optInt("medium")} · Khó +${byDifficulty.optInt("hard")}",
+            12f, MUTED))
         body.full(rewards, 12)
 
         var focusView: View? = null
         for (i in 0 until stops.length()) {
             val stop = stops.getJSONObject(i)
-            val card = stopCard(stop, perCorrect)
+            val card = stopCard(stop)
             body.full(card, 12)
             val n = stop.getInt("number")
             if (n == focusStop || (focusStop == null && focusView == null && stop.getString("state") == "OPEN")) focusView = card
@@ -147,7 +151,7 @@ class CultureQuizSheet(
         }
     }
 
-    private fun stopCard(stop: JSONObject, perCorrect: Int): LinearLayout = with(activity) {
+    private fun stopCard(stop: JSONObject): LinearLayout = with(activity) {
         val state = stop.getString("state")
         val stopNo = stop.getInt("number")
         val card = LinearLayout(this).apply {
@@ -161,16 +165,21 @@ class CultureQuizSheet(
             }
         }
         val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        head.addView(text(when (state) { "OPEN" -> "?"; "CORRECT" -> "✓"; "WRONG" -> "✕"; else -> "🔒" }, 13f,
-            if (state == "OPEN") 0xFF5A3B00.toInt() else 0xFFFFFFFF.toInt(), true).apply {
-            gravity = Gravity.CENTER
+        // State mark: "?" for an open stop, Material Symbols check / close / lock for the others.
+        head.addView(android.widget.FrameLayout(this).apply {
             background = rounded(when (state) { "OPEN" -> 0xFFFFC94D.toInt(); "CORRECT" -> TEAL; "WRONG" -> 0xFFB8C4BD.toInt(); else -> 0xFFE3EBE3.toInt() }, 14, null, context)
+            val mark = when (state) { "CORRECT" -> com.project.bcv.R.drawable.ic_m3_check; "WRONG" -> com.project.bcv.R.drawable.ic_m3_close; "LOCKED" -> com.project.bcv.R.drawable.ic_m3_lock; else -> 0 }
+            if (mark == 0) addView(text("?", 13f, 0xFF5A3B00.toInt(), true).apply { gravity = Gravity.CENTER },
+                android.widget.FrameLayout.LayoutParams(-1, -1))
+            else addView(icon(mark, if (state == "LOCKED") MUTED else 0xFFFFFFFF.toInt(), 16),
+                android.widget.FrameLayout.LayoutParams(dp(16), dp(16), Gravity.CENTER))
         }, LinearLayout.LayoutParams(dp(28), dp(28)))
         head.addView(text("Trạm $stopNo · ${stop.getInt("unlockPercent")}% hành trình", 15f, FOREST, true).apply {
             setPadding(dp(10), 0, 0, 0) }, LinearLayout.LayoutParams(0, -2, 1f))
         when (state) {
-            "OPEN" -> head.addView(pill("Đã mở", 0xFF8A5A00.toInt(), 0xFFFFE7A8.toInt()))
-            "CORRECT" -> head.addView(pill("+$perCorrect điểm"))
+            // Open: how hard it is and what it is worth, so a hard question reads as the bigger prize.
+            "OPEN" -> head.addView(pill("${stop.optString("difficultyName")} · +${stop.optInt("points")}", 0xFF8A5A00.toInt(), 0xFFFFE7A8.toInt()))
+            "CORRECT" -> head.addView(pill("+${stop.optInt("points")} điểm"))
             "WRONG" -> head.addView(pill("Chưa đúng", MUTED, 0xFFEDEFEE.toInt()))
         }
         card.addView(head)
@@ -208,7 +217,8 @@ class CultureQuizSheet(
                 card.full(button, 6)
             }
             card.full(feedback, 6)
-            card.full(text("Trả lời đúng: +$perCorrect điểm khám phá", 11f, 0xFF8A5A00.toInt()), 6)
+            card.full(text("Câu ${stop.optString("difficultyName").lowercase()} · trả lời đúng: +${stop.optInt("points")} điểm khám phá",
+                11f, 0xFF8A5A00.toInt()), 6)
             return@with card
         }
         // Answered: the player's pick, the right answer and the explanation.
@@ -224,7 +234,8 @@ class CultureQuizSheet(
             }, 6)
         }
         stop.optString("explanation").takeIf { it.isNotBlank() && it != "null" }?.let {
-            card.full(text("💡 $it", 13f, FOREST), 8)
+            card.full(text(it, 13f, FOREST).leadingIcon(com.project.bcv.R.drawable.ic_m3_lightbulb, 0xFFC9962B.toInt(), 16).apply {
+                gravity = Gravity.TOP or Gravity.START }, 8)
         }
         card
     }

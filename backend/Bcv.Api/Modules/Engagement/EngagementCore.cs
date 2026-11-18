@@ -13,14 +13,12 @@ public static class EngagementCore
 
     public static readonly IReadOnlyDictionary<string, string> ZoneNames = new Dictionary<string, string>
     {
-        ["TAY_BAC"] = "Tây Bắc",
-        ["DONG_BAC"] = "Đông Bắc",
+        ["MIEN_NUI_BAC"] = "Trung du và miền núi phía Bắc",
         ["SONG_HONG"] = "Đồng bằng sông Hồng",
-        ["BAC_TRUNG_BO"] = "Bắc Trung Bộ",
-        ["NAM_TRUNG_BO"] = "Duyên hải Nam Trung Bộ",
+        ["MIEN_TRUNG"] = "Bắc Trung Bộ và duyên hải miền Trung",
         ["TAY_NGUYEN"] = "Tây Nguyên",
         ["DONG_NAM_BO"] = "Đông Nam Bộ",
-        ["TAY_NAM_BO"] = "Tây Nam Bộ",
+        ["TAY_NAM_BO"] = "Đồng bằng sông Cửu Long",
     };
 
     /// <summary>Personal daily goal: the same T(u) the recommender uses for the user's activity level.</summary>
@@ -33,10 +31,9 @@ public static class EngagementCore
     }
 
     public sealed record DayRecord(DateOnly Date, int Steps, int Goal);
-    public sealed record Pause(DateOnly Start, DateOnly End);
-    public sealed record Streak(int Current, int Best, bool TodayDone, Pause? ActivePause);
+    public sealed record Streak(int Current, int Best, bool TodayDone);
 
-    public static async Task<(List<DayRecord> Days, List<Pause> Pauses)> HistoryAsync(NpgsqlDataSource db, long userId, CancellationToken ct)
+    public static async Task<List<DayRecord>> HistoryAsync(NpgsqlDataSource db, long userId, CancellationToken ct)
     {
         var days = new List<DayRecord>();
         await using (var command = db.CreateCommand("""
@@ -50,31 +47,22 @@ public static class EngagementCore
             while (await reader.ReadAsync(ct))
                 days.Add(new DayRecord(reader.GetFieldValue<DateOnly>(0), reader.GetInt32(1), reader.GetInt32(2)));
         }
-        var pauses = new List<Pause>();
-        await using (var command = db.CreateCommand("SELECT start_date, end_date FROM activity_pause WHERE user_id=$1 ORDER BY start_date"))
-        {
-            command.Parameters.AddWithValue(userId);
-            await using var reader = await command.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct))
-                pauses.Add(new Pause(reader.GetFieldValue<DateOnly>(0), reader.GetFieldValue<DateOnly>(1)));
-        }
-        return (days, pauses);
+        return days;
     }
 
     /// <summary>
-    /// A day keeps the streak when its steps reach that day's goal. Paused days neither count nor break it.
+    /// A day keeps the streak when its steps reach that day's goal; a missed day breaks it.
     /// Today only extends the streak once done, so an unfinished today never resets it.
     /// </summary>
-    public static Streak ComputeStreak(IReadOnlyList<DayRecord> days, IReadOnlyList<Pause> pauses, DateOnly today)
+    public static Streak ComputeStreak(IReadOnlyList<DayRecord> days, DateOnly today)
     {
         var met = days.Where(d => d.Steps >= d.Goal).Select(d => d.Date).ToHashSet();
-        bool Paused(DateOnly d) => pauses.Any(p => d >= p.Start && d <= p.End);
         var todayDone = met.Contains(today);
         var current = 0;
         for (var d = todayDone ? today : today.AddDays(-1); d >= today.AddDays(-400); d = d.AddDays(-1))
         {
             if (met.Contains(d)) current++;
-            else if (!Paused(d)) break;
+            else break;
         }
         var best = 0;
         var running = 0;
@@ -82,11 +70,10 @@ public static class EngagementCore
             for (var d = days[0].Date; d <= today; d = d.AddDays(1))
             {
                 if (met.Contains(d)) running++;
-                else if (!Paused(d) && d != today) running = 0;
+                else if (d != today) running = 0;
                 best = Math.Max(best, running);
             }
-        var active = pauses.LastOrDefault(p => today >= p.Start && today <= p.End);
-        return new Streak(current, Math.Max(best, current), todayDone, active);
+        return new Streak(current, Math.Max(best, current), todayDone);
     }
 
     public static double DistanceMeters(double lat1, double lon1, double lat2, double lon2)

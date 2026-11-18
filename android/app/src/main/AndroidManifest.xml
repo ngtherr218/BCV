@@ -53,7 +53,8 @@
         <activity android:name=".feature.account.profile.presentation.ProfileActivity" android:exported="false" />
         <activity android:name=".feature.account.profile.presentation.EditProfileActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".feature.account.profile.presentation.ChangePasswordActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".feature.discovery.presentation.PlaceVideoActivity" android:exported="false" />
+        <activity android:name=".feature.discovery.presentation.PlaceVideoActivity" android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize" android:theme="@style/Theme.Material3.Dark.NoActionBar" />
         <activity android:name=".feature.statsnotify.stats.presentation.StatsActivity" android:exported="false" />
         <activity android:name=".feature.journey.presentation.JourneyHistoryActivity" android:exported="false" />
         <activity android:name=".feature.statsnotify.notifications.presentation.NotificationsActivity" android:exported="false" />

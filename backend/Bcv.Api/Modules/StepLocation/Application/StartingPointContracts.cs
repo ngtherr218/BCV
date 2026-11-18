@@ -39,7 +39,7 @@ public sealed class StartingPointService(IStartingPointRepository repository)
             throw new StartingPointException("INVALID_COORDINATES", "Tọa độ vị trí không hợp lệ.");
         return await repository.ResolveCurrentAsync(latitude.Value, longitude.Value, ct)
             ?? throw new StartingPointException("OUT_OF_SUPPORTED_AREA",
-                "Vị trí này chưa nằm trong vùng dữ liệu hỗ trợ. Hãy chọn điểm hệ thống đề xuất.");
+                "Vị trí này nằm ngoài Việt Nam nên chưa được hỗ trợ. Hãy chọn điểm hệ thống đề xuất.");
     }
 
     public async Task<StartingPointSnapshot> SaveAsync(long userId, SaveStartingPointCommand request,

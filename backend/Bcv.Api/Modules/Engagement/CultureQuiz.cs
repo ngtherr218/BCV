@@ -8,8 +8,10 @@ namespace Bcv.Api.Modules.Engagement;
 /// </summary>
 public static class CultureQuiz
 {
-    /// <summary>Explorer points per correct answer, and the extra for answering every stop correctly.</summary>
-    public const int PointsPerCorrect = 20;
+    /// <summary>Explorer points for a correct answer, by the question's difficulty (1 Dễ, 2 Vừa, 3 Khó).</summary>
+    public static int PointsFor(int difficulty) => difficulty switch { <= 1 => 10, 2 => 20, _ => 30 };
+    public static string DifficultyName(int difficulty) => difficulty switch { <= 1 => "Dễ", 2 => "Vừa", _ => "Khó" };
+    /// <summary>The extra for answering every stop of a place correctly.</summary>
     public const int MasteryPoints = 50;
 
     /// <summary>
@@ -21,13 +23,13 @@ public static class CultureQuiz
     public static int UnlockSteps(int requiredSteps, int index, int count) =>
         (int)Math.Ceiling(requiredSteps * UnlockFraction(index, count));
 
-    public sealed record Question(string Key, string Text, IReadOnlyList<string> Options, string Answer, string Explanation);
+    public sealed record Question(string Key, string Text, IReadOnlyList<string> Options, string Answer, string Explanation, int Difficulty);
 
     /// <summary>Easiest first, then in the order they were written. Key "Q{id}" is what answers are stored under.</summary>
     public static async Task<IReadOnlyList<Question>> BuildAsync(NpgsqlDataSource db, long journeyId, long placeId, CancellationToken ct)
     {
         await using var command = db.CreateCommand("""
-            SELECT question_id, question, option_a, option_b, option_c, option_d, answer_index, explanation
+            SELECT question_id, question, option_a, option_b, option_c, option_d, answer_index, explanation, difficulty
             FROM place_question WHERE place_id=$1 AND status='ACTIVE'
             ORDER BY difficulty, question_id
             """);
@@ -39,7 +41,8 @@ public static class CultureQuiz
             var options = new[] { reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5) };
             var answer = reader.GetInt16(6);
             if (answer is < 0 or > 3) continue;
-            questions.Add(new Question($"Q{reader.GetInt64(0)}", reader.GetString(1), options, options[answer], reader.GetString(7)));
+            questions.Add(new Question($"Q{reader.GetInt64(0)}", reader.GetString(1), options, options[answer], reader.GetString(7),
+                Convert.ToInt32(reader.GetValue(8))));
         }
         return questions;
     }

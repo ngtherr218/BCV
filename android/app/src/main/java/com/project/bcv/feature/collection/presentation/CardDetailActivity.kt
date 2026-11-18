@@ -138,7 +138,7 @@ class CardDetailActivity : AppCompatActivity() {
                 setStroke((4 * resources.displayMetrics.density).toInt(), gold)
             }
             binding.headline.text = "Một dấu chân thật am hiểu."
-            binding.ownedChip.text = "✦ Bản Am hiểu"
+            binding.ownedChip.text = "Bản Am hiểu"
             binding.ownedChip.setTextColor(gold)
             binding.ownedChip.compoundDrawableTintList = ColorStateList.valueOf(gold)
             binding.ownedNote.text = "Bạn đã trả lời đúng mọi trạm câu hỏi về địa danh này.\nThẻ được nâng lên bản Am hiểu viền vàng."

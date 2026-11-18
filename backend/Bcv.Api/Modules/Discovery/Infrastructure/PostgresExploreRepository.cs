@@ -60,8 +60,8 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
 
         var images = new List<string>();
         await using (var command = new NpgsqlCommand("""
-            SELECT image_key FROM place_image
-            WHERE place_id = $1 ORDER BY place_image_id
+            SELECT image_key FROM place_media
+            WHERE media_type = 'IMAGE' AND place_id = $1 ORDER BY media_id
             """, connection))
         {
             command.Parameters.Add(new NpgsqlParameter<long> { TypedValue = placeId, NpgsqlDbType = NpgsqlDbType.Bigint });
@@ -69,19 +69,51 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
             while (await reader.ReadAsync(ct)) images.Add(reader.GetString(0));
         }
 
+        // How many videos the place has, so a locked page can say what unlocking adds.
+        int videoCount;
+        await using (var count = new NpgsqlCommand("SELECT count(*)::int FROM place_media WHERE media_type='VIDEO' AND place_id=$1", connection))
+        {
+            count.Parameters.Add(new NpgsqlParameter<long> { TypedValue = placeId, NpgsqlDbType = NpgsqlDbType.Bigint });
+            videoCount = (int)(await count.ExecuteScalarAsync(ct))!;
+        }
         var videos=new List<ExplorePlaceVideo>();
         if(discovered)
         {
-            await using var command=new NpgsqlCommand("SELECT video_id,duration_seconds,width,height FROM place_video WHERE place_id=$1 ORDER BY video_id",connection);
+            await using var command=new NpgsqlCommand("SELECT media_id,duration_seconds,width,height FROM place_media WHERE media_type='VIDEO' AND place_id=$1 ORDER BY media_id",connection);
             command.Parameters.AddWithValue(placeId);
             await using var reader=await command.ExecuteReaderAsync(ct);
             while(await reader.ReadAsync(ct))videos.Add(new ExplorePlaceVideo(reader.GetInt64(0),$"/api/explore/places/{placeId}/videos/{reader.GetInt64(0)}",reader.GetDouble(1),reader.GetInt32(2),reader.GetInt32(3)));
+        }
+        // Check-in is offered at the destination of the journey being walked or where the virtual location
+        // stands; a card not yet earned
+        // (the place was unlocked by check-in or flight) can still be walked for.
+        bool journeyDestination, cardPending, atVirtualLocation;
+        await using (var command = new NpgsqlCommand(
+            """
+            SELECT EXISTS (SELECT 1 FROM journey WHERE user_id=$1 AND destination_place_id=$2 AND status='IN_PROGRESS'),
+                   EXISTS (SELECT 1 FROM card c WHERE c.place_id=$2 AND c.status='ACTIVE'
+                             AND NOT EXISTS (SELECT 1 FROM user_card uc WHERE uc.user_id=$1 AND uc.card_id=c.card_id)),
+                   EXISTS (SELECT 1 FROM virtual_location v JOIN place p ON p.place_id=$2 WHERE v.user_id=$1
+                             AND abs(v.latitude - p.latitude) < 0.0005 AND abs(v.longitude - p.longitude) < 0.0005)
+                   -- The virtual location only moves when a journey ends: once 1,000 steps of a new journey are
+                   -- walked the user has left this spot, so it no longer offers check-in (same rule in EngagementEndpoints).
+                   AND NOT EXISTS (SELECT 1 FROM journey j WHERE j.user_id=$1 AND j.status='IN_PROGRESS' AND j.recorded_steps >= 1000)
+            """, connection))
+        {
+            command.Parameters.Add(new NpgsqlParameter<long> { TypedValue = userId, NpgsqlDbType = NpgsqlDbType.Bigint });
+            command.Parameters.Add(new NpgsqlParameter<long> { TypedValue = placeId, NpgsqlDbType = NpgsqlDbType.Bigint });
+            await using var reader = await command.ExecuteReaderAsync(ct);
+            await reader.ReadAsync(ct);
+            journeyDestination = reader.GetBoolean(0);
+            cardPending = reader.GetBoolean(1);
+            atVirtualLocation = reader.GetBoolean(2);
         }
         // Preview before unlocking: cover photo, introduction and fun fact. The full gallery, videos,
         // the collectible card and every reward still need the walk (or a real check-in).
         return new ExplorePlaceDetail(id, name, placeType, images.FirstOrDefault(), discovered, distanceKm,
             distanceKm <= 0 ? 0 : StepConversion.RequiredSteps(distanceKm), introduction, highlights, regionName,
-            discovered ? images : [], rating, ratingCount, videos);
+            discovered ? images : [], rating, ratingCount, videos, journeyDestination, cardPending, videoCount,
+            journeyDestination || atVirtualLocation);
     }
 
     private static async Task<ExploreSnapshot> LoadSnapshotAsync(NpgsqlConnection connection,
@@ -153,7 +185,7 @@ public sealed class PostgresExploreRepository(NpgsqlDataSource db) : IExploreRep
                    (d.place_id IS NOT NULL) AS is_discovered,
                    COALESCE((SELECT name FROM public.place_type WHERE place_type_id=p.place_type_id),''),
                    (SELECT CASE WHEN image_key LIKE 'data:%' THEN '/api/places/' || p.place_id || '/thumbnail' ELSE image_key END
-                        FROM public.place_image WHERE place_id=p.place_id ORDER BY place_image_id LIMIT 1)
+                        FROM public.place_media WHERE media_type='IMAGE' AND place_id=p.place_id ORDER BY media_id LIMIT 1)
             FROM public.place p
             LEFT JOIN public.user_discovered_place d
               ON d.place_id = p.place_id AND d.user_id = $1

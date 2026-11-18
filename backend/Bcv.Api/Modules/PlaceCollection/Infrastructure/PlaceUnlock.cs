@@ -5,13 +5,14 @@ using Bcv.Api.Modules.QuestItem.Infrastructure;
 namespace Bcv.Api.Modules.PlaceCollection.Infrastructure;
 
 /// <summary>
-/// Arriving at a place, by finishing a journey or by flight ticket: the place is discovered (counting
-/// toward DISCOVER_PLACE quests the first time) and its collectible card, if any, is earned.
+/// Arriving at a place: the place is discovered (counting toward DISCOVER_PLACE quests the first time).
+/// Its collectible card is earned by finishing a journey there or landing by flight ticket ([grantCard]);
+/// a real check-in unlocks the place but the card still has to be walked for.
 /// </summary>
 public static class PlaceUnlock
 {
     public static async Task UnlockAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
-        long userId, long placeId, CancellationToken ct)
+        long userId, long placeId, CancellationToken ct, bool grantCard = false)
     {
         await using (var discovery = new NpgsqlCommand("""
             INSERT INTO public.user_discovered_place (user_id, place_id)
@@ -25,6 +26,7 @@ public static class PlaceUnlock
                 await QuestProgress.RecordAsync(connection, transaction, userId, QuestProgress.DiscoverPlace, 1, ct);
         }
 
+        if (!grantCard) return;
         await using var card = new NpgsqlCommand("""
             INSERT INTO public.user_card (user_id, card_id)
             SELECT $1, c.card_id FROM public.card c

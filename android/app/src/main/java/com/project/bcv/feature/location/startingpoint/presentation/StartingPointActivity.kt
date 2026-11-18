@@ -252,7 +252,7 @@ class StartingPointActivity : AppCompatActivity() {
             accent = 0xFF718994.toInt(), orbit = 0xFFEFF3F5.toInt(), heroIcon = R.drawable.ic_starting_target)
         StartingPointStage.OUTSIDE_AREA -> ScreenCopy("VỊ TRÍ CHƯA HỢP LỆ", "Điểm này chưa nằm", "trong vùng hỗ trợ.",
             "Chưa thể dùng vị trí hiện tại làm điểm đầu. Hãy chọn một điểm hệ thống hỗ trợ.",
-            "Không lưu vị trí ngoài phạm vi", "Chọn điểm đề xuất để tiếp tục.", state.message.orEmpty(),
+            "Chưa hỗ trợ vị trí này", "Chọn điểm đề xuất để tiếp tục.", state.message.orEmpty(),
             "Chọn điểm đề xuất", "Thử lấy vị trí lại", "Không tự lưu hoặc thay đổi vị trí đang chọn.",
             accent = 0xFFC36E59.toInt(), orbit = 0xFFFCEFEA.toInt(), heroIcon = R.drawable.ic_health_alert)
         StartingPointStage.NO_SUGGESTION -> ScreenCopy("ĐIỂM XUẤT PHÁT ẢO", "Chưa tải được", "điểm đề xuất.",

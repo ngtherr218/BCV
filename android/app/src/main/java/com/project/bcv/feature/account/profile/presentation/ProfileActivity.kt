@@ -140,13 +140,44 @@ class ProfileActivity : AppCompatActivity() {
         accountCard.contentDescription = "$displayName, ${account.email}, tài khoản đang hoạt động"
     }
 
+    /** Sign-out as a card: the account it applies to, a reassurance that progress is kept, red "Đăng xuất". */
     private fun confirmLogout() {
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Đăng xuất?")
-            .setMessage("Bạn sẽ cần đăng nhập lại để tiếp tục hành trình.")
-            .setNegativeButton("Huỷ", null)
-            .setPositiveButton("Đăng xuất") { _, _ -> model.logout() }
-            .show()
+        val ui = com.project.bcv.feature.engagement.EngagementUi
+        with(ui) {
+            val email = binding.email.text?.toString().orEmpty().takeIf { it.contains("@") }
+            lateinit var leave: com.google.android.material.button.MaterialButton
+            lateinit var stay: com.google.android.material.button.MaterialButton
+            val dialog = cardDialog { dlg ->
+                val badge = android.widget.FrameLayout(context).apply {
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(0xFFFDECEA.toInt())
+                    }
+                    addView(icon(R.drawable.ic_logout, 0xFFC0473A.toInt(), 30),
+                        android.widget.FrameLayout.LayoutParams(dp(30), dp(30), android.view.Gravity.CENTER))
+                }
+                addView(badge, android.widget.LinearLayout.LayoutParams(dp(72), dp(72)))
+                badge.popIn()
+                addView(text("Đăng xuất?", 20f, FOREST, true).apply { gravity = android.view.Gravity.CENTER },
+                    android.widget.LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
+                if (email != null) addView(pill(email, FOREST, SOFT).apply { textSize = 13f; setPadding(dp(12), dp(5), dp(12), dp(5)) },
+                    android.widget.LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(8) })
+                addView(text("Hành trình, thẻ, điểm và nhật ký vẫn được lưu. Đăng nhập lại là tiếp tục như cũ.", 15f, MUTED).apply {
+                    gravity = android.view.Gravity.CENTER }, android.widget.LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+                leave = primaryButton("Đăng xuất").apply {
+                    backgroundTintList = android.content.res.ColorStateList.valueOf(0xFFC0473A.toInt())
+                    setIconResource(R.drawable.ic_logout)
+                }
+                addView(leave, android.widget.LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
+                stay = outlinedButton("Ở lại").apply { setOnClickListener { dlg.dismiss() } }
+                addView(stay, android.widget.LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+            }
+            leave.setOnClickListener {
+                leave.isEnabled = false; stay.isEnabled = false; leave.text = "Đang đăng xuất…"
+                dialog.setCancelable(false)
+                model.logout()
+            }
+            dialog.show()
+        }
     }
 
     private fun openSignInFresh() {

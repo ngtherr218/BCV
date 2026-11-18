@@ -66,9 +66,6 @@ public sealed class RecommendationAdmin(NpgsqlDataSource db)
             JOIN place_feature pf ON pf.place_id=(p->>'placeId')::bigint AND pf.recommendation_config_id=$1
             CROSS JOIN LATERAL jsonb_each_text(p->'features') v
             JOIN recommendation_criterion c ON c.code=v.key;
-            INSERT INTO recommendation_rating_snapshot
-            SELECT $1,p.place_id,p.rating,p.rating_count FROM place p
-            JOIN place_feature pf ON pf.place_id=p.place_id AND pf.recommendation_config_id=$1;
             """;
         foreach(var statement in statements.Split(';',StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
@@ -107,9 +104,7 @@ public sealed class RecommendationAdmin(NpgsqlDataSource db)
                    WHERE p.status='ACTIVE' AND r.status='ACTIVE' AND NOT EXISTS
                      (SELECT 1 FROM place_feature f WHERE f.place_id=p.place_id AND f.recommendation_config_id=$1))
                 AND NOT EXISTS(SELECT 1 FROM place_feature f WHERE f.recommendation_config_id=$1 AND
-                    ((SELECT count(*) FROM place_feature_value v WHERE v.place_feature_id=f.place_feature_id)<>35
-                     OR NOT EXISTS(SELECT 1 FROM recommendation_rating_snapshot s
-                        WHERE s.place_id=f.place_id AND s.recommendation_config_id=$1))))
+                    (SELECT count(*) FROM place_feature_value v WHERE v.place_feature_id=f.place_feature_id)<>35))
             """,conn,tx))
         {
             check.Parameters.AddWithValue(id);
@@ -129,10 +124,9 @@ public sealed class RecommendationAdmin(NpgsqlDataSource db)
             SELECT jsonb_build_object('config',to_jsonb(rc),'weights',
               (SELECT jsonb_object_agg(c.code,w.weight_value) FROM recommendation_weight w JOIN recommendation_criterion c USING(criterion_id) WHERE w.recommendation_config_id=rc.recommendation_config_id),
               'places',(SELECT jsonb_agg(jsonb_build_object('placeId',p.place_id,'name',p.name,'regionName',r.name,
-                'latitude',p.latitude,'longitude',p.longitude,'rating',s.rating,'ratingCount',s.rating_count,'cluster',pf.cluster_number,
+                'latitude',p.latitude,'longitude',p.longitude,'rating',p.rating,'ratingCount',p.rating_count,'cluster',pf.cluster_number,
                 'features',(SELECT jsonb_object_agg(c.code,v.feature_value) FROM place_feature_value v JOIN recommendation_criterion c USING(criterion_id) WHERE v.place_feature_id=pf.place_feature_id)) ORDER BY p.place_id)
               FROM place_feature pf JOIN place p USING(place_id) JOIN region r USING(region_id)
-              JOIN recommendation_rating_snapshot s ON s.place_id=p.place_id AND s.recommendation_config_id=pf.recommendation_config_id
               WHERE pf.recommendation_config_id=rc.recommendation_config_id AND p.status='ACTIVE' AND r.status='ACTIVE'))::text
             FROM recommendation_config rc WHERE status='ACTIVE'
             """);

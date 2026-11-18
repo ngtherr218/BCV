@@ -79,8 +79,17 @@ class JourneyActivity : AppCompatActivity() {
         binding.bottomNavigation.root.visibility = android.view.View.GONE
         // The full, interactive map of this journey lives on Khám phá.
         binding.mapTapTarget.setOnClickListener {
-            setResult(RESULT_OK, Intent().putExtra(EXTRA_FOCUS_MAP, true))
-            closeTab()
+            if (callingActivity != null) {
+                // Opened by Khám phá for a result: it focuses its map when this closes.
+                setResult(RESULT_OK, Intent().putExtra(EXTRA_FOCUS_MAP, true))
+                closeTab()
+            } else {
+                // Opened from Hồ sơ (or a notification): go back down to Khám phá, focused on the journey.
+                startActivity(Intent(this, com.project.bcv.feature.discovery.presentation.ExploreActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    .putExtra(EXTRA_FOCUS_MAP, true))
+                finish()
+            }
         }
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = closeTab()

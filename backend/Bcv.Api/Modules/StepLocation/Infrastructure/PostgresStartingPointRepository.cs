@@ -51,9 +51,9 @@ public sealed class PostgresStartingPointRepository(NpgsqlDataSource db) : IStar
             FROM public.place p
             JOIN public.region r ON r.region_id = p.region_id
             WHERE r.status = 'ACTIVE' AND p.status = 'ACTIVE'
-              AND ST_DWithin({Coordinates},
-                  ST_SetSRID(ST_MakePoint($2::double precision, $1::double precision), 4326)::geography,
-                  75000)
+              -- Anywhere in Vietnam (mainland, islands and the sea around them): the nearest place
+              -- gives the region, however far it is. Only points clearly abroad are refused.
+              AND $1::double precision BETWEEN 7.5 AND 23.5 AND $2::double precision BETWEEN 102.0 AND 117.5
             ORDER BY ST_Distance({Coordinates},
                 ST_SetSRID(ST_MakePoint($2::double precision, $1::double precision), 4326)::geography),
                 p.place_id

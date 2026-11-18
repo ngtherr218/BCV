@@ -44,7 +44,15 @@ data class ExplorePlaceDetail(val id: Long, val name: String, val placeType: Str
     val imageUrl: String?, val isDiscovered: Boolean, val distanceKm: Double,
     val requiredSteps: Int, val introduction: String?, val highlights: String?,
     val regionName: String? = null, val imageUrls: List<String> = emptyList(),
-    val rating: Double? = null, val ratingCount: Int? = null, val videos: List<PlaceVideo> = emptyList())
+    val rating: Double? = null, val ratingCount: Int? = null, val videos: List<PlaceVideo> = emptyList(),
+    /** The destination of the journey being walked: the only place that offers Check-in. */
+    val isJourneyDestination: Boolean = false,
+    /** Unlocked by check-in but its card is still to be earned by finishing a journey here. */
+    val cardPending: Boolean = false,
+    /** Videos the place has; their list ([videos]) comes only once it is unlocked. */
+    val videoCount: Int = 0,
+    /** Journey destination, or where the virtual location stands: the places that offer Check-in. */
+    val canCheckIn: Boolean = false)
 
 data class PlaceVideo(val id: Long, val url: String, val durationSeconds: Double)
 

@@ -1,9 +1,12 @@
 package com.project.bcv.feature.engagement
 
+import com.project.bcv.feature.engagement.EngagementUi.leadingIcon
+import com.project.bcv.feature.engagement.EngagementUi.icon
 import android.app.Activity
 import android.view.Gravity
 import android.widget.GridLayout
 import android.widget.LinearLayout
+import android.view.View
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -19,6 +22,11 @@ import com.project.bcv.feature.engagement.EngagementUi.MUTED
 import com.project.bcv.feature.engagement.EngagementUi.TEAL
 import com.project.bcv.feature.engagement.EngagementUi.card
 import com.project.bcv.feature.engagement.EngagementUi.dp
+import com.project.bcv.feature.engagement.EngagementUi.SOFT
+import com.project.bcv.feature.engagement.EngagementUi.outlinedButton
+import com.project.bcv.feature.engagement.EngagementUi.pill
+import com.project.bcv.feature.engagement.EngagementUi.popIn
+import com.project.bcv.feature.engagement.EngagementUi.cardDialog
 import com.project.bcv.feature.engagement.EngagementUi.full
 import com.project.bcv.feature.engagement.EngagementUi.gap
 import com.project.bcv.feature.engagement.EngagementUi.number
@@ -52,20 +60,14 @@ internal object EngagementBlocks {
     fun streakCard(activity: AppCompatActivity, streak: JSONObject, reload: () -> Unit): LinearLayout = with(activity) {
         val goal = streak.getInt("dailyGoal")
         val today = streak.getInt("todaySteps")
-        val pause = streak.optJSONObject("pause")
-        val box = card(color = if (pause != null) GOLD_SOFT else 0xFFFFFFFF.toInt())
+        val box = card()
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        top.addView(text("🔥 ${streak.getInt("current")} ngày liên tiếp", 17f, FOREST, true), LinearLayout.LayoutParams(0, -2, 1f))
-        top.addView(text(if (pause != null) "Kết thúc nghỉ" else "Tạm nghỉ", 13f, TEAL, true).apply {
-            setPadding(dp(8), dp(4), 0, dp(4)); isClickable = true
-            setOnClickListener { if (pause != null) endPause(activity, box, reload) else askPause(activity, box, reload) }
-        })
+        top.addView(text("${streak.getInt("current")} ngày liên tiếp", 17f, FOREST, true)
+            .leadingIcon(com.project.bcv.R.drawable.ic_m3_local_fire_department, 0xFFD9782B.toInt(), 20), LinearLayout.LayoutParams(0, -2, 1f))
         box.addView(top)
-        box.full(text(when {
-            pause != null -> "⏸ Tạm nghỉ đến ${formatDate(pause.getString("end"))}"
-            streak.getBoolean("todayDone") -> "✅ Hôm nay ${number(today)} / ${number(goal)} bước"
-            else -> "Hôm nay ${number(today)} / ${number(goal)} bước"
-        }, 13f, MUTED), 6)
+        box.full(text("Hôm nay ${number(today)} / ${number(goal)} bước", 13f, MUTED).apply {
+            if (streak.getBoolean("todayDone")) leadingIcon(com.project.bcv.R.drawable.ic_m3_check_circle, TEAL, 15)
+        }, 6)
         box.full(progress(today, goal), 8)
         box.gap(12)
         val week = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -74,47 +76,27 @@ internal object EngagementBlocks {
             val day = days.getJSONObject(i)
             val date = LocalDate.parse(day.getString("date"))
             val cell = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
-            cell.addView(TextView(this).apply {
-                gravity = Gravity.CENTER; textSize = 11f
-                val met = day.getBoolean("met"); val paused = day.getBoolean("paused")
-                text = when { met -> "✓"; paused -> "⏸"; else -> "" }
-                setTextColor(0xFFFFFFFF.toInt())
-                background = rounded(when { met -> TEAL; paused -> GOLD; else -> LINE }, 14, null, context)
-                contentDescription = "${weekday(date)}: ${number(day.getInt("steps"))} bước"
+            // Reached: teal with a tick. Missed (a past day below the goal): red with a cross. Otherwise grey.
+            val met = day.getBoolean("met"); val missed = day.optBoolean("missed")
+            cell.addView(android.widget.FrameLayout(this).apply {
+                background = rounded(when { met -> TEAL; missed -> MISSED_RED; else -> LINE }, 14, null, context)
+                contentDescription = "${weekday(date)}: ${number(day.getInt("steps"))} bước" +
+                    when { met -> ", đạt mục tiêu"; missed -> ", lỡ chuỗi"; else -> "" }
+                if (met || missed) addView(icon(if (met) com.project.bcv.R.drawable.ic_m3_check else com.project.bcv.R.drawable.ic_m3_close,
+                    0xFFFFFFFF.toInt(), 16), android.widget.FrameLayout.LayoutParams(dp(16), dp(16), Gravity.CENTER))
             }, LinearLayout.LayoutParams(dp(28), dp(28)))
-            cell.addView(text(weekday(date), 11f, MUTED).apply { gravity = Gravity.CENTER })
+            cell.addView(text(weekday(date), 11f, if (missed) MISSED_RED else MUTED, missed).apply { gravity = Gravity.CENTER })
             week.addView(cell, LinearLayout.LayoutParams(0, -2, 1f))
         }
         box.addView(week)
         box
     }
 
-    private fun askPause(activity: AppCompatActivity, anchor: LinearLayout, reload: () -> Unit) {
-        val values = intArrayOf(1, 2, 3, 5, 7)
-        MaterialAlertDialogBuilder(activity)
-            .setTitle("Tạm nghỉ bao lâu?")
-            .setItems(values.map { "$it ngày" }.toTypedArray()) { _, which ->
-                activity.lifecycleScope.launch {
-                    runCatching { EngagementApi(activity).pause(values[which]) }
-                        .onSuccess { reload() }
-                        .onFailure { Snackbar.make(anchor, it.message ?: "Không tạm nghỉ được.", Snackbar.LENGTH_LONG).show() }
-                }
-            }
-            .setNegativeButton("Huỷ", null)
-            .show()
-    }
-
-    private fun endPause(activity: AppCompatActivity, anchor: LinearLayout, reload: () -> Unit) = activity.lifecycleScope.launch {
-        runCatching { EngagementApi(activity).endPause() }.onSuccess { reload() }
-            .onFailure { Snackbar.make(anchor, it.message ?: "Không cập nhật được.", Snackbar.LENGTH_LONG).show() }
-    }
+    private const val MISSED_RED = 0xFFD9534F.toInt()
 
     // ---------- Thử thách: badges ----------
-    private val BADGE_ICONS = mapOf(
-        "FIRST_STEP" to "👣", "EXPLORER_10" to "🧭", "EXPLORER_50" to "🗺️", "EXPLORER_100" to "🏆",
-        "THREE_ZONES" to "🌏", "ZONE_COMPLETE" to "⛰️", "STREAK_7" to "🔥", "STREAK_30" to "⚡",
-        "STREAK_100" to "💯", "REAL_VISIT" to "📍", "PROVINCES_5" to "🛂", "QUIZ_10" to "📚", "MASTER_3" to "🎓",
-    )
+
+    private fun badgeImage(badge: JSONObject) = badge.optString("imageUrl").takeIf { it.isNotBlank() && it != "null" }
 
     private fun share(badge: JSONObject) = badge.getString("progress").split("/")
         .let { (a, b) -> a.toDouble() / b.toDouble().coerceAtLeast(1.0) }
@@ -154,11 +136,31 @@ internal object EngagementBlocks {
                     setStroke(dp(if (earned) 3 else 2), if (earned) GOLD else LINE)
                 }
             }
-            circle.addView(text(BADGE_ICONS[badge.optString("code")] ?: "🏅", 26f).apply {
-                gravity = Gravity.CENTER; alpha = if (earned) 1f else 0.35f
-            }, android.widget.FrameLayout.LayoutParams(-1, -1))
-            if (!earned) circle.addView(text("🔒", 11f).apply {
-                gravity = Gravity.CENTER; background = rounded(0xFFFFFFFF.toInt(), 10, LINE, context)
+            // Placeholder while the art loads (or if a badge has none): a plain star in the ring.
+            val emoji = icon(com.project.bcv.R.drawable.ic_m3_workspace_premium, if (earned) GOLD else LINE, 28)
+            circle.addView(emoji, android.widget.FrameLayout.LayoutParams(dp(28), dp(28), Gravity.CENTER))
+            // Badge art from the admin web: a round picture inside the ring; locked ones in faded grey.
+            badgeImage(badge)?.let { url ->
+                val ring = dp(if (earned) 3 else 2)
+                val image = android.widget.ImageView(context).apply {
+                    scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                    background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL }
+                    clipToOutline = true; visibility = View.INVISIBLE
+                    if (!earned) {
+                        colorFilter = android.graphics.ColorMatrixColorFilter(android.graphics.ColorMatrix().apply { setSaturation(0f) })
+                        alpha = 0.45f
+                    }
+                }
+                circle.addView(image, 1, android.widget.FrameLayout.LayoutParams(-1, -1).apply { setMargins(ring, ring, ring, ring) })
+                (activity as? androidx.lifecycle.LifecycleOwner)?.lifecycleScope?.launch {
+                    EngagementApi(activity).placeImage(url, 2)?.let {
+                        image.setImageBitmap(it); image.visibility = View.VISIBLE; emoji.visibility = View.INVISIBLE
+                    }
+                }
+            }
+            if (!earned) circle.addView(android.widget.FrameLayout(context).apply {
+                background = rounded(0xFFFFFFFF.toInt(), 10, LINE, context)
+                addView(icon(com.project.bcv.R.drawable.ic_m3_lock, MUTED, 12), android.widget.FrameLayout.LayoutParams(dp(12), dp(12), Gravity.CENTER))
             }, android.widget.FrameLayout.LayoutParams(dp(20), dp(20), Gravity.BOTTOM or Gravity.END))
             addView(circle, LinearLayout.LayoutParams(dp(64), dp(64)))
             addView(text(badge.getString("name"), 12f, if (earned) FOREST else MUTED, earned).apply {
@@ -174,13 +176,63 @@ internal object EngagementBlocks {
         }
     }
 
+    /** Badge detail: the medal large, what it takes, and either "Đã đạt" or how far along you are. */
     private fun showBadge(activity: Activity, badge: JSONObject) = with(activity) {
         val earned = badge.getBoolean("earned")
-        MaterialAlertDialogBuilder(this)
-            .setTitle("${BADGE_ICONS[badge.optString("code")] ?: "🏅"}  ${badge.getString("name")}")
-            .setMessage(badge.getString("description") + "\n\n" +
-                if (earned) "✓ Bạn đã đạt huy hiệu này." else "Tiến độ: ${badge.getString("progress")}")
-            .setPositiveButton("Đóng", null).show()
+        val (value, target) = badge.getString("progress").split("/").let { (a, b) -> (a.toIntOrNull() ?: 0) to (b.toIntOrNull() ?: 1) }
+        cardDialog { dialog ->
+            val ring = dp(if (earned) 5 else 3)
+            val medal = android.widget.FrameLayout(context).apply {
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.OVAL
+                    setColor(if (earned) GOLD_SOFT else 0xFFF1F4F2.toInt()); setStroke(ring, if (earned) GOLD else LINE)
+                }
+                val placeholder = icon(com.project.bcv.R.drawable.ic_m3_workspace_premium, if (earned) GOLD else LINE, 48)
+                addView(placeholder, android.widget.FrameLayout.LayoutParams(dp(48), dp(48), Gravity.CENTER))
+                badgeImage(badge)?.let { url ->
+                    val image = android.widget.ImageView(context).apply {
+                        scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                        background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL }
+                        clipToOutline = true; visibility = View.INVISIBLE
+                        if (!earned) {
+                            colorFilter = android.graphics.ColorMatrixColorFilter(android.graphics.ColorMatrix().apply { setSaturation(0f) })
+                            alpha = 0.5f
+                        }
+                    }
+                    addView(image, android.widget.FrameLayout.LayoutParams(-1, -1).apply { setMargins(ring, ring, ring, ring) })
+                    (activity as? androidx.lifecycle.LifecycleOwner)?.lifecycleScope?.launch {
+                        EngagementApi(activity).placeImage(url, 1)?.let { image.setImageBitmap(it); image.visibility = View.VISIBLE; placeholder.visibility = View.INVISIBLE }
+                    }
+                }
+            }
+            addView(medal, LinearLayout.LayoutParams(dp(128), dp(128)))
+            medal.popIn()
+            addView(text(badge.getString("name"), 20f, FOREST, true).apply { gravity = Gravity.CENTER },
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
+            addView(text(badge.getString("description"), 15f, MUTED).apply { gravity = Gravity.CENTER },
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
+            if (earned) {
+                addView(pill("Đã đạt", 0xFF8A6418.toInt(), GOLD_SOFT).apply {
+                    textSize = 13f; setPadding(dp(14), dp(6), dp(14), dp(6))
+                    leadingIcon(com.project.bcv.R.drawable.ic_m3_check_circle, 0xFF8A6418.toInt(), 16, 6)
+                }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(16) })
+            } else {
+                val box = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    background = rounded(SOFT, 16, null, context); setPadding(dp(14), dp(12), dp(14), dp(12))
+                }
+                val headRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+                headRow.addView(text("Tiến độ", 13f, MUTED), LinearLayout.LayoutParams(0, -2, 1f))
+                headRow.addView(text("${number(value)} / ${number(target)}", 15f, FOREST, true))
+                box.addView(headRow)
+                box.addView(progress(value, target), LinearLayout.LayoutParams(-1, dp(8)).apply { topMargin = dp(8) })
+                box.addView(text("Còn ${number((target - value).coerceAtLeast(0))} nữa để đạt huy hiệu này.", 13f, MUTED),
+                    LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+                addView(box, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
+            }
+            addView(outlinedButton("Đóng").apply { setOnClickListener { dialog.dismiss() } },
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(18) })
+        }.show()
     }
 
     // ---------- Bộ sưu tập: passport ----------
@@ -354,7 +406,8 @@ internal object EngagementBlocks {
                 setPadding(dp(12), dp(12), dp(12), dp(12))
                 background = rounded(if (on) 0xFFF0F8F5.toInt() else 0xFFFFFFFF.toInt(), 14, if (on) 0xFFBFE0D5.toInt() else LINE, context)
             }
-            row.addView(text(if (on) "✓" else "○", 15f, if (on) TEAL else 0xFFB8C4BD.toInt(), true), LinearLayout.LayoutParams(dp(26), -2))
+            row.addView(icon(if (on) com.project.bcv.R.drawable.ic_m3_check_circle else com.project.bcv.R.drawable.ic_circle_outline, if (on) TEAL else 0xFFB8C4BD.toInt(), 20),
+                LinearLayout.LayoutParams(dp(20), dp(20)).apply { marginEnd = dp(6) })
             row.addView(text(place.getString("name"), 15f, FOREST, on).apply { maxLines = 2 }, LinearLayout.LayoutParams(0, -2, 1f))
             row.addView(text(when {
                 on -> formatDate(place.getString("date"))

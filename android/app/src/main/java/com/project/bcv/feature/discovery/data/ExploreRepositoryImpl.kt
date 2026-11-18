@@ -38,7 +38,8 @@ class ExploreRepositoryImpl(
                 it.optJSONArray("videos")?.let { array -> (0 until array.length()).map { index ->
                     val video = array.getJSONObject(index)
                     com.project.bcv.feature.discovery.domain.PlaceVideo(video.getLong("videoId"), video.getString("url"), video.getDouble("durationSeconds"))
-                } }.orEmpty())
+                } }.orEmpty(),
+                it.optBoolean("isJourneyDestination"), it.optBoolean("cardPending"), it.optInt("videoCount"), it.optBoolean("canCheckIn"))
         }
 
     override fun loadRecommendations(): Recommendations =

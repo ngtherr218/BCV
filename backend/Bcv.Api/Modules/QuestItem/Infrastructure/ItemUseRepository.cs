@@ -222,8 +222,8 @@ public sealed class ItemUseRepository(NpgsqlDataSource db)
             place = reader.GetString(1);
         }
         await ConsumeOneAsync(connection, transaction, userId, item.ItemId, ct);
-        // Landing counts as arriving: the place is unlocked just as at the end of a journey.
-        await PlaceUnlock.UnlockAsync(connection, transaction, userId, placeId, ct);
+        // Landing counts as arriving: the place is unlocked and its card earned, as at the end of a journey.
+        await PlaceUnlock.UnlockAsync(connection, transaction, userId, placeId, ct, grantCard: true);
         await transaction.CommitAsync(ct);
         return new FlightResult(region, place, item.Quantity - 1);
     }

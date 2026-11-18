@@ -17,8 +17,8 @@ export function Empty({ title = 'Chưa có dữ liệu', text = 'Thử thay đ�
 export function Thumbnail({ src, name }) { const [failed,setFailed] = useState(false); useEffect(() => setFailed(false),[src]); return src && !failed ? <img className="thumbnail" src={src} alt={name || ''} loading="lazy" onError={() => setFailed(true)}/> : <span className="thumbnail placeholder"><ImageOff size={18}/></span>; }
 export function Toast({ message, close }) { useEffect(() => { const timer=setTimeout(close,4500); return () => clearTimeout(timer); },[message,close]); return message && <div className="toast" role="status"><CheckCircle2 size={20}/>{message}<button className="icon-button" onClick={close} aria-label="Đóng thông báo"><X size={16}/></button></div>; }
 
-// Storage folder on the server: place photos and card art are kept apart (places/, cards/).
-const uploadPurpose = { places: 'place', cards: 'card' };
+// Storage folder on the server: place photos, card art and badge art are kept apart (places/, cards/, badges/).
+const uploadPurpose = { places: 'place', cards: 'card', badges: 'badge' };
 
 async function uploadImage(file, purpose) {
   if (!['image/jpeg','image/png','image/webp'].includes(file.type)) throw new Error('Chọn ảnh JPEG, PNG hoặc WebP.');
@@ -94,7 +94,7 @@ export function Drawer({ resource, recordId, initial, lookups, close, saved }) {
   return <div className={`overlay ${closing?'is-closing':''}`} onMouseDown={e=>{if(e.target===e.currentTarget&&!busy)dismiss();}}><section className="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" tabIndex={-1} ref={panel}><div className="drawer-heading"><div><span className="eyebrow">{config.section}</span><h2 id="drawer-title">{recordId ? resource==='users'?'Thông tin người dùng':`Chỉnh sửa ${config.singular}`:`Thêm ${config.singular}`}</h2></div><button className="icon-button" onClick={dismiss} disabled={busy} aria-label="Đóng"><X/></button></div>
     {loading?<Loading/>:!data?<div className="drawer-body"><ErrorBox message={error}/></div>:<form onSubmit={save} className="drawer-form"><div className="drawer-body">
       {resource==='users'&&<><div className="user-detail"><span className="avatar large">{data.full_name?.[0]||'U'}</span><div><h3>{data.full_name}</h3><p>{data.email}</p><small>Tham gia {date(data.created_at)}</small></div></div><div className="mini-metrics">{[['journey_count','Hành trình'],['discovered_count','Đã khám phá'],['card_count','Thẻ sở hữu'],['total_steps','Bước chân']].map(([key,label])=><div key={key}><strong>{number(data[key])}</strong><span>{label}</span></div>)}</div>{data.role==='ADMIN'&&<p className="form-hint">Tài khoản quản trị: không thay đổi trạng thái tại chức năng quản lý người dùng.</p>}</>}
-      {resource==='quests'&&recordId&&<p className="form-hint">Nếu nhiệm vụ đã phát sinh tiến độ, hệ thống chỉ cho sửa tên và trạng thái. Tạo nhiệm vụ mới khi cần đổi điều kiện hoặc phần thưởng.</p>}
+      {resource==='quests'&&<p className="form-hint">Phần thưởng: điểm khám phá, vật phẩm, hoặc cả hai. Để trống vật phẩm nếu chỉ thưởng điểm.{recordId?' Nhiệm vụ đã có người làm thì không đổi được loại, chu kỳ, điều kiện và mục tiêu; tên, trạng thái và phần thưởng vẫn sửa được.':''}</p>}
       {resource==='items'&&<p className="form-hint">{data.item_type==='SPEED_SHOES'?'Giày tăng tốc: hệ số phải lớn hơn 1, số bước hiệu lực lớn hơn 0.':'Vé máy bay: không áp dụng hệ số hoặc phạm vi số bước.'} Cấu hình mới áp dụng cho các lần sử dụng sau.</p>}
 
       <div className={`form-grid ${resource==='place-types'?'place-type-name-panel':''}`}>{resource==='place-types'&&<h3>Thông tin loại địa danh</h3>}{config.fields.filter(f=>!(resource==='items'&&data.item_type==='FLIGHT_TICKET'&&['effect_value','effective_range'].includes(f.key))).map(f=><React.Fragment key={f.key}><div className={`form-field ${f.wide?'wide':''}`} key={f.key}><label htmlFor={`field-${f.key}`}>{f.label}{f.required&&<span className="required"> *</span>}</label>

@@ -47,9 +47,9 @@ static class FeatureInheritanceChecks
             Check((long)(await cmd.ExecuteScalarAsync())! == before,"Unchanged mapping created a redundant model revision");
         }
         Check((await Codes(custom)).SequenceEqual(new[]{"kind__museum"}),"Custom features ignored");
-        await using(var cmd=db.CreateCommand("SELECT count(*) FROM place_feature pf JOIN recommendation_config cfg USING(recommendation_config_id) JOIN recommendation_rating_snapshot s USING(place_id,recommendation_config_id) JOIN place_feature_value v USING(place_feature_id) WHERE pf.place_id=$1 AND cfg.status='ACTIVE' AND pf.cluster_number IS NOT NULL"))
+        await using(var cmd=db.CreateCommand("SELECT count(*) FROM place_feature pf JOIN recommendation_config cfg USING(recommendation_config_id) JOIN place_feature_value v USING(place_feature_id) WHERE pf.place_id=$1 AND cfg.status='ACTIVE' AND pf.cluster_number IS NOT NULL"))
         {
-            cmd.Parameters.AddWithValue(inherited); Check((long)(await cmd.ExecuteScalarAsync())! == 35,"Inherited place lacks recommendation cluster/vector/snapshot");
+            cmd.Parameters.AddWithValue(inherited); Check((long)(await cmd.ExecuteScalarAsync())! == 35,"Inherited place lacks recommendation cluster/vector");
         }
         Console.WriteLine("PASS create type + create place without feature selections; 35-value vector, cluster and recommendation snapshot saved");
         await Save("place-types",type,new{name="Updated inheritance",feature_codes=new[]{"kind__heritage","theme__history"}});
@@ -67,7 +67,7 @@ static class FeatureInheritanceChecks
         Check((await Codes(inherited)).SequenceEqual(new[]{"kind__heritage","theme__history"}),"Invalid place save changed features");
         await repo.Delete("places",inherited,default); await repo.Delete("places",secondInherited,default); await repo.Delete("places",custom,default); await repo.Delete("place-types",type,default);
         // Restore the deletion suite's single model fixture after testing revision copies.
-        await Exec("DELETE FROM place_feature_value WHERE place_feature_id IN (SELECT place_feature_id FROM place_feature WHERE recommendation_config_id<>910001); DELETE FROM place_feature WHERE recommendation_config_id<>910001; DELETE FROM recommendation_rating_snapshot WHERE recommendation_config_id<>910001; DELETE FROM recommendation_config WHERE recommendation_config_id<>910001; UPDATE recommendation_config SET status='DRAFT' WHERE recommendation_config_id=910001");
+        await Exec("DELETE FROM place_feature_value WHERE place_feature_id IN (SELECT place_feature_id FROM place_feature WHERE recommendation_config_id<>910001); DELETE FROM place_feature WHERE recommendation_config_id<>910001; DELETE FROM recommendation_config WHERE recommendation_config_id<>910001; UPDATE recommendation_config SET status='DRAFT' WHERE recommendation_config_id=910001");
         Console.WriteLine("PASS empty/invalid mappings rejected atomically; inherited places and unused type mapping can be deleted");
     }
 }

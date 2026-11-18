@@ -36,7 +36,7 @@ public sealed class AccountService(IAccountRepository repository, ISessionStore 
         if (account is null || !PasswordHasher.Verify(request.Password, account.PasswordHash))
             throw new AccountException("INVALID_CREDENTIALS", "Email hoặc mật khẩu không đúng.");
         if (account.Status != "ACTIVE")
-            throw new AccountException("ACCOUNT_INACTIVE", "Tài khoản hiện không hoạt động.");
+            throw new AccountException("ACCOUNT_INACTIVE", "Tài khoản đã bị khóa. Liên hệ quản trị viên để được hỗ trợ.");
         if (requireAdmin && account.Role != "ADMIN")
             throw new AccountException("FORBIDDEN", "Tài khoản không có quyền quản trị.");
         var onboarding = await repository.GetOnboardingStatusAsync(account.UserId, cancellationToken);
@@ -71,7 +71,7 @@ public sealed class AccountService(IAccountRepository repository, ISessionStore 
             throw new AccountException("REQUIRED_CURRENT_PASSWORD", "Vui lòng nhập mật khẩu hiện tại.", "currentPassword");
         var account = await repository.FindByIdAsync(userId, cancellationToken);
         if (account is null || account.Status != "ACTIVE")
-            throw new AccountException("ACCOUNT_INACTIVE", "Tài khoản hiện không hoạt động.");
+            throw new AccountException("ACCOUNT_INACTIVE", "Tài khoản đã bị khóa. Liên hệ quản trị viên để được hỗ trợ.");
         if (!PasswordHasher.Verify(request.CurrentPassword, account.PasswordHash))
             throw new AccountException("WRONG_PASSWORD", "Mật khẩu hiện tại không đúng.", "currentPassword");
         var password = request.NewPassword ?? "";

@@ -17,6 +17,7 @@ COPY db/026_video_limits.sql db/
 COPY db/027_engagement.sql db/
 COPY db/028_seed_place_questions.sql db/
 COPY db/029_drop_community_media.sql db/
+COPY db/030_place_media.sql db/
 RUN dotnet restore backend/Bcv.Api/Bcv.Api.csproj
 COPY backend/Bcv.Api/ backend/Bcv.Api/
 RUN dotnet publish backend/Bcv.Api/Bcv.Api.csproj -c Release --no-restore -p:UseAppHost=false -o /publish

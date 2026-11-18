@@ -3,7 +3,7 @@ using Npgsql;
 namespace Bcv.Api.Modules.PlaceMedia;
 
 /// <summary>
-/// Official place media: the map thumbnail and the schema for administrator-managed place videos.
+/// Official place media (place_media: photos and videos, admin-managed): the map thumbnail and the schema.
 /// User-submitted community photos/videos were retired (photos now live in the private journal),
 /// so their tables are dropped here.
 /// </summary>
@@ -14,7 +14,8 @@ public static class PlaceMediaEndpoints
         await using var conn = await db.OpenConnectionAsync();
         await using var tx = await conn.BeginTransactionAsync();
         await using (var gate = new NpgsqlCommand("SELECT pg_advisory_xact_lock(7246319)", conn, tx)) await gate.ExecuteNonQueryAsync();
-        foreach (var name in new[] { "Bcv.PlaceVideoMigration.sql", "Bcv.VideoLimitsMigration.sql", "Bcv.DropCommunityMediaMigration.sql" })
+        // 030 folds the former place_image / place_video tables into place_media (re-runnable).
+        foreach (var name in new[] { "Bcv.PlaceMediaMigration.sql", "Bcv.DropCommunityMediaMigration.sql" })
         {
             using var stream = typeof(PlaceMediaEndpoints).Assembly.GetManifestResourceStream(name)!;
             using var reader = new StreamReader(stream);
@@ -30,10 +31,10 @@ public static class PlaceMediaEndpoints
         app.MapGet("/api/places/{placeId:long}/thumbnail", async (long placeId, NpgsqlDataSource db, CancellationToken ct) =>
         {
             await using var command = db.CreateCommand("""
-                SELECT i.image_key FROM place_image i JOIN place p ON p.place_id=i.place_id
+                SELECT i.image_key FROM place_media i JOIN place p ON p.place_id=i.place_id
                 JOIN region r ON r.region_id=p.region_id
-                WHERE p.place_id=$1 AND p.status='ACTIVE' AND r.status='ACTIVE'
-                ORDER BY i.place_image_id LIMIT 1
+                WHERE i.media_type='IMAGE' AND p.place_id=$1 AND p.status='ACTIVE' AND r.status='ACTIVE'
+                ORDER BY i.media_id LIMIT 1
                 """);
             command.Parameters.AddWithValue(placeId);
             var value = await command.ExecuteScalarAsync(ct) as string;
@@ -76,7 +77,7 @@ public sealed class PlaceVideoMaintenance(NpgsqlDataSource db, ILogger<PlaceVide
             try
             {
                 await using var command = db.CreateCommand(
-                    "DELETE FROM place_video WHERE place_id IS NULL AND created_at < CURRENT_TIMESTAMP - INTERVAL '24 hours'");
+                    "DELETE FROM place_media WHERE media_type='VIDEO' AND place_id IS NULL AND created_at < CURRENT_TIMESTAMP - INTERVAL '24 hours'");
                 await command.ExecuteNonQueryAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }

@@ -62,7 +62,7 @@ static class PlaceVideoChecks
             Console.WriteLine("PASS 100 MB cap, actual 31 MB HTTP upload, MP4 60s 1080p limits and repeated migration with 60s data");
             try{await Attach(950004,ids.ToArray());throw new Exception("Other admin's staging videos were attached");}catch(AdminValidation){}
             await Attach(950005,ids.ToArray());
-            Check(await Count("SELECT count(*) FROM place_video WHERE place_id=910001")==5,"Official videos not attached");
+            Check(await Count("SELECT count(*) FROM place_media WHERE media_type='VIDEO' AND place_id=910001")==5,"Official videos not attached");
             await Exec("DELETE FROM user_discovered_place WHERE user_id=950001 AND place_id=910001");
             client.DefaultRequestHeaders.Authorization=new AuthenticationHeaderValue("Bearer","950001");
             using(var r=await client.GetAsync($"/api/explore/places/910001/videos/{ids[0]}"))Check(r.StatusCode==HttpStatusCode.NotFound,"Locked place video leaked");
@@ -85,7 +85,7 @@ static class PlaceVideoChecks
         finally
         {
             client.DefaultRequestHeaders.Range=null;client.DefaultRequestHeaders.Authorization=new AuthenticationHeaderValue("Bearer","950005");
-            await Exec("DELETE FROM place_video WHERE created_by=950005; DELETE FROM user_discovered_place WHERE user_id IN (950001,950005); UPDATE region SET status='DRAFT' WHERE region_id=910001");
+            await Exec("DELETE FROM place_media WHERE created_by=950005; DELETE FROM user_discovered_place WHERE user_id IN (950001,950005); UPDATE region SET status='DRAFT' WHERE region_id=910001");
         }
     }
     sealed class NoSessions:Bcv.Api.Modules.Account.Application.ISessionStore

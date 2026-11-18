@@ -47,6 +47,21 @@ class PlaceDetailViewModel(private val repository: ExploreRepository) : ViewMode
         }
     }
 
+    /** Reloads in place: the page stays on screen (no skeleton) and keeps it if the reload fails. */
+    fun refresh(placeId: Long) {
+        if (mutableState.value?.place == null) return load(placeId)
+        viewModelScope.launch {
+            try {
+                val place = withContext(Dispatchers.IO) { repository.loadPlace(placeId) }
+                mutableState.value = mutableState.value?.copy(place = place, loading = false) ?: PlaceDetailState(place = place, loading = false)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                // Keep showing what is already there.
+            }
+        }
+    }
+
     fun select(replaceActive: Boolean = false) {
         val current = mutableState.value ?: return
         val place = current.place ?: return

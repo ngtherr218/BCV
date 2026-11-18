@@ -258,16 +258,21 @@ class QuestActivity : AppCompatActivity() {
         val rewardColor = if (done) teal else 0xFFA0702E.toInt()
         // A quest pays an item, explorer points, or both.
         val itemReward = quest.rewardName?.let { "$it × ${quest.rewardQuantity ?: 1}" }
-        val pointReward = quest.rewardPoints?.let { "⭐ +$it điểm khám phá" }
+        val pointReward = quest.rewardPoints?.let { "+$it điểm khám phá" }
         item.questReward.text = listOfNotNull(itemReward, pointReward).joinToString(" · ").ifEmpty { "Không có phần thưởng" }
         item.questReward.setTextColor(rewardColor)
         // Same icons as the items in Túi đồ.
-        val rewardIcon = if (quest.rewardType == "FLIGHT_TICKET") R.drawable.ic_flight else R.drawable.ic_sneaker
+        // Item icon when the quest pays an item, otherwise the star for explorer points.
+        val rewardIcon = when {
+            quest.rewardName == null -> R.drawable.ic_m3_star
+            quest.rewardType == "FLIGHT_TICKET" -> R.drawable.ic_flight
+            else -> R.drawable.ic_sneaker
+        }
         ContextCompat.getDrawable(this, rewardIcon)?.mutate()?.let { drawable ->
             val size = (16 * resources.displayMetrics.density).toInt()
             drawable.setBounds(0, 0, size, size)
             drawable.setTint(rewardColor)
-            item.questReward.setCompoundDrawablesRelative(if (quest.rewardName != null) drawable else null, null, null, null)
+            item.questReward.setCompoundDrawablesRelative(if (quest.rewardName != null || quest.rewardPoints != null) drawable else null, null, null, null)
         }
 
         val percent = if (quest.target <= 0) 0 else (shownProgress * 100L / quest.target).toInt()

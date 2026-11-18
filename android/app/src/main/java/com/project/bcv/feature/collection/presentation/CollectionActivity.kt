@@ -142,21 +142,72 @@ class CollectionActivity : AppCompatActivity() {
         retryButton.visibility = if (retry) View.VISIBLE else View.GONE
     }
 
+    /** A small face-up card: photo with a "MỚI" tag, the place name and its collection. Tap opens it. */
+    private fun newCardTile(reward: com.project.bcv.feature.collection.domain.NewCollectionCard): View {
+        val density = resources.displayMetrics.density
+        fun dp(v: Int) = (v * density).toInt()
+        fun round(color: Int, radius: Int, stroke: Int? = null) = android.graphics.drawable.GradientDrawable().apply {
+            setColor(color); cornerRadius = radius * density; stroke?.let { setStroke(dp(1), it) }
+        }
+        val tile = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            background = round(0xFFFFFFFF.toInt(), 18, 0xFFEBD9AE.toInt())
+            setPadding(dp(6), dp(6), dp(6), dp(10))
+            elevation = 2 * density
+            isClickable = true; isFocusable = true
+            foreground = androidx.core.content.ContextCompat.getDrawable(context,
+                android.util.TypedValue().also { theme.resolveAttribute(android.R.attr.selectableItemBackground, it, true) }.resourceId)
+            contentDescription = "Thẻ mới ${reward.card.name}, bộ ${reward.collectionName}. Chạm để xem."
+            setOnClickListener { startActivity(CardIntents.detail(this@CollectionActivity, reward)) }
+            layoutParams = android.widget.LinearLayout.LayoutParams(dp(140), -2).apply { marginEnd = dp(10); bottomMargin = dp(4) }
+        }
+        // Without a photo the card shows its own face: a green gradient with the place's initial.
+        val frame = android.widget.FrameLayout(this).apply {
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR, intArrayOf(0xFF2E7D67.toInt(), 0xFF19473B.toInt())
+            ).apply { cornerRadius = 13 * density }
+            clipToOutline = true
+        }
+        val image = android.widget.ImageView(this).apply { scaleType = android.widget.ImageView.ScaleType.CENTER_CROP }
+        frame.addView(android.widget.TextView(this).apply {
+            text = reward.card.name.trim().take(1).uppercase(); textSize = 40f
+            setTextColor(0x40FFFFFF); typeface = android.graphics.Typeface.SERIF
+            setTypeface(typeface, android.graphics.Typeface.BOLD); gravity = android.view.Gravity.CENTER
+        }, android.widget.FrameLayout.LayoutParams(-1, -1))
+        frame.addView(android.widget.TextView(this).apply {
+            text = "BƯỚC CHÂN VIỆT"; textSize = 8f; letterSpacing = 0.18f; setTextColor(0x99FFFFFF.toInt())
+            gravity = android.view.Gravity.CENTER
+        }, android.widget.FrameLayout.LayoutParams(-1, -2, android.view.Gravity.BOTTOM).apply { bottomMargin = dp(7) })
+        frame.addView(image, android.widget.FrameLayout.LayoutParams(-1, -1))
+        frame.addView(android.widget.TextView(this).apply {
+            text = "MỚI"; textSize = 11f; setTextColor(0xFFFFFFFF.toInt()); setTypeface(typeface, android.graphics.Typeface.BOLD)
+            letterSpacing = 0.06f; background = round(0xFFC9962B.toInt(), 8); setPadding(dp(7), dp(2), dp(7), dp(2))
+        }, android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.TOP or android.view.Gravity.START).apply {
+            setMargins(dp(6), dp(6), 0, 0)
+        })
+        tile.addView(frame, android.widget.LinearLayout.LayoutParams(-1, dp(96)))
+        tile.addView(android.widget.TextView(this).apply {
+            text = reward.card.name; textSize = 15f; setTextColor(0xFF19473B.toInt()); setTypeface(typeface, android.graphics.Typeface.BOLD)
+            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(dp(4), dp(8), dp(4), 0)
+        })
+        tile.addView(android.widget.TextView(this).apply {
+            text = reward.collectionName; textSize = 12f; setTextColor(0xFF6F8579.toInt())
+            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(dp(4), dp(2), dp(4), 0)
+        })
+        reward.card.imageUrl?.takeIf { it.isNotBlank() }?.let { url ->
+            RemoteImages.cached(url, sample = 4)?.let(image::setImageBitmap)
+                ?: lifecycleScope.launch { RemoteImages.load(url, sample = 4)?.let(image::setImageBitmap) }
+        }
+        return tile
+    }
+
     private fun showOverview(overview: CollectionOverview) = with(binding) {
         if (overview == shownOverview && loadedContent.visibility == View.VISIBLE) return@with
         com.project.bcv.core.ui.CollectionNavBadge.show(binding.bottomNavigation, overview.newCards)
         newCardsPanel.visibility = if (overview.newItems.isEmpty()) View.GONE else View.VISIBLE
-        newCardsTitle.text = "${overview.newCards} thẻ mới đang chờ bạn"
+        newCardsTitle.text = if (overview.newCards == 1) "1 thẻ mới đang chờ bạn" else "${overview.newCards} thẻ mới đang chờ bạn"
         newCardList.removeAllViews()
-        overview.newItems.forEach { reward ->
-            val button = com.google.android.material.button.MaterialButton(this@CollectionActivity).apply {
-                text = "${reward.card.name}\n${reward.collectionName} · Xem thẻ →"
-                isAllCaps = false
-                gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
-                setOnClickListener { startActivity(CardIntents.detail(this@CollectionActivity, reward)) }
-            }
-            newCardList.addView(button)
-        }
+        overview.newItems.forEach { reward -> newCardList.addView(newCardTile(reward)) }
         shownOverview = overview
         Skeleton.hide(loadingSkeleton.root)
         loadedContent.visibility = View.VISIBLE

@@ -53,6 +53,14 @@ class PasswordResetActivity : AppCompatActivity() {
         }
         binding.emailInput.setOnEditorActionListener(::onImeAction)
         binding.codeInput.setOnEditorActionListener(::onImeAction)
+        // Digits are spaced out once typed; the empty field shows its hint in normal spacing.
+        binding.codeInput.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+            override fun afterTextChanged(s: android.text.Editable?) {
+                binding.codeInput.letterSpacing = if (s.isNullOrEmpty()) 0f else 0.3f
+            }
+        })
         binding.confirmInput.setOnEditorActionListener(::onImeAction)
         binding.submitButton.setOnClickListener { submit() }
         binding.resendButton.setOnClickListener { model.resendCode() }

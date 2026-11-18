@@ -53,12 +53,13 @@ public sealed class PostgresRecommendationRepository(NpgsqlDataSource db) : IRec
         string? activityLevel = null;
         var preferences = new List<PreferenceGroup>();
         await using (var command = new NpgsqlCommand("""
-            SELECT up.activity_level, pt.interest_group_id, pt.name
+            SELECT up.activity_level, pt.place_type_id, pt.name,
+                   ARRAY(SELECT f.code FROM public.place_type_feature f WHERE f.place_type_id = pt.place_type_id ORDER BY f.code)
             FROM public.user_preference up
-            LEFT JOIN public.user_preference_interest upt ON upt.user_preference_id = up.user_preference_id
-            LEFT JOIN public.interest_group pt ON pt.interest_group_id = upt.interest_group_id
+            LEFT JOIN public.user_preference_place_type upt ON upt.user_preference_id = up.user_preference_id
+            LEFT JOIN public.place_type pt ON pt.place_type_id = upt.place_type_id
             WHERE up.user_id = $1
-            ORDER BY pt.interest_group_id
+            ORDER BY pt.place_type_id
             """, connection))
         {
             command.Parameters.Add(UserId(userId));
@@ -66,8 +67,10 @@ public sealed class PostgresRecommendationRepository(NpgsqlDataSource db) : IRec
             while (await reader.ReadAsync(ct))
             {
                 activityLevel = reader.GetString(0);
-                if (!reader.IsDBNull(1) && config.Settings!.InterestFeatures.TryGetValue(reader.GetInt64(1), out var codes))
-                    preferences.Add(new PreferenceGroup(reader.GetString(2), codes.ToHashSet()));
+                // A favourite place type matches places through its features (place_type_feature).
+                if (reader.IsDBNull(1)) continue;
+                var codes = reader.GetFieldValue<string[]>(3).Where(RecommendationScoring.FeatureCodes.Contains).ToHashSet();
+                if (codes.Count > 0) preferences.Add(new PreferenceGroup(reader.GetString(2), codes));
             }
         }
 
@@ -87,19 +90,18 @@ public sealed class PostgresRecommendationRepository(NpgsqlDataSource db) : IRec
         var places = new List<RecommendationPlace>();
         await using (var command = new NpgsqlCommand($"""
             SELECT p.place_id, p.name, r.name,
-                   (SELECT i.image_key FROM public.place_image i WHERE i.place_id = p.place_id
-                    ORDER BY i.place_image_id LIMIT 1),
+                   (SELECT i.image_key FROM public.place_media i WHERE i.media_type = 'IMAGE' AND i.place_id = p.place_id
+                    ORDER BY i.media_id LIMIT 1),
                    ARRAY(SELECT c.code FROM public.place_feature_value fv
                          JOIN public.recommendation_criterion c ON c.criterion_id = fv.criterion_id
                          WHERE fv.place_feature_id = pf.place_feature_id AND fv.feature_value = 1),
-                   pf.cluster_number, snapshot.rating, snapshot.rating_count,
+                   pf.cluster_number, p.rating, p.rating_count,
                    ({GeoSql.VirtualLocationToPlaceMeters})::numeric,
                    EXISTS (SELECT 1 FROM public.user_discovered_place d
                            WHERE d.user_id = $1 AND d.place_id = p.place_id)
             FROM public.place p
             JOIN public.region r ON r.region_id = p.region_id
             JOIN public.place_feature pf ON pf.place_id = p.place_id AND pf.recommendation_config_id = $2
-            JOIN public.recommendation_rating_snapshot snapshot ON snapshot.place_id=p.place_id AND snapshot.recommendation_config_id=pf.recommendation_config_id
             JOIN public.virtual_location v ON v.user_id = $1
             WHERE p.status = 'ACTIVE' AND r.status = 'ACTIVE'
             """, connection))

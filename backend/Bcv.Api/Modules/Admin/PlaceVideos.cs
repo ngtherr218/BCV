@@ -62,15 +62,15 @@ public static class PlaceVideos
         if(!body.TryGetProperty("video_ids",out var array))return; // Older clients keep existing videos.
         if(array.ValueKind!=JsonValueKind.Array||array.GetArrayLength()>5)throw new AdminValidation("Mỗi địa danh tối đa 5 video.");
         var ids=array.EnumerateArray().Select(x=>x.ValueKind==JsonValueKind.Number&&x.TryGetInt64(out var id)&&id>0?id:throw new AdminValidation("Video không hợp lệ.")).Distinct().ToArray();
-        await using(var check=new NpgsqlCommand("SELECT video_id FROM place_video WHERE video_id=ANY($1) AND (place_id=$2 OR (place_id IS NULL AND created_by=$3)) FOR UPDATE",conn,tx))
+        await using(var check=new NpgsqlCommand("SELECT media_id FROM place_media WHERE media_type='VIDEO' AND media_id=ANY($1) AND (place_id=$2 OR (place_id IS NULL AND created_by=$3)) FOR UPDATE",conn,tx))
         {
             check.Parameters.AddWithValue(ids);check.Parameters.AddWithValue(placeId);check.Parameters.AddWithValue(actor);
             var count=0;await using var r=await check.ExecuteReaderAsync(ct);while(await r.ReadAsync(ct))count++;
             if(count!=ids.Length)throw new AdminValidation("Video không tồn tại, đã hết hạn hoặc đang thuộc địa danh khác.");
         }
-        await using(var remove=new NpgsqlCommand("DELETE FROM place_video WHERE place_id=$1 AND NOT(video_id=ANY($2))",conn,tx))
+        await using(var remove=new NpgsqlCommand("DELETE FROM place_media WHERE media_type='VIDEO' AND place_id=$1 AND NOT(media_id=ANY($2))",conn,tx))
         {remove.Parameters.AddWithValue(placeId);remove.Parameters.AddWithValue(ids);await remove.ExecuteNonQueryAsync(ct);}
-        await using(var attach=new NpgsqlCommand("UPDATE place_video SET place_id=$1 WHERE video_id=ANY($2)",conn,tx))
+        await using(var attach=new NpgsqlCommand("UPDATE place_media SET place_id=$1 WHERE media_type='VIDEO' AND media_id=ANY($2)",conn,tx))
         {attach.Parameters.AddWithValue(placeId);attach.Parameters.AddWithValue(ids);await attach.ExecuteNonQueryAsync(ct);}
     }
 
@@ -85,20 +85,20 @@ public static class PlaceVideos
             using var memory=new MemoryStream(http.Request.ContentLength is >0?(int)http.Request.ContentLength.Value:0);var buffer=new byte[81920];int read;
             while((read=await http.Request.Body.ReadAsync(buffer,ct))>0){if(memory.Length+read>MaxBytes)throw new AdminValidation("Video tối đa 100 MB.");await memory.WriteAsync(buffer.AsMemory(0,read),ct);}
             var bytes=memory.Length==memory.Capacity?memory.GetBuffer():memory.ToArray();var metadata=Inspect(bytes);
-            await using var cmd=db.CreateCommand("INSERT INTO place_video(created_by,video_data,duration_seconds,width,height) VALUES($1,$2,$3,$4,$5) RETURNING video_id");
+            await using var cmd=db.CreateCommand("INSERT INTO place_media(media_type,mime_type,created_by,video_data,duration_seconds,width,height) VALUES('VIDEO','video/mp4',$1,$2,$3,$4,$5) RETURNING media_id");
             cmd.Parameters.AddWithValue((long)http.Items["AdminId"]!);cmd.Parameters.AddWithValue(bytes);cmd.Parameters.AddWithValue(metadata.Duration);cmd.Parameters.AddWithValue(metadata.Width);cmd.Parameters.AddWithValue(metadata.Height);
             var id=(long)(await cmd.ExecuteScalarAsync(ct))!;
             return Results.Ok(new{videoId=id,url=$"/api/admin/place-videos/{id}",durationSeconds=metadata.Duration,width=metadata.Width,height=metadata.Height});
         }).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MaxBytes));
         admin.MapGet("/place-videos/{id:long}",async(long id,NpgsqlDataSource db,CancellationToken ct)=>
         {
-            await using var cmd=db.CreateCommand("SELECT video_data FROM place_video WHERE video_id=$1");cmd.Parameters.AddWithValue(id);
+            await using var cmd=db.CreateCommand("SELECT video_data FROM place_media WHERE media_type='VIDEO' AND media_id=$1");cmd.Parameters.AddWithValue(id);
             return await cmd.ExecuteScalarAsync(ct) is byte[] bytes?Results.File(bytes,"video/mp4",enableRangeProcessing:true):Results.NotFound();
         });
         app.MapGet("/api/explore/places/{placeId:long}/videos/{id:long}",async(long placeId,long id,HttpRequest request,ISessionStore sessions,NpgsqlDataSource db,CancellationToken ct)=>
         {
             var user=CurrentUser.Get(request,sessions);if(user is null)return Results.Unauthorized();
-            await using var cmd=db.CreateCommand("SELECT v.video_data FROM place_video v JOIN place p ON p.place_id=v.place_id JOIN region r USING(region_id) WHERE v.video_id=$1 AND p.place_id=$2 AND p.status='ACTIVE' AND r.status='ACTIVE' AND EXISTS(SELECT 1 FROM user_discovered_place WHERE user_id=$3 AND place_id=p.place_id)");
+            await using var cmd=db.CreateCommand("SELECT v.video_data FROM place_media v JOIN place p ON p.place_id=v.place_id JOIN region r USING(region_id) WHERE v.media_type='VIDEO' AND v.media_id=$1 AND p.place_id=$2 AND p.status='ACTIVE' AND r.status='ACTIVE' AND EXISTS(SELECT 1 FROM user_discovered_place WHERE user_id=$3 AND place_id=p.place_id)");
             cmd.Parameters.AddWithValue(id);cmd.Parameters.AddWithValue(placeId);cmd.Parameters.AddWithValue(user.UserId);
             request.HttpContext.Response.Headers.CacheControl="private, no-store";
             return await cmd.ExecuteScalarAsync(ct) is byte[] bytes?Results.File(bytes,"video/mp4",enableRangeProcessing:true):Results.NotFound();

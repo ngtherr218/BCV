@@ -91,11 +91,16 @@ class StartingPointViewModel(
             }
             mutableState.value = mutableState.value?.copy(currentCoordinates = coordinates)
             viewModelScope.launch {
+                // Only a place the map can name is supported: no address from Goong means "không hỗ trợ".
                 val address = withContext(Dispatchers.IO) { addressLookup.describe(coordinates) }
                 if (version != locationRequestVersion) return@launch
+                if (address == null) {
+                    mutableState.value = mutableState.value?.copy(stage = StartingPointStage.OUTSIDE_AREA,
+                        currentAddress = null,
+                        message = "Bản đồ chưa xác định được địa chỉ của vị trí này nên chưa hỗ trợ. Hãy thử lại hoặc chọn điểm hệ thống đề xuất.")
+                    return@launch
+                }
                 mutableState.value = mutableState.value?.copy(currentAddress = address)
-            }
-            viewModelScope.launch {
                 try {
                     val point = withContext(Dispatchers.IO) { repository.resolveCurrent(coordinates) }
                     if (version != locationRequestVersion) return@launch

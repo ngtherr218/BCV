@@ -11,7 +11,6 @@ namespace Bcv.Api.Modules.Engagement;
 public static partial class EngagementEndpoints
 {
     public sealed record DailySteps(string Date, int Steps);
-    public sealed record PauseRequest(int Days);
     /// <summary>[Test]: a debug-build check-in that stands exactly at the place. Accepted only while the
     /// anti-cheat guard is off (local test servers), never in production.</summary>
     public sealed record CheckinRequest(double Latitude, double Longitude, bool Test = false);
@@ -19,13 +18,13 @@ public static partial class EngagementEndpoints
     public sealed record QuizAnswer(string Key, string Answer);
     public sealed record NoteRequest(string? Note);
 
-    private const int CheckinRadiusMeters = 300;
-    private const int CheckinPoints = 40;
+    private const int CheckinRadiusMeters = 750;
+    private const int CheckinPoints = 200;
 
     /// <summary>The place's first official image: an https URL, or the thumbnail endpoint for inline images.</summary>
     private const string PlaceImageSql = """
         (SELECT CASE WHEN i.image_key LIKE 'data:%' THEN '/api/places/' || p.place_id || '/thumbnail' ELSE i.image_key END
-         FROM place_image i WHERE i.place_id=p.place_id ORDER BY i.place_image_id LIMIT 1)
+         FROM place_media i WHERE i.media_type='IMAGE' AND i.place_id=p.place_id ORDER BY i.media_id LIMIT 1)
         """;
     private const int MaxJournalPhotosPerPlace = 12;
 
@@ -106,37 +105,6 @@ public static partial class EngagementEndpoints
             await transaction.CommitAsync(ct);
             return Results.Ok(await StreakJsonAsync(db, userId, ct));
         });
-        group.MapPost("/activity/pause", async (PauseRequest body, HttpContext http, NpgsqlDataSource db, CancellationToken ct) =>
-        {
-            if (body.Days is < 1 or > 7) return Results.BadRequest(new { message = "Tạm nghỉ từ 1 đến 7 ngày." });
-            var userId = Me(http);
-            var today = EngagementCore.Today();
-            var (_, pauses) = await EngagementCore.HistoryAsync(db, userId, ct);
-            if (pauses.Any(p => p.End >= today)) return Results.Conflict(new { message = "Bạn đang trong thời gian tạm nghỉ." });
-            if (pauses.Count(p => p.Start > today.AddDays(-30)) >= 2)
-                return Results.Conflict(new { message = "Mỗi 30 ngày chỉ được tạm nghỉ 2 lần." });
-            await using var command = db.CreateCommand("INSERT INTO activity_pause(user_id,start_date,end_date) VALUES ($1,$2,$3)");
-            command.Parameters.AddWithValue(userId); command.Parameters.AddWithValue(today);
-            command.Parameters.AddWithValue(today.AddDays(body.Days - 1));
-            await command.ExecuteNonQueryAsync(ct);
-            return Results.Ok(await StreakJsonAsync(db, userId, ct));
-        });
-        group.MapDelete("/activity/pause", async (HttpContext http, NpgsqlDataSource db, CancellationToken ct) =>
-        {
-            var userId = Me(http);
-            var today = EngagementCore.Today();
-            await using (var remove = db.CreateCommand("DELETE FROM activity_pause WHERE user_id=$1 AND start_date=$2"))
-            {
-                remove.Parameters.AddWithValue(userId); remove.Parameters.AddWithValue(today);
-                await remove.ExecuteNonQueryAsync(ct);
-            }
-            await using (var end = db.CreateCommand("UPDATE activity_pause SET end_date=$2 WHERE user_id=$1 AND start_date<$3 AND end_date>=$3"))
-            {
-                end.Parameters.AddWithValue(userId); end.Parameters.AddWithValue(today.AddDays(-1)); end.Parameters.AddWithValue(today);
-                await end.ExecuteNonQueryAsync(ct);
-            }
-            return Results.Ok(await StreakJsonAsync(db, userId, ct));
-        });
 
         // ---------- F81/F82/F83/F85: one summary for the "Thành tích" screen ----------
         group.MapGet("/engagement/summary", async (HttpContext http, NpgsqlDataSource db, CancellationToken ct) =>
@@ -153,6 +121,24 @@ public static partial class EngagementEndpoints
             await using var reader = await command.ExecuteReaderAsync(ct);
             await reader.ReadAsync(ct);
             return Results.Ok(new { streak, passport, badges, points = reader.GetInt32(0), masteredPlaces = reader.GetInt32(1) });
+        });
+        // Uploaded badge art kept inline (no cloud storage): served as an image file.
+        group.MapGet("/engagement/badges/{id:long}/image", async (long id, NpgsqlDataSource db, CancellationToken ct) =>
+        {
+            await using var command = db.CreateCommand("SELECT image_key FROM badge WHERE badge_id=$1 AND status='ACTIVE'");
+            command.Parameters.AddWithValue(id);
+            var value = await command.ExecuteScalarAsync(ct) as string;
+            if (string.IsNullOrEmpty(value)) return Results.NotFound();
+            if (value.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return Results.Redirect(value);
+            const string prefix = "data:image/jpeg;base64,";
+            if (!value.StartsWith(prefix, StringComparison.Ordinal)) return Results.NotFound();
+            try
+            {
+                var bytes = Convert.FromBase64String(value[prefix.Length..]);
+                return Bcv.Api.Modules.PlaceMedia.PlaceMediaEndpoints.ValidHeader("image/jpeg", bytes)
+                    ? Results.File(bytes, "image/jpeg") : Results.NotFound();
+            }
+            catch (FormatException) { return Results.NotFound(); }
         });
         // Places whose card is in its "Am hiểu" edition (every question stop answered correctly).
         group.MapGet("/engagement/mastery", async (HttpContext http, NpgsqlDataSource db, CancellationToken ct) =>
@@ -188,6 +174,21 @@ public static partial class EngagementEndpoints
                 await using var reader = await command.ExecuteReaderAsync(ct);
                 if (!await reader.ReadAsync(ct)) return Results.NotFound(new { message = "Địa danh không còn hoạt động." });
                 name = reader.GetString(0); lat = reader.GetDouble(1); lon = reader.GetDouble(2);
+            }
+            // Check-in only where the game puts you: the destination of the journey being walked, or the
+            // place your virtual location stands at.
+            await using (var allowed = new NpgsqlCommand("""
+                SELECT EXISTS (SELECT 1 FROM journey WHERE user_id=$1 AND destination_place_id=$2 AND status='IN_PROGRESS')
+                    OR (EXISTS (SELECT 1 FROM virtual_location v JOIN place p ON p.place_id=$2 WHERE v.user_id=$1
+                               AND abs(v.latitude - p.latitude) < 0.0005 AND abs(v.longitude - p.longitude) < 0.0005)
+                        -- left that spot: 1,000+ steps walked on the journey in progress
+                        AND NOT EXISTS (SELECT 1 FROM journey j WHERE j.user_id=$1 AND j.status='IN_PROGRESS' AND j.recorded_steps >= 1000))
+                """, connection, transaction))
+            {
+                allowed.Parameters.AddWithValue(userId); allowed.Parameters.AddWithValue(placeId);
+                if (!(bool)(await allowed.ExecuteScalarAsync(ct))!)
+                    return Results.BadRequest(new { code = "NOT_JOURNEY_DESTINATION",
+                        message = $"Chỉ check-in được tại điểm đến của hành trình đang đi hoặc nơi vị trí ảo của bạn đang đứng. Hãy chọn {name} làm điểm đến trước." });
             }
             var guard = Bcv.Api.Modules.Journey.Infrastructure.StepGuard.Enabled;
             if (body.Test)
@@ -236,37 +237,55 @@ public static partial class EngagementEndpoints
             if (inserted == 0)
             {
                 await transaction.CommitAsync(ct);
-                return Results.Ok(new { success = true, alreadyToday = true, message = $"Hôm nay bạn đã check-in tại {name}." });
+                return Results.Ok(new { success = true, alreadyToday = true, placeName = name,
+                    message = $"Hôm nay bạn đã check-in tại {name}." });
             }
-            await PlaceUnlock.UnlockAsync(connection, transaction, userId, placeId, ct);
-            // Arriving for real also finishes a journey heading there.
-            var journeyDone = false;
-            await using (var finish = new NpgsqlCommand("""
-                UPDATE journey SET status='COMPLETED', recorded_steps=required_steps, completed_at=CURRENT_TIMESTAMP
-                WHERE user_id=$1 AND destination_place_id=$2 AND status='IN_PROGRESS'
+            // For the success dialog: whether the place is newly unlocked, and its card still to earn by finishing the journey.
+            bool newDiscovery; string? pendingCard;
+            await using (var before = new NpgsqlCommand("""
+                SELECT NOT EXISTS (SELECT 1 FROM user_discovered_place WHERE user_id=$1 AND place_id=$2),
+                       (SELECT c.name FROM card c WHERE c.place_id=$2 AND c.status='ACTIVE'
+                          AND NOT EXISTS (SELECT 1 FROM user_card uc WHERE uc.user_id=$1 AND uc.card_id=c.card_id))
                 """, connection, transaction))
             {
-                finish.Parameters.AddWithValue(userId); finish.Parameters.AddWithValue(placeId);
-                journeyDone = await finish.ExecuteNonQueryAsync(ct) > 0;
+                before.Parameters.AddWithValue(userId); before.Parameters.AddWithValue(placeId);
+                await using var reader = await before.ExecuteReaderAsync(ct);
+                await reader.ReadAsync(ct);
+                newDiscovery = reader.GetBoolean(0);
+                pendingCard = reader.IsDBNull(1) ? null : reader.GetString(1);
             }
-            if (journeyDone)
-            {
-                await using var move = new NpgsqlCommand("""
-                    UPDATE virtual_location v SET region_id=p.region_id, nearest_place_id=p.place_id,
-                      latitude=p.latitude, longitude=p.longitude, updated_at=CURRENT_TIMESTAMP
-                    FROM place p WHERE v.user_id=$1 AND p.place_id=$2
-                    """, connection, transaction);
-                move.Parameters.AddWithValue(userId); move.Parameters.AddWithValue(placeId);
-                await move.ExecuteNonQueryAsync(ct);
-                await QuestProgress.RecordAsync(connection, transaction, userId, QuestProgress.CompleteJourney, 1, ct);
-            }
+            // Unlocks the place (no card: cards come from finishing a journey or a flight ticket).
+            // Checking in does not finish the journey either: the steps still have to be walked.
+            await PlaceUnlock.UnlockAsync(connection, transaction, userId, placeId, ct);
             await AddPointsAsync(connection, transaction, userId, "CHECKIN", $"{placeId}:{today:yyyy-MM-dd}",
                 CheckinPoints, $"Check-in tại {name}", ct);
             await Notifications.AddAsync(connection, transaction, userId, "PLACE_CHECKIN", "Check-in thành công",
-                $"Bạn đã đến {name} ngoài đời thật! Hộ chiếu đã được đóng dấu, +{CheckinPoints} điểm khám phá." +
-                (journeyDone ? " Hành trình đến đây cũng đã hoàn thành." : ""), ct);
+                $"Bạn đã đến {name} ngoài đời thật! Hộ chiếu đã được đóng dấu, +{CheckinPoints} điểm khám phá.", ct);
+            // The passport page this stamp lands on: places checked in within the place's province (region).
+            string? province = null; int provinceStamped = 0, provinceTotal = 0, visits = 1;
+            await using (var stamp = new NpgsqlCommand("""
+                SELECT r.name,
+                       count(DISTINCT p.place_id) FILTER (WHERE EXISTS
+                         (SELECT 1 FROM place_checkin c WHERE c.user_id=$1 AND c.place_id=p.place_id))::int,
+                       count(DISTINCT p.place_id)::int,
+                       (SELECT count(*) FROM place_checkin c WHERE c.user_id=$1 AND c.place_id=$2)::int
+                FROM place self JOIN region r ON r.region_id=self.region_id
+                JOIN place p ON p.region_id=r.region_id AND p.status='ACTIVE'
+                WHERE self.place_id=$2 GROUP BY r.name
+                """, connection, transaction))
+            {
+                stamp.Parameters.AddWithValue(userId); stamp.Parameters.AddWithValue(placeId);
+                await using var reader = await stamp.ExecuteReaderAsync(ct);
+                if (await reader.ReadAsync(ct))
+                {
+                    province = reader.GetString(0); provinceStamped = reader.GetInt32(1);
+                    provinceTotal = reader.GetInt32(2); visits = reader.GetInt32(3);
+                }
+            }
             await transaction.CommitAsync(ct);
-            return Results.Ok(new { success = true, alreadyToday = false, journeyCompleted = journeyDone,
+            return Results.Ok(new { success = true, alreadyToday = false,
+                placeName = name, points = CheckinPoints, newDiscovery, pendingCard, firstVisit = visits == 1, visits,
+                province, provinceStamped, provinceTotal,
                 message = $"Check-in tại {name}! Hộ chiếu đã đóng dấu, +{CheckinPoints} điểm khám phá." });
         });
 
@@ -323,7 +342,8 @@ public static partial class EngagementEndpoints
             if (correct)
             {
                 points += await AddPointsAsync(connection, transaction, userId, "QUIZ", $"{journey.JourneyId}:{body.Key}",
-                    CultureQuiz.PointsPerCorrect, $"Trả lời đúng câu hỏi về {journey.PlaceName}", ct);
+                    CultureQuiz.PointsFor(question.Difficulty),
+                    $"Trả lời đúng câu hỏi ({CultureQuiz.DifficultyName(question.Difficulty).ToLowerInvariant()}) về {journey.PlaceName}", ct);
                 await QuestProgress.RecordAsync(connection, transaction, userId, QuestProgress.QuizCorrect, 1, ct);
                 int correctCount;
                 await using (var count = new NpgsqlCommand("""
@@ -534,6 +554,8 @@ public static partial class EngagementEndpoints
             var revealed = state != "LOCKED";
             return new {
                 key = q.Key, number = i + 1, state,
+                difficulty = q.Difficulty, difficultyName = CultureQuiz.DifficultyName(q.Difficulty),
+                points = CultureQuiz.PointsFor(q.Difficulty),
                 fraction = CultureQuiz.UnlockFraction(i, questions.Count),
                 unlockPercent = CultureQuiz.UnlockPercent(i, questions.Count),
                 unlockSteps, stepsToGo = Math.Max(0, unlockSteps - recorded),
@@ -554,59 +576,65 @@ public static partial class EngagementEndpoints
             mastered = (bool)(await command.ExecuteScalarAsync(ct))!;
         }
         var correctCount = stops.Count(s => s.state == "CORRECT");
+        var correctPoints = stops.Where(s => s.state == "CORRECT").Sum(s => s.points);
         return new {
             available = true, journeyId = journey.JourneyId, placeName = journey.PlaceName,
             requiredSteps = required, recordedSteps = recorded,
             stops, openCount = stops.Count(s => s.state == "OPEN"),
             answeredCount = stops.Count(s => s.state is "CORRECT" or "WRONG"), totalQuestions = stops.Count,
             // Card pieces: one per correct stop; all of them = "Am hiểu" edition of the place's card.
-            correctCount, mastered, pointsPerCorrect = CultureQuiz.PointsPerCorrect, masteryPoints = CultureQuiz.MasteryPoints,
-            earnedPoints = correctCount * CultureQuiz.PointsPerCorrect + (mastered ? CultureQuiz.MasteryPoints : 0)
+            correctCount, mastered, masteryPoints = CultureQuiz.MasteryPoints,
+            pointsByDifficulty = new { easy = CultureQuiz.PointsFor(1), medium = CultureQuiz.PointsFor(2), hard = CultureQuiz.PointsFor(3) },
+            earnedPoints = correctPoints + (mastered ? CultureQuiz.MasteryPoints : 0)
         };
     }
 
     private static async Task<object> StreakJsonAsync(NpgsqlDataSource db, long userId, CancellationToken ct)
     {
         var today = EngagementCore.Today();
-        var (days, pauses) = await EngagementCore.HistoryAsync(db, userId, ct);
+        var days = await EngagementCore.HistoryAsync(db, userId, ct);
         var (level, goal) = await EngagementCore.DailyGoalAsync(db, userId, ct);
-        var streak = EngagementCore.ComputeStreak(days, pauses, today);
+        var streak = EngagementCore.ComputeStreak(days, today);
         var todaySteps = days.FirstOrDefault(d => d.Date == today)?.Steps ?? 0;
+        // A missed day: a past day (not today) since the user started tracking whose goal was not reached.
+        var firstDay = days.Count > 0 ? days.Min(x => x.Date) : today;
         var week = Enumerable.Range(0, 7).Select(i => today.AddDays(i - 6)).Select(d =>
         {
             var row = days.FirstOrDefault(x => x.Date == d);
+            var met = row is not null && row.Steps >= row.Goal;
             return new { date = d.ToString("yyyy-MM-dd"), steps = row?.Steps ?? 0, goal = row?.Goal ?? goal,
-                met = row is not null && row.Steps >= row.Goal, paused = pauses.Any(p => d >= p.Start && d <= p.End) };
+                met, missed = !met && d < today && d >= firstDay };
         }).ToList();
         return new {
             current = streak.Current, best = streak.Best, todayDone = streak.TodayDone,
             todaySteps, dailyGoal = goal, activityLevel = level,
-            pause = streak.ActivePause is { } p ? new { start = p.Start.ToString("yyyy-MM-dd"), end = p.End.ToString("yyyy-MM-dd") } : null,
             week
         };
     }
 
     /// <summary>
-    /// F81 passport: every real GPS check-in stamps one place. The 34 provinces (after the 2025 merger)
+    /// F81 passport: every real GPS check-in stamps one place. The 34 provinces (Khu vực, after the 2025 merger)
     /// show how many of their places carry a stamp and rise bronze → silver → gold
     /// (1 place → half of them → all of them). Virtual discovery earns cards instead, never stamps.
     /// </summary>
     private static async Task<object> PassportAsync(NpgsqlDataSource db, long userId, CancellationToken ct)
     {
-        var rows = new List<(int ProvinceId, string Province, string Area, long PlaceId, string Place, DateOnly? Visit)>();
+        // One passport page per Khu vực (the 34 provinces), grouped by its Vùng.
+        var rows = new List<(long ProvinceId, string Province, string Area, long PlaceId, string Place, DateOnly? Visit)>();
         await using (var command = db.CreateCommand("""
-            SELECT pr.province_id, pr.name, pr.area, p.place_id, p.name,
+            SELECT r.region_id, r.name, r.zone,
+                   p.place_id, p.name,
                    (SELECT min(c.checkin_date) FROM place_checkin c WHERE c.user_id=$1 AND c.place_id=p.place_id)
-            FROM province pr
-            LEFT JOIN region r ON r.province_id=pr.province_id AND r.status='ACTIVE'
+            FROM region r
             LEFT JOIN place p ON p.region_id=r.region_id AND p.status='ACTIVE'
-            ORDER BY pr.province_id, p.name
+            WHERE r.status='ACTIVE' AND r.zone IS NOT NULL
+            ORDER BY r.name, p.name
             """))
         {
             command.Parameters.AddWithValue(userId);
             await using var reader = await command.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
-                rows.Add((reader.GetInt16(0), reader.GetString(1), reader.GetString(2),
+                rows.Add((reader.GetInt64(0), reader.GetString(1), reader.GetString(2),
                     reader.IsDBNull(3) ? 0 : reader.GetInt64(3), reader.IsDBNull(4) ? "" : reader.GetString(4),
                     reader.IsDBNull(5) ? null : reader.GetFieldValue<DateOnly>(5)));
         }
@@ -636,14 +664,12 @@ public static partial class EngagementEndpoints
         };
     }
 
+    /// <summary>Passport pages: the 6 regions, in the order of <see cref="EngagementCore.ZoneNames"/>.</summary>
     private static readonly (string Code, string Name)[] PassportAreas =
-    [
-        ("MIEN_NUI_BAC", "Trung du và miền núi phía Bắc"), ("SONG_HONG", "Đồng bằng sông Hồng"),
-        ("MIEN_TRUNG", "Bắc Trung Bộ và duyên hải miền Trung"), ("TAY_NGUYEN", "Tây Nguyên"),
-        ("DONG_NAM_BO", "Đông Nam Bộ"), ("TAY_NAM_BO", "Đồng bằng sông Cửu Long"),
-    ];
+        EngagementCore.ZoneNames.Select(z => (z.Key, z.Value)).ToArray();
 
-    private sealed record Badge(string Code, string Name, string Description, bool Earned, string Progress);
+    /// <summary>[ImageUrl]: https art as is, uploaded (inline) art through /api/engagement/badges/{id}/image.</summary>
+    private sealed record Badge(string Code, string Name, string Description, bool Earned, string Progress, string? ImageUrl);
 
     private static async Task<IReadOnlyList<Badge>> BadgesAsync(NpgsqlDataSource db, long userId, CancellationToken ct)
     {
@@ -660,7 +686,7 @@ public static partial class EngagementEndpoints
                    (SELECT count(*)::int FROM journey_quiz_answer a JOIN journey j ON j.journey_id=a.journey_id
                       WHERE j.user_id=$1 AND a.is_correct),
                    (SELECT count(*)::int FROM user_place_mastery WHERE user_id=$1),
-                   (SELECT count(DISTINCT r.province_id)::int FROM place_checkin c JOIN place p ON p.place_id=c.place_id JOIN region r ON r.region_id=p.region_id WHERE c.user_id=$1)
+                   (SELECT count(DISTINCT p.region_id)::int FROM place_checkin c JOIN place p ON p.place_id=c.place_id WHERE c.user_id=$1)
             """))
         {
             command.Parameters.AddWithValue(userId);
@@ -670,26 +696,34 @@ public static partial class EngagementEndpoints
             checkins = reader.GetInt32(3); correct = reader.GetInt32(4); masteredCount = reader.GetInt32(5);
             provincesVisited = reader.GetInt32(6);
         }
-        var (days, pauses) = await EngagementCore.HistoryAsync(db, userId, ct);
-        var best = EngagementCore.ComputeStreak(days, pauses, EngagementCore.Today()).Best;
-        Badge Count(string code, string name, string description, int value, int target) =>
-            new(code, name, description, value >= target, $"{Math.Min(value, target)}/{target}");
-        return
-        [
-            Count("FIRST_STEP", "Bước chân đầu tiên", "Khám phá địa danh đầu tiên", discovered, 1),
-            Count("EXPLORER_10", "Lữ khách", "Khám phá 10 địa danh", discovered, 10),
-            Count("EXPLORER_50", "Nhà thám hiểm", "Khám phá 50 địa danh", discovered, 50),
-            Count("EXPLORER_100", "Huyền thoại", "Khám phá 100 địa danh", discovered, 100),
-            Count("THREE_ZONES", "Xuyên vùng", "Có dấu chân ở 3 vùng khác nhau", zonesTouched, 3),
-            Count("ZONE_COMPLETE", "Chinh phục một vùng", "Khám phá mọi địa danh của một vùng", zonesComplete, 1),
-            Count("STREAK_7", "Bền bỉ 7 ngày", "Giữ chuỗi 7 ngày liên tiếp", best, 7),
-            Count("STREAK_30", "Bền bỉ 30 ngày", "Giữ chuỗi 30 ngày liên tiếp", best, 30),
-            Count("STREAK_100", "Bền bỉ 100 ngày", "Giữ chuỗi 100 ngày liên tiếp", best, 100),
-            Count("REAL_VISIT", "Đến tận nơi", "Check-in tại một địa danh ngoài đời thật", checkins, 1),
-            Count("PROVINCES_5", "Dấu chân 5 tỉnh", "Đóng dấu hộ chiếu ở 5 tỉnh bằng check-in thật", provincesVisited, 5),
-            Count("QUIZ_10", "Am hiểu văn hóa", "Trả lời đúng 10 câu hỏi văn hóa", correct, 10),
-            Count("MASTER_3", "Nhà thông thái", "Có 3 thẻ bản Am hiểu", masteredCount, 3),
-        ];
+        var days = await EngagementCore.HistoryAsync(db, userId, ct);
+        var best = EngagementCore.ComputeStreak(days, EngagementCore.Today()).Best;
+        // The badges themselves live in the badge table (admin web); each names one of these metrics.
+        var metrics = new Dictionary<string, int>
+        {
+            ["PLACES_DISCOVERED"] = discovered, ["ZONES_TOUCHED"] = zonesTouched, ["ZONES_COMPLETED"] = zonesComplete,
+            ["BEST_STREAK"] = best, ["REAL_CHECKINS"] = checkins, ["PROVINCES_STAMPED"] = provincesVisited,
+            ["QUIZ_CORRECT"] = correct, ["CARDS_MASTERED"] = masteredCount,
+        };
+        var badges = new List<Badge>();
+        await using (var list = db.CreateCommand("""
+            SELECT code, name, description, condition_type, target_value, image_key, badge_id
+            FROM badge WHERE status='ACTIVE' ORDER BY sort_order, badge_id
+            """))
+        await using (var reader = await list.ExecuteReaderAsync(ct))
+            while (await reader.ReadAsync(ct))
+            {
+                var value = metrics.GetValueOrDefault(reader.GetString(3));
+                var target = reader.GetInt32(4);
+                var image = reader.IsDBNull(5) ? null : reader.GetString(5);
+                var code = reader.GetString(0);
+                var imageUrl = string.IsNullOrWhiteSpace(image) ? null
+                    : image.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ? image
+                    : $"/api/engagement/badges/{reader.GetInt64(6)}/image";
+                badges.Add(new Badge(code, reader.GetString(1), reader.GetString(2),
+                    value >= target, $"{Math.Min(value, target)}/{target}", imageUrl));
+            }
+        return badges;
     }
 
     /// <summary>
@@ -702,6 +736,10 @@ public static partial class EngagementEndpoints
     /// "Giữ chuỗi": current streak in days (same rule as the user's own streak, rest days included),
     /// among users of the same activity level.
     /// </summary>
+    /// <summary>Every board lists its top 50; a user below that still gets their own rank in <c>me</c>.</summary>
+    private const int TopSize = 50;
+
+    /// <summary>Longest streak each person ever kept (their record), among users at the same activity level.</summary>
     private static async Task<object> StreakLeaderboardAsync(NpgsqlDataSource db, long userId, CancellationToken ct)
     {
         var today = EngagementCore.Today();
@@ -713,12 +751,11 @@ public static partial class EngagementEndpoints
             FROM daily_activity a
             JOIN app_user u ON u.user_id=a.user_id AND u.status='ACTIVE' AND u.role <> 'ADMIN'
             JOIN user_preference pref ON pref.user_id=u.user_id
-            WHERE a.activity_date >= $2
-              AND pref.activity_level = (SELECT activity_level FROM user_preference WHERE user_id=$1)
+            WHERE pref.activity_level = (SELECT activity_level FROM user_preference WHERE user_id=$1)
             ORDER BY u.user_id, a.activity_date
             """))
         {
-            command.Parameters.AddWithValue(userId); command.Parameters.AddWithValue(today.AddDays(-120));
+            command.Parameters.AddWithValue(userId);
             await using var reader = await command.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
             {
@@ -728,20 +765,7 @@ public static partial class EngagementEndpoints
                 list.Add(new EngagementCore.DayRecord(reader.GetFieldValue<DateOnly>(3), reader.GetInt32(4), reader.GetInt32(5)));
             }
         }
-        var pauses = new Dictionary<long, List<EngagementCore.Pause>>();
-        await using (var command = db.CreateCommand("SELECT user_id, start_date, end_date FROM activity_pause WHERE end_date >= $1"))
-        {
-            command.Parameters.AddWithValue(today.AddDays(-120));
-            await using var reader = await command.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct))
-            {
-                var id = reader.GetInt64(0);
-                if (!pauses.TryGetValue(id, out var list)) pauses[id] = list = [];
-                list.Add(new EngagementCore.Pause(reader.GetFieldValue<DateOnly>(1), reader.GetFieldValue<DateOnly>(2)));
-            }
-        }
-        var rows = people.Select(p => (Id: p.Key, p.Value.Name, Value: EngagementCore.ComputeStreak(days[p.Key],
-                pauses.GetValueOrDefault(p.Key) ?? [], today).Current, p.Value.Avatar))
+        var rows = people.Select(p => (Id: p.Key, p.Value.Name, Value: EngagementCore.ComputeStreak(days[p.Key], today).Best, p.Value.Avatar))
             .Where(r => r.Value > 0).OrderByDescending(r => r.Value).ThenBy(r => r.Id).ToList();
         var myIndex = rows.FindIndex(r => r.Id == userId);
         object Row((long Id, string Name, int Value, string? Avatar) r, int index) => new {
@@ -753,7 +777,7 @@ public static partial class EngagementEndpoints
             scopeName = level switch { "LOW" => "Cùng mức vận động nhẹ", "HIGH" => "Cùng mức vận động cao", _ => "Cùng mức vận động vừa" },
             weekStart = monday.ToString("yyyy-MM-dd"), weekEnd = monday.AddDays(6).ToString("yyyy-MM-dd"),
             participants = rows.Count,
-            top = rows.Take(10).Select(Row).ToList(),
+            top = rows.Take(TopSize).Select(Row).ToList(),
             me = myIndex >= 0 ? Row(rows[myIndex], myIndex) : null
         };
     }
@@ -767,10 +791,7 @@ public static partial class EngagementEndpoints
             SELECT u.user_id, u.full_name, SUM(p.points)::int, CASE WHEN u.avatar LIKE 'https://%' THEN u.avatar END
             FROM explorer_point p
             JOIN app_user u ON u.user_id=p.user_id AND u.status='ACTIVE' AND u.role <> 'ADMIN'
-            JOIN virtual_location vl ON vl.user_id=u.user_id JOIN region reg ON reg.region_id=vl.region_id
-            WHERE p.created_at >= $2::timestamp
-              AND reg.zone IS NOT NULL
-              AND reg.zone = (SELECT r2.zone FROM virtual_location v2 JOIN region r2 ON r2.region_id=v2.region_id WHERE v2.user_id=$1)
+            WHERE p.created_at >= $1::timestamp
             GROUP BY u.user_id, u.full_name, u.avatar
             HAVING SUM(p.points) > 0
             ORDER BY 3 DESC, u.user_id
@@ -787,8 +808,8 @@ public static partial class EngagementEndpoints
             ORDER BY 3 DESC, u.user_id
             """;
         await using var command = db.CreateCommand(sql);
-        command.Parameters.AddWithValue(userId); command.Parameters.AddWithValue(monday);
-        if (!knowledge) command.Parameters.AddWithValue(today);
+        if (knowledge) command.Parameters.AddWithValue(monday);
+        else { command.Parameters.AddWithValue(userId); command.Parameters.AddWithValue(monday); command.Parameters.AddWithValue(today); }
         var rows = new List<(long Id, string Name, int Value, string? Avatar)>();
         await using (var reader = await command.ExecuteReaderAsync(ct))
             while (await reader.ReadAsync(ct))
@@ -798,12 +819,7 @@ public static partial class EngagementEndpoints
         object Row((long Id, string Name, int Value, string? Avatar) r, int index) => new {
             rank = index + 1, name = DisplayName(r.Name), value = r.Value, unit, avatar = r.Avatar, isMe = r.Id == userId };
         string? scopeName;
-        if (knowledge)
-        {
-            await using var zone = db.CreateCommand("SELECT r.zone FROM virtual_location v JOIN region r ON r.region_id=v.region_id WHERE v.user_id=$1");
-            zone.Parameters.AddWithValue(userId);
-            scopeName = await zone.ExecuteScalarAsync(ct) is string code ? $"Cùng vùng {EngagementCore.ZoneNames.GetValueOrDefault(code)}" : "Cùng vùng";
-        }
+        if (knowledge) scopeName = "Tất cả người khám phá";
         else
         {
             var (level, _) = await EngagementCore.DailyGoalAsync(db, userId, ct);
@@ -813,7 +829,7 @@ public static partial class EngagementEndpoints
             scope = knowledge ? "knowledge" : "activity", scopeName, unit,
             weekStart = monday.ToString("yyyy-MM-dd"), weekEnd = monday.AddDays(6).ToString("yyyy-MM-dd"),
             participants = rows.Count,
-            top = rows.Take(10).Select(Row).ToList(),
+            top = rows.Take(TopSize).Select(Row).ToList(),
             me = myIndex >= 0 ? Row(rows[myIndex], myIndex) : null
         };
     }

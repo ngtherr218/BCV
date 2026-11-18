@@ -125,10 +125,6 @@ internal static class AdminPlaceFeatures
             JOIN place_feature_value v ON v.place_feature_id=old.place_feature_id
             JOIN place_feature n ON n.place_id=old.place_id AND n.recommendation_config_id=$1
             WHERE old.recommendation_config_id=$2
-            """,
-            """
-            INSERT INTO recommendation_rating_snapshot
-            SELECT $1,place_id,rating,rating_count FROM recommendation_rating_snapshot WHERE recommendation_config_id=$2
             """
         };
         foreach (var sql in copies)
@@ -160,16 +156,6 @@ internal static class AdminPlaceFeatures
             values.Parameters.AddWithValue(featureId); values.Parameters.AddWithValue(selected.ToArray());
             values.Parameters.AddWithValue(PlaceFeatureClassifier.Features.ToArray());
             await values.ExecuteNonQueryAsync(ct);
-            await using (var snapshot = new NpgsqlCommand("""
-                INSERT INTO recommendation_rating_snapshot
-                SELECT $1,place_id,rating,rating_count FROM place WHERE place_id=$2
-                ON CONFLICT(recommendation_config_id,place_id)
-                DO UPDATE SET rating=EXCLUDED.rating,rating_count=EXCLUDED.rating_count
-                """, connection, transaction))
-            {
-                snapshot.Parameters.AddWithValue(configId); snapshot.Parameters.AddWithValue(placeId);
-                await snapshot.ExecuteNonQueryAsync(ct);
-            }
         }
         await using (var deactivate = new NpgsqlCommand("UPDATE recommendation_config SET status='INACTIVE' WHERE recommendation_config_id=$1", connection, transaction))
         {

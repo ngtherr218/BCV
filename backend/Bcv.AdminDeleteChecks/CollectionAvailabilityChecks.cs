@@ -33,8 +33,7 @@ static class CollectionAvailabilityChecks
                 CREATE TABLE collection_card(collection_card_id bigint PRIMARY KEY,collection_id bigint,card_id bigint);
                 CREATE TABLE user_card(user_id bigint,card_id bigint,seen_at timestamptz);
                 CREATE TABLE user_discovered_place(user_id bigint,place_id bigint);
-                CREATE TABLE place_image(place_image_id bigint,place_id bigint,image_key text);
-                CREATE TABLE place_video(video_id bigint,place_id bigint,duration_seconds double precision,width integer,height integer);
+                CREATE TABLE place_media(media_id bigint,place_id bigint,media_type varchar(10),image_key text,duration_seconds double precision,width integer,height integer);
 
                 INSERT INTO region VALUES(1,'Active region','ACTIVE'),(2,'Retired region','INACTIVE');
                 INSERT INTO place_type VALUES(1,'Heritage');
