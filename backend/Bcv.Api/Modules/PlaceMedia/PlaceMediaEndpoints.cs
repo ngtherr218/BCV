@@ -3,28 +3,11 @@ using Npgsql;
 namespace Bcv.Api.Modules.PlaceMedia;
 
 /// <summary>
-/// Official place media (place_media: photos and videos, admin-managed): the map thumbnail and the schema.
-/// User-submitted community photos/videos were retired (photos now live in the private journal),
-/// so their tables are dropped here.
+/// Official place media (place_media: photos and videos, admin-managed): the map thumbnail and stored images.
+/// The schema is db/030_place_media.sql (and 029, which drops the retired community uploads).
 /// </summary>
 public static class PlaceMediaEndpoints
 {
-    public static async Task EnsureAsync(NpgsqlDataSource db)
-    {
-        await using var conn = await db.OpenConnectionAsync();
-        await using var tx = await conn.BeginTransactionAsync();
-        await using (var gate = new NpgsqlCommand("SELECT pg_advisory_xact_lock(7246319)", conn, tx)) await gate.ExecuteNonQueryAsync();
-        // 030 folds the former place_image / place_video tables into place_media (re-runnable).
-        foreach (var name in new[] { "Bcv.PlaceMediaMigration.sql", "Bcv.DropCommunityMediaMigration.sql" })
-        {
-            using var stream = typeof(PlaceMediaEndpoints).Assembly.GetManifestResourceStream(name)!;
-            using var reader = new StreamReader(stream);
-            await using var migration = new NpgsqlCommand(await reader.ReadToEndAsync(), conn, tx);
-            await migration.ExecuteNonQueryAsync();
-        }
-        await tx.CommitAsync();
-    }
-
     public static void MapPlaceMedia(this WebApplication app)
     {
         // Keep base64 images out of the map JSON; load each visible image separately.
@@ -37,21 +20,29 @@ public static class PlaceMediaEndpoints
                 ORDER BY i.media_id LIMIT 1
                 """);
             command.Parameters.AddWithValue(placeId);
-            var value = await command.ExecuteScalarAsync(ct) as string;
-            if (value is null) return Results.NotFound();
-            if (value.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return Results.Redirect(value);
-            var split = value.IndexOf(",", StringComparison.Ordinal);
-            if (split < 0 || !value.StartsWith("data:", StringComparison.Ordinal) || value.Length > 8 * 1024 * 1024)
-                return Results.NotFound();
-            var mime = value[5..split].Replace(";base64", "");
-            if (mime is not ("image/jpeg" or "image/png" or "image/webp")) return Results.NotFound();
-            try
-            {
-                var bytes = Convert.FromBase64String(value[(split + 1)..]);
-                return ValidHeader(mime, bytes) ? Results.File(bytes, mime) : Results.NotFound();
-            }
-            catch (FormatException) { return Results.NotFound(); }
+            return StoredImage(await command.ExecuteScalarAsync(ct) as string);
         });
+    }
+
+    /// <summary>
+    /// Serves a stored image value: an https URL redirects to cloud storage; an inline data URI
+    /// (jpeg/png/webp, at most 8 MB) is decoded and served as a file once its bytes match the type.
+    /// </summary>
+    public static IResult StoredImage(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return Results.NotFound();
+        if (value.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return Results.Redirect(value);
+        var split = value.IndexOf(",", StringComparison.Ordinal);
+        if (split < 0 || !value.StartsWith("data:", StringComparison.Ordinal) || value.Length > 8 * 1024 * 1024)
+            return Results.NotFound();
+        var mime = value[5..split].Replace(";base64", "");
+        if (mime is not ("image/jpeg" or "image/png" or "image/webp")) return Results.NotFound();
+        try
+        {
+            var bytes = Convert.FromBase64String(value[(split + 1)..]);
+            return ValidHeader(mime, bytes) ? Results.File(bytes, mime) : Results.NotFound();
+        }
+        catch (FormatException) { return Results.NotFound(); }
     }
 
     /// <summary>Checks the file's magic bytes match the declared type.</summary>

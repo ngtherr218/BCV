@@ -99,6 +99,25 @@ Thay đổi dữ liệu nghiệp vụ hằng ngày nên làm qua web quản tr�
 | `021_versioned_recommendations.sql` | Sáu nhóm sở thích độc lập, metadata cấu hình và snapshot rating/count; giữ nguyên lựa chọn cũ để đối chiếu |
 | `012_northern_place_images_sources.md` | Nguồn của từng ảnh trong `012` |
 
+### Migration backend tự chạy
+
+Các file dưới đây được nhúng vào API và chạy lúc khởi động bởi `backend/Bcv.Api/Modules/Shared/Infrastructure/DbMigrations.cs`, theo thứ tự số, **mỗi file một lần**. Bảng `schema_migration` ghi file nào đã chạy (kèm checksum). Riêng `028` là dữ liệu mẫu nên chạy lại khi nội dung file đổi.
+
+Muốn đổi schema: thêm file số mới rồi khai báo trong `DbMigrations.All`. Không sửa file đã phát hành, vì máy đã chạy file đó sẽ không chạy lại.
+
+| File | Nội dung |
+| --- | --- |
+| `023_place_type_features.sql` | Đặc trưng gợi ý gắn theo loại địa danh |
+| `027_engagement.sql` | Bảng gameplay: bỏ qua gợi ý, hoạt động theo ngày, check-in, câu hỏi văn hóa, điểm khám phá, Am hiểu, nhiệm vụ thưởng điểm, nhật ký, cờ bước chân |
+| `028_seed_place_questions.sql` | Ngân hàng câu hỏi mẫu (chạy lại khi file đổi, không ghi đè chỉnh sửa của quản trị) |
+| `029_drop_community_media.sql` | Bỏ bảng ảnh/video cộng đồng |
+| `030_place_media.sql` | Gộp `place_image` + `place_video` thành `place_media` |
+| `031_region_zones_provinces.sql` | Trường Vùng (6 vùng) và gộp 63 tỉnh cũ thành 34 tỉnh mới, bỏ bảng `province` |
+| `032_badges.sql` | Bảng huy hiệu (ảnh, điều kiện, mã tự sinh) và bộ huy hiệu mặc định |
+| `033_drop_rating_snapshot.sql` | Bỏ `recommendation_rating_snapshot` (rating đọc thẳng từ `place`) |
+| `034_preferences_place_types.sql` | Sở thích = loại địa danh yêu thích; chuyển lựa chọn cũ rồi bỏ `interest_group` |
+| `035_account_status_blocked.sql` | Gộp trạng thái tài khoản "Tạm ngưng" vào "Đã khóa" |
+
 Số thứ tự bị nhảy (`005`–`008`, `011`) vì các migration sửa dữ liệu cũ đã được gộp vào `004` và `010` rồi xóa.
 
 Ghi chú về schema:

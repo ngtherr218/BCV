@@ -63,6 +63,7 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
     public async Task<DeleteCheck> CheckDelete(string key, long id, CancellationToken ct)
     {
         if (key is "users" or "items") throw new AdminValidation("Không hỗ trợ xóa người dùng hoặc vật phẩm.");
+        if (key == "leaderboard-prizes") throw new AdminValidation("Giải thưởng tuần luôn có đủ 3 hạng; hãy sửa thay vì xóa.");
         Resource(key);
         await using var conn = await db.OpenConnectionAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
@@ -75,6 +76,7 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
     {
         if (key is "users" or "items")
             throw new AdminValidation("Không hỗ trợ xóa người dùng hoặc vật phẩm. Hãy cập nhật trạng thái khi cần ngừng sử dụng.");
+        if (key == "leaderboard-prizes") throw new AdminValidation("Giải thưởng tuần luôn có đủ 3 hạng; hãy sửa thay vì xóa.");
         var r = Resource(key);
         await using var conn = await db.OpenConnectionAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
@@ -116,7 +118,7 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
     {
         var r = Resource(key);
         page = Math.Clamp(page, 1, 100000); pageSize = Math.Clamp(pageSize, 1, 100);
-        var direction = key == "regions" ? "ASC" : "DESC";
+        var direction = key is "regions" or "leaderboard-prizes" ? "ASC" : "DESC";
         var where = "WHERE ($1='' OR " + string.Join(" OR ", r.Search.Select(c => $"t.{c} ILIKE '%' || $1 || '%'")) + ")";
         if (r.Fields.Any(f => f.Name == "status")) where += " AND ($2='' OR t.status=$2)";
         else where += " AND $2=''";
@@ -128,6 +130,7 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
         if (key == "collections") json += " || jsonb_build_object('card_count',(SELECT count(*) FROM collection_card WHERE collection_id=t.collection_id))";
         if (key == "quests") json += " || jsonb_build_object('reward_name',concat_ws(' + ',(SELECT name || ' × ' || t.reward_quantity FROM item WHERE item_id=t.reward_item_id),CASE WHEN t.reward_points IS NOT NULL THEN t.reward_points || ' điểm khám phá' END),'completed_count',(SELECT count(*) FROM quest_progress WHERE quest_id=t.quest_id AND completion_status))";
         if (key == "regions") json += " || jsonb_build_object('place_count',(SELECT count(*) FROM place WHERE region_id=t.region_id))";
+        if (key == "leaderboard-prizes") json += " || jsonb_build_object('prize_name',CASE WHEN t.item_id IS NULL OR t.quantity=0 THEN 'Không có quà' ELSE (SELECT name || ' × ' || t.quantity FROM item WHERE item_id=t.item_id) END)";
         if (key == "questions") json += " || jsonb_build_object('place_name',(SELECT name FROM place WHERE place_id=t.place_id),'answer_label',chr(65+t.answer_index))";
         await using var cmd = db.CreateCommand($"""
             SELECT jsonb_build_object('total',(SELECT count(*) FROM {r.Table} t {where}),
@@ -245,6 +248,15 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
             if (type == "SPEED_SHOES" && (values["effect_value"] is not decimal effect || effect <= 1 || values["effective_range"] is not int range || range < 1))
                 throw new AdminValidation("Giày tăng tốc cần hệ số lớn hơn 1 và số bước hiệu lực lớn hơn 0.");
             if (type == "FLIGHT_TICKET") { values["effect_value"] = null; values["effective_range"] = null; }
+        }
+        if (key == "leaderboard-prizes")
+        {
+            // No item = no prize: the quantity follows; an item needs at least one.
+            if (values["item_id"] is null) values["quantity"] = 0;
+            else if (values["quantity"] is 0) throw new AdminValidation("Chọn số lượng từ 1 trở lên, hoặc bỏ vật phẩm nếu hạng này không có quà.");
+            if (values["item_id"] is not null && await Scalar("SELECT item_id FROM item WHERE item_id=$1 AND status='ACTIVE'", values["item_id"]!) is null)
+                throw new AdminValidation("Vật phẩm thưởng phải đang hoạt động.");
+            await Scalar("UPDATE leaderboard_prize SET updated_at=now() WHERE rank=$1 RETURNING rank", id!.Value);
         }
         if (key == "places" && Equals(values["status"], "ACTIVE") &&
             await Scalar("SELECT region_id FROM region WHERE region_id=$1 AND status='ACTIVE' FOR SHARE", values["region_id"]!) is null)

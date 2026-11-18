@@ -3,6 +3,7 @@ using Bcv.Api.Modules.Account.Application;
 using Bcv.Api.Modules.PlaceMedia;
 using Bcv.Api.Modules.PlaceCollection.Infrastructure;
 using Bcv.Api.Modules.QuestItem.Infrastructure;
+using Bcv.Api.Modules.Shared.Infrastructure;
 using Bcv.Api.Modules.StatsNotify.Infrastructure;
 using Npgsql;
 
@@ -110,9 +111,11 @@ public static partial class EngagementEndpoints
         group.MapGet("/engagement/summary", async (HttpContext http, NpgsqlDataSource db, CancellationToken ct) =>
         {
             var userId = Me(http);
+            await LeaderboardRewards.SettleAsync(db, ct);
             var streak = await StreakJsonAsync(db, userId, ct);
             var passport = await PassportAsync(db, userId, ct);
             var badges = await BadgesAsync(db, userId, ct);
+            var rewards = await LeaderboardRewards.UnseenAsync(db, userId, ct);
             await using var command = db.CreateCommand("""
                 SELECT COALESCE((SELECT sum(points) FROM explorer_point WHERE user_id=$1),0)::int,
                        (SELECT count(*) FROM user_place_mastery WHERE user_id=$1)::int
@@ -120,25 +123,29 @@ public static partial class EngagementEndpoints
             command.Parameters.AddWithValue(userId);
             await using var reader = await command.ExecuteReaderAsync(ct);
             await reader.ReadAsync(ct);
-            return Results.Ok(new { streak, passport, badges, points = reader.GetInt32(0), masteredPlaces = reader.GetInt32(1) });
+            return Results.Ok(new { streak, passport, badges, rewards, points = reader.GetInt32(0), masteredPlaces = reader.GetInt32(1) });
+        });
+        // Bảng vàng history: past weeks' top 3 of the Khám phá board or of the user's Vận động level.
+        group.MapGet("/engagement/leaderboard/history", async (string? scope, HttpContext http, NpgsqlDataSource db, CancellationToken ct) =>
+        {
+            var userId = Me(http);
+            await LeaderboardRewards.SettleAsync(db, ct);
+            var board = scope is "activity" or "streak" ? scope : "knowledge";
+            var level = board == "knowledge" ? "" : (await EngagementCore.DailyGoalAsync(db, userId, ct)).Item1;
+            return Results.Ok(await LeaderboardRewards.HistoryAsync(db, userId, board, level, 12, ct));
+        });
+        // The weekly-prize popup was shown: don't show it again.
+        group.MapPost("/engagement/leaderboard/rewards/seen", async (HttpContext http, NpgsqlDataSource db, CancellationToken ct) =>
+        {
+            await LeaderboardRewards.MarkSeenAsync(db, Me(http), ct);
+            return Results.NoContent();
         });
         // Uploaded badge art kept inline (no cloud storage): served as an image file.
         group.MapGet("/engagement/badges/{id:long}/image", async (long id, NpgsqlDataSource db, CancellationToken ct) =>
         {
             await using var command = db.CreateCommand("SELECT image_key FROM badge WHERE badge_id=$1 AND status='ACTIVE'");
             command.Parameters.AddWithValue(id);
-            var value = await command.ExecuteScalarAsync(ct) as string;
-            if (string.IsNullOrEmpty(value)) return Results.NotFound();
-            if (value.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return Results.Redirect(value);
-            const string prefix = "data:image/jpeg;base64,";
-            if (!value.StartsWith(prefix, StringComparison.Ordinal)) return Results.NotFound();
-            try
-            {
-                var bytes = Convert.FromBase64String(value[prefix.Length..]);
-                return Bcv.Api.Modules.PlaceMedia.PlaceMediaEndpoints.ValidHeader("image/jpeg", bytes)
-                    ? Results.File(bytes, "image/jpeg") : Results.NotFound();
-            }
-            catch (FormatException) { return Results.NotFound(); }
+            return PlaceMediaEndpoints.StoredImage(await command.ExecuteScalarAsync(ct) as string);
         });
         // Places whose card is in its "Am hiểu" edition (every question stop answered correctly).
         group.MapGet("/engagement/mastery", async (HttpContext http, NpgsqlDataSource db, CancellationToken ct) =>
@@ -151,8 +158,11 @@ public static partial class EngagementEndpoints
             return Results.Ok(new { placeIds = ids });
         });
         group.MapGet("/engagement/leaderboard", async (string? scope, HttpContext http, NpgsqlDataSource db, CancellationToken ct) =>
-            Results.Ok(scope == "streak" ? await StreakLeaderboardAsync(db, Me(http), ct)
-                : await LeaderboardAsync(db, Me(http), scope == "knowledge" ? "knowledge" : "activity", ct)));
+        {
+            await LeaderboardRewards.SettleAsync(db, ct);
+            return Results.Ok(scope == "streak" ? await StreakLeaderboardAsync(db, Me(http), ct)
+                : await LeaderboardAsync(db, Me(http), scope == "knowledge" ? "knowledge" : "activity", ct));
+        });
 
         // ---------- F77: real-world check-in ----------
         group.MapPost("/explore/places/{placeId:long}/checkin", async (long placeId, CheckinRequest body, HttpContext http,
@@ -177,13 +187,8 @@ public static partial class EngagementEndpoints
             }
             // Check-in only where the game puts you: the destination of the journey being walked, or the
             // place your virtual location stands at.
-            await using (var allowed = new NpgsqlCommand("""
-                SELECT EXISTS (SELECT 1 FROM journey WHERE user_id=$1 AND destination_place_id=$2 AND status='IN_PROGRESS')
-                    OR (EXISTS (SELECT 1 FROM virtual_location v JOIN place p ON p.place_id=$2 WHERE v.user_id=$1
-                               AND abs(v.latitude - p.latitude) < 0.0005 AND abs(v.longitude - p.longitude) < 0.0005)
-                        -- left that spot: 1,000+ steps walked on the journey in progress
-                        AND NOT EXISTS (SELECT 1 FROM journey j WHERE j.user_id=$1 AND j.status='IN_PROGRESS' AND j.recorded_steps >= 1000))
-                """, connection, transaction))
+            await using (var allowed = new NpgsqlCommand(
+                $"SELECT {CheckinSql.IsJourneyDestination} OR {CheckinSql.IsAtVirtualLocation}", connection, transaction))
             {
                 allowed.Parameters.AddWithValue(userId); allowed.Parameters.AddWithValue(placeId);
                 if (!(bool)(await allowed.ExecuteScalarAsync(ct))!)
@@ -240,23 +245,16 @@ public static partial class EngagementEndpoints
                 return Results.Ok(new { success = true, alreadyToday = true, placeName = name,
                     message = $"Hôm nay bạn đã check-in tại {name}." });
             }
-            // For the success dialog: whether the place is newly unlocked, and its card still to earn by finishing the journey.
-            bool newDiscovery; string? pendingCard;
-            await using (var before = new NpgsqlCommand("""
-                SELECT NOT EXISTS (SELECT 1 FROM user_discovered_place WHERE user_id=$1 AND place_id=$2),
-                       (SELECT c.name FROM card c WHERE c.place_id=$2 AND c.status='ACTIVE'
-                          AND NOT EXISTS (SELECT 1 FROM user_card uc WHERE uc.user_id=$1 AND uc.card_id=c.card_id))
-                """, connection, transaction))
-            {
-                before.Parameters.AddWithValue(userId); before.Parameters.AddWithValue(placeId);
-                await using var reader = await before.ExecuteReaderAsync(ct);
-                await reader.ReadAsync(ct);
-                newDiscovery = reader.GetBoolean(0);
-                pendingCard = reader.IsDBNull(1) ? null : reader.GetString(1);
-            }
-            // Unlocks the place (no card: cards come from finishing a journey or a flight ticket).
+            // Unlocks the place without its card (cards come from finishing a journey or a flight ticket).
             // Checking in does not finish the journey either: the steps still have to be walked.
-            await PlaceUnlock.UnlockAsync(connection, transaction, userId, placeId, ct);
+            var newDiscovery = await PlaceUnlock.DiscoverAsync(connection, transaction, userId, placeId, ct);
+            // For the success dialog: the card still to earn by finishing the journey.
+            string? pendingCard;
+            await using (var card = new NpgsqlCommand($"SELECT c.name FROM {CheckinSql.PendingCard} LIMIT 1", connection, transaction))
+            {
+                card.Parameters.AddWithValue(userId); card.Parameters.AddWithValue(placeId);
+                pendingCard = await card.ExecuteScalarAsync(ct) as string;
+            }
             await AddPointsAsync(connection, transaction, userId, "CHECKIN", $"{placeId}:{today:yyyy-MM-dd}",
                 CheckinPoints, $"Check-in tại {name}", ct);
             await Notifications.AddAsync(connection, transaction, userId, "PLACE_CHECKIN", "Check-in thành công",
@@ -669,11 +667,11 @@ public static partial class EngagementEndpoints
         EngagementCore.ZoneNames.Select(z => (z.Key, z.Value)).ToArray();
 
     /// <summary>[ImageUrl]: https art as is, uploaded (inline) art through /api/engagement/badges/{id}/image.</summary>
-    private sealed record Badge(string Code, string Name, string Description, bool Earned, string Progress, string? ImageUrl);
+    private sealed record Badge(string Name, string Description, bool Earned, string Progress, string? ImageUrl);
 
     private static async Task<IReadOnlyList<Badge>> BadgesAsync(NpgsqlDataSource db, long userId, CancellationToken ct)
     {
-        int discovered, zonesTouched, zonesComplete, checkins, correct, masteredCount, provincesVisited;
+        int discovered, zonesTouched, zonesComplete, checkins, correct, masteredCount, provincesVisited, podiums;
         await using (var command = db.CreateCommand("""
             WITH mine AS (SELECT p.place_id, r.zone FROM user_discovered_place d JOIN place p ON p.place_id=d.place_id
                           JOIN region r ON r.region_id=p.region_id WHERE d.user_id=$1),
@@ -686,7 +684,8 @@ public static partial class EngagementEndpoints
                    (SELECT count(*)::int FROM journey_quiz_answer a JOIN journey j ON j.journey_id=a.journey_id
                       WHERE j.user_id=$1 AND a.is_correct),
                    (SELECT count(*)::int FROM user_place_mastery WHERE user_id=$1),
-                   (SELECT count(DISTINCT p.region_id)::int FROM place_checkin c JOIN place p ON p.place_id=c.place_id WHERE c.user_id=$1)
+                   (SELECT count(DISTINCT p.region_id)::int FROM place_checkin c JOIN place p ON p.place_id=c.place_id WHERE c.user_id=$1),
+                   (SELECT count(*)::int FROM leaderboard_reward WHERE user_id=$1)
             """))
         {
             command.Parameters.AddWithValue(userId);
@@ -694,7 +693,7 @@ public static partial class EngagementEndpoints
             await reader.ReadAsync(ct);
             discovered = reader.GetInt32(0); zonesTouched = reader.GetInt32(1); zonesComplete = reader.GetInt32(2);
             checkins = reader.GetInt32(3); correct = reader.GetInt32(4); masteredCount = reader.GetInt32(5);
-            provincesVisited = reader.GetInt32(6);
+            provincesVisited = reader.GetInt32(6); podiums = reader.GetInt32(7);
         }
         var days = await EngagementCore.HistoryAsync(db, userId, ct);
         var best = EngagementCore.ComputeStreak(days, EngagementCore.Today()).Best;
@@ -703,39 +702,28 @@ public static partial class EngagementEndpoints
         {
             ["PLACES_DISCOVERED"] = discovered, ["ZONES_TOUCHED"] = zonesTouched, ["ZONES_COMPLETED"] = zonesComplete,
             ["BEST_STREAK"] = best, ["REAL_CHECKINS"] = checkins, ["PROVINCES_STAMPED"] = provincesVisited,
-            ["QUIZ_CORRECT"] = correct, ["CARDS_MASTERED"] = masteredCount,
+            ["QUIZ_CORRECT"] = correct, ["CARDS_MASTERED"] = masteredCount, ["PODIUM_FINISHES"] = podiums,
         };
         var badges = new List<Badge>();
         await using (var list = db.CreateCommand("""
-            SELECT code, name, description, condition_type, target_value, image_key, badge_id
+            SELECT name, description, condition_type, target_value,
+                   CASE WHEN image_key ILIKE 'https://%' THEN image_key END, coalesce(image_key, '') <> '', badge_id
             FROM badge WHERE status='ACTIVE' ORDER BY sort_order, badge_id
             """))
         await using (var reader = await list.ExecuteReaderAsync(ct))
             while (await reader.ReadAsync(ct))
             {
-                var value = metrics.GetValueOrDefault(reader.GetString(3));
-                var target = reader.GetInt32(4);
-                var image = reader.IsDBNull(5) ? null : reader.GetString(5);
-                var code = reader.GetString(0);
-                var imageUrl = string.IsNullOrWhiteSpace(image) ? null
-                    : image.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ? image
-                    : $"/api/engagement/badges/{reader.GetInt64(6)}/image";
-                badges.Add(new Badge(code, reader.GetString(1), reader.GetString(2),
+                // Only the URL is read: inline art (up to megabytes) stays in the database until requested.
+                var value = metrics.GetValueOrDefault(reader.GetString(2));
+                var target = reader.GetInt32(3);
+                var imageUrl = !reader.IsDBNull(4) ? reader.GetString(4)
+                    : reader.GetBoolean(5) ? $"/api/engagement/badges/{reader.GetInt64(6)}/image" : null;
+                badges.Add(new Badge(reader.GetString(0), reader.GetString(1),
                     value >= target, $"{Math.Min(value, target)}/{target}", imageUrl));
             }
         return badges;
     }
 
-    /// <summary>
-    /// F85 weekly boards, never global:
-    /// "knowledge" ranks explorer points earned this week (culture questions) among users of the same zone;
-    /// "activity" ranks steps walked this week among users of the same activity level, so people are
-    /// compared with others who walk about as much as they do.
-    /// </summary>
-    /// <summary>
-    /// "Giữ chuỗi": current streak in days (same rule as the user's own streak, rest days included),
-    /// among users of the same activity level.
-    /// </summary>
     /// <summary>Every board lists its top 50; a user below that still gets their own rank in <c>me</c>.</summary>
     private const int TopSize = 50;
 
@@ -768,15 +756,17 @@ public static partial class EngagementEndpoints
         var rows = people.Select(p => (Id: p.Key, p.Value.Name, Value: EngagementCore.ComputeStreak(days[p.Key], today).Best, p.Value.Avatar))
             .Where(r => r.Value > 0).OrderByDescending(r => r.Value).ThenBy(r => r.Id).ToList();
         var myIndex = rows.FindIndex(r => r.Id == userId);
-        object Row((long Id, string Name, int Value, string? Avatar) r, int index) => new {
-            rank = index + 1, name = DisplayName(r.Name), value = r.Value, unit = "ngày", avatar = r.Avatar, isMe = r.Id == userId };
         var (level, _) = await EngagementCore.DailyGoalAsync(db, userId, ct);
-        var monday = today.AddDays(-(((int)today.DayOfWeek + 6) % 7));
+        var podium = await LeaderboardRewards.PodiumAsync(db, "streak", level, ct);
+        var championId = podium.FirstOrDefault(p => p.Rank == 1).UserId;
+        object Row((long Id, string Name, int Value, string? Avatar) r, int index) => new {
+            rank = index + 1, name = DisplayName(r.Name), value = r.Value, unit = "ngày", avatar = r.Avatar, isMe = r.Id == userId,
+            champion = championId != 0 && r.Id == championId };
         return new {
             scope = "streak", unit = "ngày",
             scopeName = level switch { "LOW" => "Cùng mức vận động nhẹ", "HIGH" => "Cùng mức vận động cao", _ => "Cùng mức vận động vừa" },
-            weekStart = monday.ToString("yyyy-MM-dd"), weekEnd = monday.AddDays(6).ToString("yyyy-MM-dd"),
             participants = rows.Count,
+            prizes = await LeaderboardRewards.PrizesAsync(db, ct),
             top = rows.Take(TopSize).Select(Row).ToList(),
             me = myIndex >= 0 ? Row(rows[myIndex], myIndex) : null
         };
@@ -816,19 +806,25 @@ public static partial class EngagementEndpoints
                 rows.Add((reader.GetInt64(0), reader.GetString(1), reader.GetInt32(2), reader.IsDBNull(3) ? null : reader.GetString(3)));
         var myIndex = rows.FindIndex(r => r.Id == userId);
         var unit = knowledge ? "điểm" : "bước";
-        object Row((long Id, string Name, int Value, string? Avatar) r, int index) => new {
-            rank = index + 1, name = DisplayName(r.Name), value = r.Value, unit, avatar = r.Avatar, isMe = r.Id == userId };
         string? scopeName;
+        var level = "";
         if (knowledge) scopeName = "Tất cả người khám phá";
         else
         {
-            var (level, _) = await EngagementCore.DailyGoalAsync(db, userId, ct);
+            (level, _) = await EngagementCore.DailyGoalAsync(db, userId, ct);
             scopeName = level switch { "LOW" => "Cùng mức vận động nhẹ", "HIGH" => "Cùng mức vận động cao", _ => "Cùng mức vận động vừa" };
         }
+        // Last week's #1 of this board is marked "Quán quân tuần".
+        var podium = await LeaderboardRewards.PodiumAsync(db, knowledge ? "knowledge" : "activity", level, ct);
+        var championId = podium.FirstOrDefault(p => p.Rank == 1).UserId;
+        object Row((long Id, string Name, int Value, string? Avatar) r, int index) => new {
+            rank = index + 1, name = DisplayName(r.Name), value = r.Value, unit, avatar = r.Avatar, isMe = r.Id == userId,
+            champion = championId != 0 && r.Id == championId };
         return new {
             scope = knowledge ? "knowledge" : "activity", scopeName, unit,
             weekStart = monday.ToString("yyyy-MM-dd"), weekEnd = monday.AddDays(6).ToString("yyyy-MM-dd"),
             participants = rows.Count,
+            prizes = await LeaderboardRewards.PrizesAsync(db, ct),
             top = rows.Take(TopSize).Select(Row).ToList(),
             me = myIndex >= 0 ? Row(rows[myIndex], myIndex) : null
         };

@@ -1,4 +1,4 @@
-package com.project.bcv.feature.engagement
+package com.project.bcv.feature.engagement.data
 
 import android.content.Context
 import androidx.health.connect.client.HealthConnectClient
@@ -32,6 +32,10 @@ class EngagementApi(context: Context) {
         }
     }
     suspend fun leaderboard(scope: String): JSONObject = io { client.get("api/engagement/leaderboard?scope=$scope", token()) }
+    /** Past weeks' top 3 of a board ("knowledge" or the user's "activity" level), newest first. */
+    suspend fun leaderboardHistory(scope: String): JSONObject = io { client.get("api/engagement/leaderboard/history?scope=$scope", token()) }
+    /** The weekly-prize popup was shown; it won't come back. */
+    suspend fun markRewardsSeen() = io { client.post("api/engagement/leaderboard/rewards/seen", JSONObject(), token()) }
 
     /** The server's result: message, alreadyToday, points, newDiscovery, newCard, province stamp… */
     suspend fun checkIn(placeId: Long, latitude: Double, longitude: Double, test: Boolean = false): JSONObject = io {
@@ -93,18 +97,10 @@ class EngagementApi(context: Context) {
         return result
     }
 
+    /** The personal daily goal from the last server answer (6,000 = "vừa" until known). */
+    fun cachedDailyGoal() = app.getSharedPreferences("engagement", Context.MODE_PRIVATE).getInt("daily_goal", 6000)
+
     companion object {
         const val MIN_REPORT_MILLIS = 5 * 60 * 1000L
-
-        /** The personal daily goal from the last server answer (6,000 = "vừa" until known). */
-        fun cachedDailyGoal(context: Context) =
-            context.getSharedPreferences("engagement", Context.MODE_PRIVATE).getInt("daily_goal", 6000)
-
-        fun distanceKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-            val dLat = Math.toRadians(lat2 - lat1); val dLon = Math.toRadians(lon2 - lon1)
-            val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2)
-            return 6371.0 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-        }
     }
 }

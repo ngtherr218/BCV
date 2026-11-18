@@ -11,10 +11,8 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
-import android.graphics.drawable.ColorDrawable
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import android.view.animation.OvershootInterpolator
 import android.widget.LinearLayout
 import com.project.bcv.feature.engagement.EngagementUi.FOREST
@@ -23,6 +21,7 @@ import com.project.bcv.feature.engagement.EngagementUi.GOLD_SOFT
 import com.project.bcv.feature.engagement.EngagementUi.MUTED
 import com.project.bcv.feature.engagement.EngagementUi.SOFT
 import com.project.bcv.feature.engagement.EngagementUi.TEAL
+import com.project.bcv.feature.engagement.EngagementUi.cardDialog
 import com.project.bcv.feature.engagement.EngagementUi.dp
 import com.project.bcv.feature.engagement.EngagementUi.icon
 import com.project.bcv.feature.engagement.EngagementUi.leadingIcon
@@ -32,7 +31,7 @@ import com.project.bcv.feature.engagement.EngagementUi.primaryButton
 import com.project.bcv.feature.engagement.EngagementUi.progress
 import com.project.bcv.feature.engagement.EngagementUi.rounded
 import com.project.bcv.feature.engagement.EngagementUi.text
-import org.json.JSONObject
+import com.project.bcv.feature.engagement.domain.CheckinResult
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -44,14 +43,22 @@ object CheckinSuccessDialog {
     private const val GOLD_DARK = 0xFF9A6B12.toInt()
 
 
-    fun show(activity: Activity, result: JSONObject, test: Boolean, onJournal: () -> Unit) = with(activity) {
-        val dialog = Dialog(this)
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
-            background = rounded(Color.WHITE, 28, null, context)
-            setPadding(dp(22), dp(24), dp(22), dp(18))
+    fun show(activity: Activity, result: CheckinResult, test: Boolean, onJournal: () -> Unit) = with(activity) {
+        lateinit var stamp: StampMark
+        lateinit var rewards: LinearLayout
+        cardDialog { dialog -> showContent(this, dialog, result, test, onJournal).let { stamp = it.first; rewards = it.second } }
+            .show()
+        stamp.land()
+        // Rewards follow the stamp one by one.
+        for (i in 0 until rewards.childCount) rewards.getChildAt(i).apply {
+            alpha = 0f; translationY = dp(10).toFloat()
+            animate().alpha(1f).translationY(0f).setStartDelay(420L + i * 110L).setDuration(260).start()
         }
-        val place = result.optString("placeName")
+    }
+
+    private fun Activity.showContent(box: LinearLayout, dialog: Dialog, result: CheckinResult, test: Boolean,
+                                     onJournal: () -> Unit): Pair<StampMark, LinearLayout> {
+        val place = result.placeName
         val stamp = StampMark(this, place)
         box.addView(stamp, LinearLayout.LayoutParams(dp(132), dp(132)))
         if (test) box.addView(text("CHECK-IN THỬ", 11f, MUTED, true).leadingIcon(com.project.bcv.R.drawable.ic_m3_science, MUTED, 13, 4).apply {
@@ -59,19 +66,19 @@ object CheckinSuccessDialog {
         }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(8) })
         box.addView(text("Check-in thành công!", 20f, FOREST, true).apply { gravity = Gravity.CENTER },
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
-        val visits = result.optInt("visits", 1)
+        val visits = result.visits
         box.addView(text(if (visits <= 1) "Lần đầu bạn đặt chân đến $place" else "Lần ghé thứ $visits tại $place",
             15f, MUTED).apply { gravity = Gravity.CENTER }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
 
         val rewards = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        rewards.addView(reward(com.project.bcv.R.drawable.ic_m3_star, "+${number(result.optInt("points", 200))} điểm khám phá", null))
-        if (result.optBoolean("newDiscovery")) rewards.addView(reward(com.project.bcv.R.drawable.ic_m3_lock_open, "Mở khóa địa danh", "Đã thêm vào bộ sưu tập của bạn"))
+        rewards.addView(reward(com.project.bcv.R.drawable.ic_m3_star, "+${number(result.points)} điểm khám phá", null))
+        if (result.newDiscovery) rewards.addView(reward(com.project.bcv.R.drawable.ic_m3_lock_open, "Mở khóa địa danh", "Đã thêm vào bộ sưu tập của bạn"))
         // Cards come only from finishing the journey: say which one is waiting at the end of it.
-        result.optString("pendingCard").takeIf { it.isNotBlank() && it != "null" }?.let {
+        result.pendingCard?.let {
             rewards.addView(reward(com.project.bcv.R.drawable.ic_m3_style, "Thẻ $it", "Đi hết hành trình để nhận thẻ"))
         }
-        result.optString("province").takeIf { it.isNotBlank() && it != "null" }?.let { province ->
-            val stamped = result.optInt("provinceStamped"); val total = result.optInt("provinceTotal").coerceAtLeast(1)
+        result.province?.let { province ->
+            val stamped = result.provinceStamped; val total = result.provinceTotal.coerceAtLeast(1)
             val row = reward(com.project.bcv.R.drawable.ic_m3_id_card, "Hộ chiếu · $province",
                 if (stamped >= total) "Đã có dấu tất cả $total địa danh của tỉnh!" else "$stamped/$total địa danh có dấu")
             (row.getChildAt(1) as LinearLayout).addView(progress(stamped, total, GOLD),
@@ -85,19 +92,7 @@ object CheckinSuccessDialog {
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
         box.addView(outlinedButton("Để sau").apply { setOnClickListener { dialog.dismiss() } },
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
-
-        dialog.setContentView(box)
-        dialog.window?.apply {
-            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-            setLayout((resources.displayMetrics.widthPixels - dp(48)).coerceAtMost(dp(400)), ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-        dialog.show()
-        stamp.land()
-        // Rewards follow the stamp one by one.
-        for (i in 0 until rewards.childCount) rewards.getChildAt(i).apply {
-            alpha = 0f; translationY = dp(10).toFloat()
-            animate().alpha(1f).translationY(0f).setStartDelay(420L + i * 110L).setDuration(260).start()
-        }
+        return stamp to rewards
     }
 
     /**
@@ -107,7 +102,7 @@ object CheckinSuccessDialog {
     fun showFailure(activity: Activity, code: String?, message: String?, onRetry: () -> Unit) = with(activity) {
         val (symbol, title, hint) = when (code) {
             "TOO_FAR" -> Triple(com.project.bcv.R.drawable.ic_m3_location_off, "Bạn chưa đến nơi",
-                "Check-in chỉ được tính khi bạn ở trong bán kính 750 m quanh địa danh. Hãy đi gần hơn rồi thử lại.")
+                "Check-in chỉ được tính khi bạn ở gần địa danh. Hãy đi gần hơn rồi thử lại.")
             "NO_LOCATION" -> Triple(com.project.bcv.R.drawable.ic_m3_gps_off, "Chưa xác định được vị trí",
                 "Bật GPS, ra chỗ thoáng (ít nhà cao tầng) và đợi vài giây trước khi thử lại.")
             "IMPLAUSIBLE" -> Triple(com.project.bcv.R.drawable.ic_m3_warning, "Vị trí chưa hợp lệ",
@@ -122,12 +117,17 @@ object CheckinSuccessDialog {
                 "Địa danh này hiện không nhận check-in.")
             else -> Triple(com.project.bcv.R.drawable.ic_m3_error, "Chưa check-in được", "Vui lòng thử lại sau giây lát.")
         }
-        val dialog = Dialog(this)
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
-            background = rounded(Color.WHITE, 28, null, context)
-            setPadding(dp(22), dp(26), dp(22), dp(18))
-        }
+        lateinit var badge: View
+        cardDialog { dialog ->
+            badge = failureContent(this, dialog, symbol, title, message, hint, code, onRetry)
+        }.show()
+        // A small shake on the badge says "not this time" without being alarming.
+        ObjectAnimator.ofFloat(badge, View.TRANSLATION_X, 0f, -dp(8).toFloat(), dp(8).toFloat(), -dp(5).toFloat(), dp(5).toFloat(), 0f)
+            .apply { duration = 420; startDelay = 150; start() }
+    }
+
+    private fun Activity.failureContent(box: LinearLayout, dialog: Dialog, symbol: Int, title: String, message: String?,
+                                        hint: String, code: String?, onRetry: () -> Unit): View {
         val badge = android.widget.FrameLayout(this).apply {
             addView(icon(symbol, 0xFFC0473A.toInt(), 38), android.widget.FrameLayout.LayoutParams(dp(38), dp(38), Gravity.CENTER))
             background = android.graphics.drawable.GradientDrawable().apply {
@@ -148,16 +148,7 @@ object CheckinSuccessDialog {
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(18) })
         box.addView(outlinedButton("Đóng").apply { setOnClickListener { dialog.dismiss() } },
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
-        dialog.setContentView(box)
-        dialog.window?.apply {
-            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-            setLayout((resources.displayMetrics.widthPixels - dp(48)).coerceAtMost(dp(400)), ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-        dialog.show()
-        // A small shake on the badge says "not this time" without being alarming.
-        badge.translationX = 0f
-        ObjectAnimator.ofFloat(badge, View.TRANSLATION_X, 0f, -dp(8).toFloat(), dp(8).toFloat(), -dp(5).toFloat(), dp(5).toFloat(), 0f)
-            .apply { duration = 420; startDelay = 150; start() }
+        return badge
     }
 
     private fun Context.reward(iconRes: Int, title: String, detail: String?) = LinearLayout(this).apply {

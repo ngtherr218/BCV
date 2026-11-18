@@ -1,5 +1,6 @@
 package com.project.bcv.feature.discovery.presentation
 
+import com.project.bcv.core.di.EngagementModule
 import android.animation.ValueAnimator
 import android.content.Intent
 import android.content.res.ColorStateList
@@ -172,8 +173,10 @@ class ExploreActivity : AppCompatActivity() {
         scheduleMapTimeout()
 
         model = TabViewModels.provider(applicationContext, ExploreViewModelFactory(
-            ExploreModule.repository(this), ExploreModule.stepSource(this), ExploreModule.addressLookup(), com.project.bcv.feature.discovery.data.StepTestPreferences(this)
+            ExploreModule.repository(this), ExploreModule.stepSource(this), ExploreModule.addressLookup(),
+            com.project.bcv.feature.discovery.data.StepTestPreferences(this), EngagementModule.repository(this)
         ))[ExploreViewModel::class.java]
+        model.quiz.observe(this) { event -> event.take()?.let(::showQuiz) }
         notificationBell = com.project.bcv.feature.statsnotify.notifications.presentation.NotificationBell(
             this, binding.notificationsButton, binding.notificationBadge)
         journeyRewards = com.project.bcv.feature.collection.presentation.JourneyRewardController(this) {
@@ -291,7 +294,7 @@ class ExploreActivity : AppCompatActivity() {
         // Mutations invalidate the cached tab; a normal return keeps its existing content.
         model.refreshIfNeeded()
         // F83: today's steps feed the streak and weekly board (throttled inside).
-        lifecycleScope.launch { com.project.bcv.feature.engagement.EngagementApi(this@ExploreActivity).reportToday() }
+        model.reportToday()
         loadProfileAvatar()
         if (::model.isInitialized) {
             model.checkPermission()
@@ -460,7 +463,6 @@ class ExploreActivity : AppCompatActivity() {
     private var quizJourneyId: Long? = null
     private var quizNextUnlock = Int.MAX_VALUE
     private var quizOpenKeys = emptySet<String>()
-    private var quizLoading = false
 
     /** Reloads the stops when the journey changes or the walker reaches the next locked stop. */
     private fun syncQuizStops(state: ExploreUiState) {
@@ -472,29 +474,28 @@ class ExploreActivity : AppCompatActivity() {
         if (journey.id != quizJourneyId || journey.recordedSteps >= quizNextUnlock) refreshQuiz(announce = journey.id == quizJourneyId)
     }
 
+    private var quizAnnounce = false
+
     private fun refreshQuiz(announce: Boolean) {
-        if (quizLoading) return
-        quizLoading = true
-        lifecycleScope.launch {
-            val data = runCatching { com.project.bcv.feature.engagement.EngagementApi(this@ExploreActivity).quiz() }.getOrNull()
-            quizLoading = false
-            if (data == null) return@launch
-            quizJourneyId = data.optLong("journeyId").takeIf { it > 0 } ?: model.state.value?.snapshot?.journey?.id
-            val stops = data.optJSONArray("stops")
-            val list = (0 until (stops?.length() ?: 0)).map { i -> stops!!.getJSONObject(i) }
-            goongMap.showQuizStops(list.map { GoongExploreMap.QuizStop(it.getInt("number"), it.getDouble("fraction"), it.getString("state")) })
-            quizNextUnlock = list.filter { it.getString("state") == "LOCKED" }.minOfOrNull { it.getInt("unlockSteps") } ?: Int.MAX_VALUE
-            val open = list.filter { it.getString("state") == "OPEN" }
-            val newlyOpen = open.firstOrNull { it.getString("key") !in quizOpenKeys }
-            quizOpenKeys = open.map { it.getString("key") }.toSet()
-            // Gold when a stop is waiting for an answer.
-            binding.quizMapButton.backgroundTintList = if (open.isNotEmpty()) ColorStateList.valueOf(0xFFFFE7A8.toInt()) else null
-            binding.quizMapButton.contentDescription = if (open.isNotEmpty()) "Trạm câu hỏi: ${open.size} câu đang chờ trả lời" else "Trạm câu hỏi"
-            if (announce && newlyOpen != null) {
-                val stop = newlyOpen.getInt("number")
-                Snackbar.make(binding.root, "Bạn đã tới Trạm câu hỏi $stop!", Snackbar.LENGTH_LONG)
-                    .setAction("Trả lời") { openQuiz(stop) }.show()
-            }
+        quizAnnounce = announce
+        model.refreshQuiz()
+    }
+
+    private fun showQuiz(quiz: com.project.bcv.feature.engagement.domain.CurrentQuiz) {
+        val announce = quizAnnounce
+        quizJourneyId = quiz.journeyId ?: model.state.value?.snapshot?.journey?.id
+        goongMap.showQuizStops(quiz.stops.map { GoongExploreMap.QuizStop(it.number, it.fraction, it.state) })
+        quizNextUnlock = quiz.stops.filter { it.isLocked }.minOfOrNull { it.unlockSteps } ?: Int.MAX_VALUE
+        val open = quiz.stops.filter { it.isOpen }
+        val newlyOpen = open.firstOrNull { it.key !in quizOpenKeys }
+        quizOpenKeys = open.map { it.key }.toSet()
+        // Gold when a stop is waiting for an answer.
+        binding.quizMapButton.backgroundTintList = if (open.isNotEmpty()) ColorStateList.valueOf(0xFFFFE7A8.toInt()) else null
+        binding.quizMapButton.contentDescription = if (open.isNotEmpty()) "Trạm câu hỏi: ${open.size} câu đang chờ trả lời" else "Trạm câu hỏi"
+        if (announce && newlyOpen != null) {
+            val stop = newlyOpen.number
+            Snackbar.make(binding.root, "Bạn đã tới Trạm câu hỏi $stop!", Snackbar.LENGTH_LONG)
+                .setAction("Trả lời") { openQuiz(stop) }.show()
         }
     }
 
@@ -521,7 +522,7 @@ class ExploreActivity : AppCompatActivity() {
             return
         }
         searchSheet = ExploreSearchSheet(this, snapshot, searchQuery, searchFilters,
-            com.project.bcv.feature.engagement.EngagementApi.cachedDailyGoal(this),
+            model.dailyGoal(),
             onQuery = { query, filters -> setSearchQuery(query, filters) },
             onPlace = { place ->
                 setSearchQuery(place.name, SearchFilters())
@@ -543,11 +544,11 @@ class ExploreActivity : AppCompatActivity() {
         activeItemBanner.show(state.snapshot?.journey)
         state.snapshot?.let { snapshot ->
             val query = searchQuery
-            val goal = com.project.bcv.feature.engagement.EngagementApi.cachedDailyGoal(this@ExploreActivity)
+            val goal = model.dailyGoal()
             val origin = snapshot.location?.coordinates
             val filtered = snapshot.copy(places = com.project.bcv.feature.discovery.domain.PlaceSearch.filter(snapshot.places, query)
                 .filter { place ->
-                    val km = origin?.let { com.project.bcv.feature.engagement.EngagementApi.distanceKm(
+                    val km = origin?.let { com.project.bcv.feature.discovery.domain.PlaceSearch.distanceKm(
                         it.latitude, it.longitude, place.coordinates.latitude, place.coordinates.longitude) }
                     searchFilters.matches(place, km, goal)
                 })

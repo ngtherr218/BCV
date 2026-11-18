@@ -157,7 +157,5 @@ await AccountSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource
 await Bcv.Api.Modules.PlaceCollection.Infrastructure.CollectionSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
 await Bcv.Api.Modules.StatsNotify.Infrastructure.NotificationSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
 await RecommendationSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
-await Bcv.Api.Modules.PlaceMedia.PlaceMediaEndpoints.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
-await Bcv.Api.Modules.Admin.PlaceTypeFeatureSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
-await Bcv.Api.Modules.Engagement.EngagementSchema.EnsureAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
+await Bcv.Api.Modules.Shared.Infrastructure.DbMigrations.ApplyAsync(app.Services.GetRequiredService<NpgsqlDataSource>());
 app.Run();

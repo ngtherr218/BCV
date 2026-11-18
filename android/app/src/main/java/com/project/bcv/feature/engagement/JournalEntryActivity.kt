@@ -1,5 +1,7 @@
 package com.project.bcv.feature.engagement
 
+import com.project.bcv.feature.engagement.data.EngagementApi
+import com.project.bcv.core.ui.roundIconButton
 import com.project.bcv.feature.engagement.EngagementUi.icon
 import com.project.bcv.feature.engagement.EngagementUi.cardDialog
 import com.project.bcv.feature.engagement.EngagementUi.leadingIcon
@@ -234,24 +236,16 @@ class JournalEntryActivity : AppCompatActivity() {
         root.addView(pager, FrameLayout.LayoutParams(-1, -1))
         pager.setCurrentItem(start, false)
         counter.text = "${start + 1} / ${shown.size}"
-        fun roundButton(iconRes: Int, tint: Int, label: String, onClick: () -> Unit) = FrameLayout(this).apply {
-            background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(0x33FFFFFF)
-            }
-            isClickable = true; contentDescription = label
-            addView(icon(iconRes, tint, 22), FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
-            setOnClickListener { onClick() }
-        }
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(16), dp(40), dp(16), dp(12))
             background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
                 intArrayOf(0x99000000.toInt(), 0x00000000))
         }
-        bar.addView(roundButton(com.project.bcv.R.drawable.ic_close, 0xFFFFFFFF.toInt(), "Đóng") { dialog.dismiss() },
+        bar.addView(roundIconButton(com.project.bcv.R.drawable.ic_close, "Đóng") { dialog.dismiss() },
             LinearLayout.LayoutParams(dp(44), dp(44)))
         bar.addView(counter.apply { gravity = Gravity.CENTER }, LinearLayout.LayoutParams(0, -2, 1f))
-        bar.addView(roundButton(com.project.bcv.R.drawable.ic_delete_outline, 0xFFFF8A80.toInt(), "Xoá ảnh này") {
+        bar.addView(roundIconButton(com.project.bcv.R.drawable.ic_delete_outline, "Xoá ảnh này", 0xFFFF8A80.toInt()) {
             confirmDelete(shown[pager.currentItem].first) { dialog.dismiss() }
         }, LinearLayout.LayoutParams(dp(44), dp(44)))
         root.addView(bar, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))

@@ -16,7 +16,7 @@ public static class AdminCatalog
     public static readonly IReadOnlyDictionary<string, AdminResource> Resources = new Dictionary<string, AdminResource>
     {
         ["users"] = new("app_user", "user_id", ["full_name", "email"], [Choice("status", "ACTIVE", "BLOCKED")], false),
-        ["regions"] = new("region", "region_id", ["name", "description"], [Text("name", 150, true), Text("description", 20000), Choice("zone", "MIEN_NUI_BAC", "SONG_HONG", "MIEN_TRUNG", "TAY_NGUYEN", "DONG_NAM_BO", "TAY_NAM_BO"), Status()]),
+        ["regions"] = new("region", "region_id", ["name", "description"], [Text("name", 150, true), Text("description", 20000), Choice("zone", Bcv.Api.Modules.Engagement.EngagementCore.ZoneNames.Keys.ToArray()), Status()]),
         ["place-types"] = new("place_type", "place_type_id", ["name"], [Text("name", 100, true)]),
         ["places"] = new("place", "place_id", ["name", "introduction"], [Text("name", 200, true), Number("region_id", NpgsqlDbType.Bigint, true, 1), Number("place_type_id", NpgsqlDbType.Bigint, true, 1), Number("latitude", NpgsqlDbType.Numeric, true, -90, 90), Number("longitude", NpgsqlDbType.Numeric, true, -180, 180), Text("introduction", 50000), Text("highlights", 20000), Number("rating", NpgsqlDbType.Numeric, false, 0, 5), Number("rating_count", NpgsqlDbType.Integer, false, 0), Status()]),
         ["cards"] = new("card", "card_id", ["name", "description"], [Text("name", 150, true), Number("place_id", NpgsqlDbType.Bigint, true, 1), Text("image_key", 8000000), Text("description", 20000), Status()]),
@@ -25,7 +25,9 @@ public static class AdminCatalog
         // F76 question bank: answer_index 0–3 picks option A–D; only ACTIVE questions reach the app.
         ["questions"] = new("place_question", "question_id", ["question", "explanation"], [Number("place_id", NpgsqlDbType.Bigint, true, 1), Text("question", 300, true), Text("option_a", 150, true), Text("option_b", 150, true), Text("option_c", 150, true), Text("option_d", 150, true), Number("answer_index", NpgsqlDbType.Integer, true, 0, 3), Text("explanation", 400), Number("difficulty", NpgsqlDbType.Integer, true, 1, 3), Status()]),
         // Badges: condition_type picks a metric the server computes per user; earned at target_value.
-        ["badges"] = new("badge", "badge_id", ["name", "description"], [Text("name", 100, true), Text("description", 300, true), Text("image_key", 8000000), Choice("condition_type", "PLACES_DISCOVERED", "ZONES_TOUCHED", "ZONES_COMPLETED", "BEST_STREAK", "REAL_CHECKINS", "PROVINCES_STAMPED", "QUIZ_CORRECT", "CARDS_MASTERED"), Number("target_value", NpgsqlDbType.Integer, true, 1, 100000), Number("sort_order", NpgsqlDbType.Integer, true, 0, 100000), Status()]),
+        ["badges"] = new("badge", "badge_id", ["name", "description"], [Text("name", 100, true), Text("description", 300, true), Text("image_key", 8000000), Choice("condition_type", "PLACES_DISCOVERED", "ZONES_TOUCHED", "ZONES_COMPLETED", "BEST_STREAK", "REAL_CHECKINS", "PROVINCES_STAMPED", "QUIZ_CORRECT", "CARDS_MASTERED", "PODIUM_FINISHES"), Number("target_value", NpgsqlDbType.Integer, true, 1, 100000), Number("sort_order", NpgsqlDbType.Integer, true, 0, 100000), Status()]),
+        // Weekly leaderboard prizes: one row per rank (1–3), the same for all three boards; edit only.
+        ["leaderboard-prizes"] = new("leaderboard_prize", "rank", ["title"], [Number("item_id", NpgsqlDbType.Bigint, false, 1), Number("quantity", NpgsqlDbType.Integer, true, 0, 100)], false),
         ["items"] = new("item", "item_id", ["name", "description"], [Text("name", 150, true), Choice("item_type", "SPEED_SHOES", "FLIGHT_TICKET"), Text("description", 20000), Number("effect_value", NpgsqlDbType.Numeric, false, 1, 100), Number("effective_range", NpgsqlDbType.Integer, false, 1), Number("usage_limit", NpgsqlDbType.Integer, false, 0), Status()])
     };
 }

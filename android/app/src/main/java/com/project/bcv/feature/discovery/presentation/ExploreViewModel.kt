@@ -1,5 +1,8 @@
 package com.project.bcv.feature.discovery.presentation
 
+import com.project.bcv.feature.engagement.domain.EngagementRepository
+import com.project.bcv.feature.engagement.domain.CurrentQuiz
+import com.project.bcv.core.presentation.Event
 import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -41,8 +44,37 @@ class ExploreViewModel(
     private val repository: ExploreRepository,
     private val steps: StepSource,
     private val addressLookup: AddressLookup,
-    private val stepTests: StepTestPreferences
+    private val stepTests: StepTestPreferences,
+    private val engagement: EngagementRepository
 ) : ViewModel() {
+    private val mutableQuiz = MutableLiveData<Event<CurrentQuiz>>()
+    /** The current journey's question stops, each time they are reloaded. */
+    val quiz: LiveData<Event<CurrentQuiz>> = mutableQuiz
+    private var quizLoading = false
+
+    fun refreshQuiz() {
+        if (quizLoading) return
+        quizLoading = true
+        viewModelScope.launch {
+            try {
+                mutableQuiz.value = Event(withContext(Dispatchers.IO) { engagement.currentQuiz() })
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                // The stops stay as they are; the next step update tries again.
+            } finally {
+                quizLoading = false
+            }
+        }
+    }
+
+    /** F83: today's steps feed the streak and weekly board (throttled inside). */
+    fun reportToday() {
+        viewModelScope.launch { runCatching { engagement.reportToday() } }
+    }
+
+    fun dailyGoal(): Int = engagement.cachedDailyGoal()
+
     private val mutableState = MutableLiveData(ExploreUiState())
     val state: LiveData<ExploreUiState> = mutableState
     private val mutableAddress = MutableLiveData<String?>()
@@ -363,9 +395,10 @@ class ExploreViewModelFactory(
     private val repository: ExploreRepository,
     private val steps: StepSource,
     private val addressLookup: AddressLookup,
-    private val stepTests: StepTestPreferences
+    private val stepTests: StepTestPreferences,
+    private val engagement: EngagementRepository
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        ExploreViewModel(repository, steps, addressLookup, stepTests) as T
+        ExploreViewModel(repository, steps, addressLookup, stepTests, engagement) as T
 }

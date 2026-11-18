@@ -129,7 +129,7 @@ class CardDetailActivity : AppCompatActivity() {
     private fun showMastery() {
         val placeId = intent.getLongExtra(EXTRA_PLACE_ID, 0L)
         lifecycleScope.launch {
-            val ids = runCatching { com.project.bcv.feature.engagement.EngagementApi(this@CardDetailActivity).masteredPlaces() }
+            val ids = runCatching { com.project.bcv.core.di.EngagementModule.repository(this@CardDetailActivity).masteredPlaces() }
                 .getOrNull() ?: return@launch
             if (placeId !in ids) return@launch
             val gold = 0xFFC9962B.toInt()

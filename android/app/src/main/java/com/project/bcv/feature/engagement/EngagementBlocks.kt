@@ -1,5 +1,6 @@
 package com.project.bcv.feature.engagement
 
+import com.project.bcv.feature.engagement.data.EngagementApi
 import com.project.bcv.feature.engagement.EngagementUi.leadingIcon
 import com.project.bcv.feature.engagement.EngagementUi.icon
 import android.app.Activity
@@ -7,11 +8,8 @@ import android.view.Gravity
 import android.widget.GridLayout
 import android.widget.LinearLayout
 import android.view.View
-import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.google.android.material.snackbar.Snackbar
 import com.project.bcv.core.ui.BottomNav
 import com.project.bcv.core.ui.NavTab
 import com.project.bcv.feature.engagement.EngagementUi.FOREST
@@ -57,7 +55,7 @@ internal object EngagementBlocks {
         }
 
     // ---------- Thử thách: today's steps and streak ----------
-    fun streakCard(activity: AppCompatActivity, streak: JSONObject, reload: () -> Unit): LinearLayout = with(activity) {
+    fun streakCard(activity: AppCompatActivity, streak: JSONObject): LinearLayout = with(activity) {
         val goal = streak.getInt("dailyGoal")
         val today = streak.getInt("todaySteps")
         val box = card()

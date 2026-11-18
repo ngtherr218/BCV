@@ -1,3 +1,4 @@
+using Bcv.Api.Modules.Shared.Infrastructure;
 using Bcv.Api.Modules.Admin;
 using Bcv.Api.Modules.Account.Application;
 using Bcv.Api.Modules.Account.Domain;
@@ -17,8 +18,8 @@ static class ModerationChecks
     public static async Task Run(NpgsqlDataSource db)
     {
         async Task Exec(string sql){await using var c=db.CreateCommand(sql);await c.ExecuteNonQueryAsync();}
-        await PlaceMediaEndpoints.EnsureAsync(db);
-        await PlaceMediaEndpoints.EnsureAsync(db); // Re-runnable on every startup.
+        await DbMigrations.RunAsync(db, "030", "029");
+        await DbMigrations.RunAsync(db, "030", "029"); // Re-runnable.
         await Exec("""
             INSERT INTO app_user(user_id,full_name,email,password_hash,role,status) OVERRIDING SYSTEM VALUE
             SELECT n,'Media fixture '||n,'media-'||n||'@example.invalid','unused',CASE WHEN n=950005 THEN 'ADMIN' ELSE 'USER' END,'ACTIVE' FROM generate_series(950001,950005) n;

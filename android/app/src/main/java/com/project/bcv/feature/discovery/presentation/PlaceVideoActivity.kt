@@ -1,5 +1,7 @@
 package com.project.bcv.feature.discovery.presentation
 
+import com.project.bcv.core.ui.roundIconButton
+import com.project.bcv.core.ui.formatClock
 import android.content.pm.ActivityInfo
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -64,7 +66,8 @@ class PlaceVideoActivity : AppCompatActivity() {
                 seek.progress = video.currentPosition
                 time.text = "${clock(video.currentPosition)} / ${clock(video.duration)}"
             }
-            handler.postDelayed(this, 250)
+            // One last update after a pause, then rest until playback starts again (startTicking).
+            if (video.isPlaying) handler.postDelayed(this, 250)
         }
     }
 
@@ -91,7 +94,8 @@ class PlaceVideoActivity : AppCompatActivity() {
         topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xAA000000.toInt(), 0x00000000))
-            addView(roundButton(R.drawable.ic_arrow_back_engagement, 44, "Quay lại") { finish() })
+            addView(roundIconButton(R.drawable.ic_arrow_back_engagement, "Quay lại") { finish() },
+                LinearLayout.LayoutParams(dp(44), dp(44)))
             addView(TextView(context).apply {
                 text = intent.getStringExtra(EXTRA_TITLE)?.takeIf(String::isNotBlank) ?: "Video địa danh"
                 textSize = 17f; setTextColor(Color.WHITE); setTypeface(typeface, android.graphics.Typeface.BOLD)
@@ -130,10 +134,10 @@ class PlaceVideoActivity : AppCompatActivity() {
             background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(0xAA000000.toInt(), 0x00000000))
             addView(time, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(4) })
             addView(seek, LinearLayout.LayoutParams(0, -2, 1f))
-            addView(roundButton(R.drawable.ic_m3_screen_rotation, 40, "Xoay màn hình") {
+            addView(roundIconButton(R.drawable.ic_m3_screen_rotation, "Xoay màn hình") {
                 requestedOrientation = if (resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE)
                     ActivityInfo.SCREEN_ORIENTATION_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            })
+            }, LinearLayout.LayoutParams(dp(40), dp(40)))
         }
         root.addView(bottomBar, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
 
@@ -167,7 +171,7 @@ class PlaceVideoActivity : AppCompatActivity() {
             seek.max = video.duration.coerceAtLeast(1)
             if (position > 0) video.seekTo(position)
             if (foreground && playWhenReady) video.start()
-            updatePlayIcon(); scheduleHide()
+            updatePlayIcon(); scheduleHide(); startTicking()
         }
         video.setOnErrorListener { _, _, _ ->
             prepared = false; loading.visibility = View.GONE; playButton.visibility = View.GONE
@@ -185,8 +189,10 @@ class PlaceVideoActivity : AppCompatActivity() {
         if (!prepared) return
         if (video.isPlaying) { video.pause(); playWhenReady = false; handler.removeCallbacks(hideControls) }
         else { video.start(); playWhenReady = true; scheduleHide() }
-        updatePlayIcon()
+        updatePlayIcon(); startTicking()
     }
+
+    private fun startTicking() { handler.removeCallbacks(tick); handler.post(tick) }
 
     private fun updatePlayIcon() {
         playIcon.setImageResource(if (prepared && video.isPlaying) R.drawable.ic_m3_pause else R.drawable.ic_m3_play_arrow)
@@ -222,22 +228,12 @@ class PlaceVideoActivity : AppCompatActivity() {
             "android-allow-cross-domain-redirect" to "0"))
     }
 
-    private fun clock(ms: Int) = (ms.coerceAtLeast(0) / 1000).let { String.format(Locale.ROOT, "%d:%02d", it / 60, it % 60) }
-
-    private fun roundButton(iconRes: Int, sizeDp: Int, label: String, onClick: () -> Unit) = FrameLayout(this).apply {
-        background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0x33FFFFFF) }
-        isClickable = true; contentDescription = label
-        addView(ImageView(context).apply {
-            setImageResource(iconRes); imageTintList = ColorStateList.valueOf(Color.WHITE)
-        }, FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
-        setOnClickListener { onClick() }
-        layoutParams = LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp))
-    }
+    private fun clock(ms: Int) = formatClock(ms / 1000)
 
     override fun onResume() {
         super.onResume(); foreground = true
         if (::video.isInitialized && prepared && playWhenReady) video.start()
-        if (::video.isInitialized) { handler.post(tick); updatePlayIcon() }
+        if (::video.isInitialized) { startTicking(); updatePlayIcon() }
     }
     override fun onPause() {
         foreground = false

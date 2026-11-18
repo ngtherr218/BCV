@@ -8,10 +8,8 @@
     <PackageReference Include="Npgsql" Version="10.0.0" />
     <EmbeddedResource Include="Modules/Discovery/Domain/recommendation-centroids.json" />
     <EmbeddedResource Include="../../db/021_versioned_recommendations.sql" LogicalName="Bcv.RecommendationMigration.sql" />
-    <EmbeddedResource Include="../../db/023_place_type_features.sql" LogicalName="Bcv.PlaceTypeFeatureMigration.sql" />
-    <EmbeddedResource Include="../../db/027_engagement.sql" LogicalName="Bcv.EngagementMigration.sql" />
-    <EmbeddedResource Include="../../db/028_seed_place_questions.sql" LogicalName="Bcv.PlaceQuestionSeed.sql" />
-    <EmbeddedResource Include="../../db/029_drop_community_media.sql" LogicalName="Bcv.DropCommunityMediaMigration.sql" />
-    <EmbeddedResource Include="../../db/030_place_media.sql" LogicalName="Bcv.PlaceMediaMigration.sql" />
+    <!-- Applied at start-up by Modules/Shared/Infrastructure/DbMigrations.cs, each once. -->
+    <EmbeddedResource Include="../../db/023_*.sql;../../db/027_*.sql;../../db/028_*.sql;../../db/029_*.sql;../../db/03*.sql"
+                      LogicalName="Bcv.Migrations.%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

@@ -132,7 +132,8 @@ internal object EngagementUi {
      * without it, a pushed screen with a back arrow.
      */
     fun AppCompatActivity.scaffold(title: String, subtitle: String? = null,
-                                   tab: com.project.bcv.core.ui.NavTab? = null, top: View? = null): LinearLayout {
+                                   tab: com.project.bcv.core.ui.NavTab? = null, top: View? = null,
+                                   action: View? = null): LinearLayout {
         enableEdgeToEdge()
         WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = true
         val root = LinearLayout(this).apply {
@@ -164,6 +165,8 @@ internal object EngagementUi {
         titles.addView(text(title, if (tab != null) 30f else 26f, FOREST, true).apply { maxLines = 2 })
         if (subtitle != null) titles.addView(text(subtitle, 12f, MUTED))
         header.addView(titles, LinearLayout.LayoutParams(0, -2, 1f))
+        // An optional control at the right of the title (e.g. "Giải thưởng" on Xếp hạng).
+        if (action != null) header.addView(action)
         root.addView(header)
         // Fixed above the scrolling body, e.g. the Thẻ · Hộ chiếu · Nhật ký switcher.
         if (top != null) root.addView(top, LinearLayout.LayoutParams(-1, -2).apply {

@@ -58,7 +58,9 @@ class QuestActivity : AppCompatActivity() {
             BottomNav.applyBottomInset(binding.bottomNavigation, bars.bottom)
             insets
         }
-        model = TabViewModels.provider(applicationContext, QuestViewModelFactory(QuestModule.repository(this)))[QuestViewModel::class.java]
+        model = TabViewModels.provider(applicationContext, QuestViewModelFactory(QuestModule.repository(this),
+            com.project.bcv.core.di.EngagementModule.repository(this)))[QuestViewModel::class.java]
+        model.summary.observe(this) { it?.let(::showEngagement) }
         weekly = savedInstanceState?.getBoolean(WEEKLY_KEY) ?: model.weeklySelected
         model.weeklySelected = weekly
 
@@ -89,16 +91,15 @@ class QuestActivity : AppCompatActivity() {
     }
 
     /** Streak card on top and badges at the bottom; quests still load on their own. */
-    private fun loadEngagement(): Unit { lifecycleScope.launch {
-        val api = com.project.bcv.feature.engagement.EngagementApi(this@QuestActivity)
-        api.reportToday()
-        val data = runCatching { api.summary() }.getOrNull() ?: return@launch
+    private fun loadEngagement() = model.loadEngagement()
+
+    private fun showEngagement(summary: com.project.bcv.feature.engagement.domain.EngagementSummary) {
         val blocks = com.project.bcv.feature.engagement.EngagementBlocks
         binding.streakSlot.removeAllViews()
-        binding.streakSlot.addView(blocks.streakCard(this@QuestActivity, data.getJSONObject("streak")) { loadEngagement() })
+        binding.streakSlot.addView(blocks.streakCard(this, summary.streak))
         binding.badgeSlot.removeAllViews()
-        blocks.badges(this@QuestActivity, binding.badgeSlot, data.getJSONArray("badges"))
-    } }
+        blocks.badges(this, binding.badgeSlot, summary.badges)
+    }
 
     override fun onPause() {
         (binding.root.getChildAt(0) as? android.widget.ScrollView)?.let { model.scrollY = it.scrollY }

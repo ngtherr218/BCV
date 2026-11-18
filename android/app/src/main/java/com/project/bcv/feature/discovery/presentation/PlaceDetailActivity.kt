@@ -1,5 +1,8 @@
 package com.project.bcv.feature.discovery.presentation
 
+import com.project.bcv.core.di.EngagementModule
+import com.project.bcv.core.ui.roundIconButton
+import com.project.bcv.core.ui.formatClock
 import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.RenderEffect
@@ -56,8 +59,6 @@ class PlaceDetailActivity : AppCompatActivity() {
     private var heroPlay: View? = null
     private var preparingPlaceId: Long? = null
     /** Place whose journal page exists (it has a real check-in), and the place last asked about. */
-    private var journalOpen: Long? = null
-    private var journalChecked: Long? = null
     /** Debug-only "🧪" button; shown with Check-in, i.e. only at the journey's destination. */
     private var testCheckinButton: View? = null
     override fun onResume() {
@@ -92,15 +93,7 @@ class PlaceDetailActivity : AppCompatActivity() {
                     "Chưa lấy được vị trí của bạn. Hãy bật GPS và thử lại ở nơi thoáng.") { checkIn() }
                 return@findCurrent
             }
-            lifecycleScope.launch {
-                val result = runCatching {
-                    com.project.bcv.feature.engagement.EngagementApi(this@PlaceDetailActivity)
-                        .checkIn(placeId, coordinates.latitude, coordinates.longitude)
-                }
-                binding.checkinButton.isEnabled = true
-                binding.checkinButton.text = "Check-in"
-                checkedIn(placeId, result, test = false)
-            }
+            model.checkIn(placeId, coordinates.latitude, coordinates.longitude)
         }
     }
 
@@ -108,27 +101,22 @@ class PlaceDetailActivity : AppCompatActivity() {
     private fun testCheckIn() {
         val placeId = intent.getLongExtra(EXTRA_PLACE_ID, 0L)
         binding.checkinButton.isEnabled = false
-        lifecycleScope.launch {
-            val result = runCatching {
-                com.project.bcv.feature.engagement.EngagementApi(this@PlaceDetailActivity).checkIn(placeId, 0.0, 0.0, test = true)
-            }
-            binding.checkinButton.isEnabled = true
-            checkedIn(placeId, result, test = true)
-        }
+        model.checkIn(placeId, 0.0, 0.0, test = true)
     }
 
     /** New check-in → celebration dialog; already today or failed → a short snackbar. */
-    private fun checkedIn(placeId: Long, result: Result<org.json.JSONObject>, test: Boolean) {
-        val body = result.getOrElse {
+    private fun checkedIn(outcome: CheckinOutcome) {
+        binding.checkinButton.isEnabled = true
+        binding.checkinButton.text = "Check-in"
+        val test = outcome.test
+        val body = outcome.result.getOrElse {
             if (!isFinishing && !isDestroyed) com.project.bcv.feature.engagement.CheckinSuccessDialog.showFailure(this,
                 (it as? com.project.bcv.core.network.ApiFailure)?.code ?: if (it is java.io.IOException) "NETWORK_ERROR" else null,
                 if (it is java.io.IOException) "Không kết nối được tới máy chủ." else it.message) { if (test) testCheckIn() else checkIn() }
             return
         }
-        journalChecked = null
-        model.refresh(placeId)
-        if (body.optBoolean("alreadyToday")) {
-            Snackbar.make(binding.root, body.optString("message", "Hôm nay bạn đã check-in ở đây."), Snackbar.LENGTH_LONG).show()
+        if (body.alreadyToday) {
+            Snackbar.make(binding.root, body.message.ifBlank { "Hôm nay bạn đã check-in ở đây." }, Snackbar.LENGTH_LONG).show()
             return
         }
         if (isFinishing || isDestroyed) return
@@ -182,7 +170,13 @@ class PlaceDetailActivity : AppCompatActivity() {
         binding.backButton.setOnClickListener { finish() }
         binding.selectButton.setOnClickListener { model.select() }
         model = ViewModelProvider(this, PlaceDetailViewModelFactory(
-            ExploreModule.repository(this)))[PlaceDetailViewModel::class.java]
+            ExploreModule.repository(this), EngagementModule.repository(this)))[PlaceDetailViewModel::class.java]
+        model.checkin.observe(this) { event -> event.take()?.let(::checkedIn) }
+        model.hasJournal.observe(this) { open ->
+            binding.communityMediaButton.visibility = if (open) View.VISIBLE else View.GONE
+            updateBottomBar()
+        }
+        model.checkJournal(intent.getLongExtra(EXTRA_PLACE_ID, 0L))
         model.state.observe(this) { state ->
             if (state.saved) {
                 setResult(Activity.RESULT_OK)
@@ -339,16 +333,7 @@ class PlaceDetailActivity : AppCompatActivity() {
         testCheckinButton?.visibility = checkinButton.visibility
         // Bottom bar: journal once checked in here, otherwise pick as destination.
         // The journal is for real visits only: its button appears once the user has checked in here.
-        communityMediaButton.visibility = if (journalOpen == place.id) View.VISIBLE else View.GONE
-        if (journalChecked != place.id) {
-            journalChecked = place.id
-            lifecycleScope.launch {
-                val open = runCatching { com.project.bcv.feature.engagement.EngagementApi(this@PlaceDetailActivity).journalEntry(place.id) }.isSuccess
-                journalOpen = if (open) place.id else null
-                communityMediaButton.visibility = if (open) View.VISIBLE else View.GONE
-                updateBottomBar()
-            }
-        }
+        communityMediaButton.visibility = if (model.hasJournal.value == true) View.VISIBLE else View.GONE
         // Offer to pick it unless it is already the destination: for a locked place, or an unlocked one
         // whose card still has to be walked for (cards come only from finishing a journey).
         selectButton.visibility = if ((!discovered || place.cardPending) && !place.isJourneyDestination) View.VISIBLE else View.GONE
@@ -429,7 +414,7 @@ class PlaceDetailActivity : AppCompatActivity() {
         }
     }
 
-    private fun duration(seconds: Double) = seconds.toInt().let { String.format(Locale.ROOT, "%d:%02d", it / 60, it % 60) }
+    private fun duration(seconds: Double) = formatClock(seconds.toInt())
 
     /** Shows item [index] in the hero: a photo, or a video's own frame with a play button; thumbnails mark it. */
     private fun selectImage(index: Int) = with(binding) {
@@ -507,7 +492,8 @@ class PlaceDetailActivity : AppCompatActivity() {
                 val image = holder.itemView as ImageView
                 val url = urls[position]
                 image.setImageBitmap(bitmaps["1|$url"] ?: bitmaps["2|$url"])
-                lifecycleScope.launch { loadBitmap(url, sample = 1)?.let { if (holder.bindingAdapterPosition == position) image.setImageBitmap(it) } }
+                // Full size only while on screen: not kept in [bitmaps], so swiping many photos can't pile up memory.
+                lifecycleScope.launch { loadBitmap(url, sample = 1, keep = false)?.let { if (holder.bindingAdapterPosition == position) image.setImageBitmap(it) } }
             }
         }
         pager.registerOnPageChangeCallback(object : androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback() {
@@ -522,14 +508,7 @@ class PlaceDetailActivity : AppCompatActivity() {
             setPadding(dp(16), dp(40), dp(16), dp(12))
             background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0x99000000.toInt(), 0x00000000))
         }
-        bar.addView(android.widget.FrameLayout(this).apply {
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0x33FFFFFF) }
-            isClickable = true; contentDescription = "Đóng"
-            addView(ImageView(context).apply {
-                setImageResource(R.drawable.ic_close); imageTintList = android.content.res.ColorStateList.valueOf(0xFFFFFFFF.toInt())
-            }, android.widget.FrameLayout.LayoutParams(dp(22), dp(22), android.view.Gravity.CENTER))
-            setOnClickListener { dialog.dismiss() }
-        }, LinearLayout.LayoutParams(dp(44), dp(44)))
+        bar.addView(roundIconButton(R.drawable.ic_close, "Đóng") { dialog.dismiss() }, LinearLayout.LayoutParams(dp(44), dp(44)))
         bar.addView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = android.view.Gravity.CENTER_HORIZONTAL
             addView(android.widget.TextView(context).apply {
@@ -603,14 +582,14 @@ class PlaceDetailActivity : AppCompatActivity() {
     }
 
     /** Downloads and decodes once per URL and sample size; later calls reuse the bitmap. */
-    private suspend fun loadBitmap(url: String, sample: Int): Bitmap? {
+    private suspend fun loadBitmap(url: String, sample: Int, keep: Boolean = true): Bitmap? {
         val key = "$sample|$url"
         bitmaps[key]?.let { return it }
         val protectedUrl = MediaUrlPolicy.authenticatedUrl(BuildConfig.API_BASE_URL, url)
         val bitmap = if (protectedUrl != null) SessionPreferences(this).token?.let {
             RemoteImages.loadAuthenticated(BuildConfig.API_BASE_URL, protectedUrl, it, sample)
         } else RemoteImages.load(url, sample)
-        if (bitmap != null) bitmaps[key] = bitmap
+        if (bitmap != null && keep) bitmaps[key] = bitmap
         return bitmap
     }
 

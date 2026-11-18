@@ -127,6 +127,7 @@ class NotificationsActivity : AppCompatActivity() {
             "PLACE_MASTERED" -> R.drawable.ic_m3_workspace_premium to 0xFFB07C1E.toInt()
             "QUEST_COMPLETED" -> R.drawable.ic_task_alt to 0xFFA0702E.toInt()
             "POINTS_RECEIVED" -> R.drawable.ic_m3_star to 0xFFC9962B.toInt()
+            "LEADERBOARD_REWARD" -> R.drawable.ic_trophy to 0xFFC9962B.toInt()
             else -> R.drawable.ic_backpack_outline to 0xFF3C7DB0.toInt()
         }
         item.icon.setImageResource(icon)

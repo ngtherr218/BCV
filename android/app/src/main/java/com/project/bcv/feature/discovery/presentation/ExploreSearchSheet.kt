@@ -23,10 +23,6 @@ import com.project.bcv.feature.discovery.domain.ExploreMapPlace
 import com.project.bcv.feature.discovery.domain.ExploreSnapshot
 import com.project.bcv.feature.discovery.domain.PlaceSearch
 import java.util.Locale
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 /**
  * Search sheet for the Explore map. Users rarely know exact names, so it leads with suggestions:
@@ -56,7 +52,7 @@ class ExploreSearchSheet(
     private val adapter = ResultAdapter()
     private val origin = snapshot.location?.coordinates
     private val distances = snapshot.places.associate { place ->
-        place.id to (origin?.let { distanceKm(it.latitude, it.longitude, place.coordinates.latitude, place.coordinates.longitude) })
+        place.id to (origin?.let { PlaceSearch.distanceKm(it.latitude, it.longitude, place.coordinates.latitude, place.coordinates.longitude) })
     }
     private var syncingChips = false
 
@@ -254,13 +250,5 @@ class ExploreSearchSheet(
     }
 
     private companion object {
-        fun distanceKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-            val r = 6371.0
-            val dLat = Math.toRadians(lat2 - lat1)
-            val dLon = Math.toRadians(lon2 - lon1)
-            val a = sin(dLat / 2) * sin(dLat / 2) +
-                cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2) * sin(dLon / 2)
-            return r * 2 * atan2(sqrt(a), sqrt(1 - a))
-        }
     }
 }

@@ -1,5 +1,6 @@
 package com.project.bcv.feature.discovery.presentation
 
+import com.project.bcv.core.di.EngagementModule
 import android.app.Activity
 import android.content.Intent
 import android.content.res.ColorStateList
@@ -54,7 +55,7 @@ class RecommendationActivity : AppCompatActivity() {
         setUpDetailScreen(binding.root)
         model = ViewModelProvider(this, viewModelFactory {
             RecommendationViewModel(ExploreModule.repository(this), ExploreModule.addressLookup(),
-                intent.getStringExtra(EXTRA_ADDRESS))
+                EngagementModule.repository(this), intent.getStringExtra(EXTRA_ADDRESS))
         })[RecommendationViewModel::class.java]
         model.address.observe(this) { renderLocation() }
 
@@ -63,6 +64,7 @@ class RecommendationActivity : AppCompatActivity() {
         model.recommendations.observe(this, ::render)
         model.savingPlaceId.observe(this) { renderSaving(it) }
         model.outcome.observe(this) { event -> event.take()?.let(::handle) }
+        model.dismissed.observe(this) { event -> event.take()?.let(::dismissed) }
         if (model.recommendations.value == null) model.load()
     }
 
@@ -179,19 +181,19 @@ class RecommendationActivity : AppCompatActivity() {
 
     /** F74: hide for 30 days, refill the list, and let the user undo right away. */
     private fun dismiss(place: RecommendedPlace) {
-        val api = com.project.bcv.feature.engagement.EngagementApi(this)
         cards[place.id]?.dismissButton?.isEnabled = false
-        lifecycleScope.launch {
-            runCatching { api.dismiss(place.id) }.onSuccess {
-                collapse(place.id) { model.refresh() }
-                Snackbar.make(binding.root, "Đã ẩn ${place.name} khỏi gợi ý trong 30 ngày.", Snackbar.LENGTH_LONG)
-                    .setAction("Hoàn tác") {
-                        lifecycleScope.launch { runCatching { api.undoDismiss(place.id) }; model.refresh() }
-                    }.show()
-            }.onFailure {
-                cards[place.id]?.dismissButton?.isEnabled = true
-                Snackbar.make(binding.root, it.message ?: "Không cập nhật được.", Snackbar.LENGTH_LONG).show()
-            }
+        model.dismiss(place.id, place.name)
+    }
+
+    private fun dismissed(outcome: DismissOutcome) = when (outcome) {
+        is DismissOutcome.Hidden -> {
+            collapse(outcome.placeId) { model.refresh() }
+            Snackbar.make(binding.root, "Đã ẩn ${outcome.placeName} khỏi gợi ý trong 30 ngày.", Snackbar.LENGTH_LONG)
+                .setAction("Hoàn tác") { model.undoDismiss(outcome.placeId) }.show()
+        }
+        is DismissOutcome.Failed -> {
+            cards[outcome.placeId]?.dismissButton?.isEnabled = true
+            Snackbar.make(binding.root, outcome.message, Snackbar.LENGTH_LONG).show()
         }
     }
 

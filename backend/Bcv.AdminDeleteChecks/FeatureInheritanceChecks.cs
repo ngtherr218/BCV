@@ -1,3 +1,4 @@
+using Bcv.Api.Modules.Shared.Infrastructure;
 using System.Text.Json;
 using Bcv.Api.Modules.Admin;
 using Bcv.Api.Modules.Discovery.Domain;
@@ -30,7 +31,7 @@ static class FeatureInheritanceChecks
         await Exec("UPDATE recommendation_config SET status='ACTIVE' WHERE recommendation_config_id=910001");
         var type=await Save("place-types",null,new{name="Inheritance test",feature_codes=new[]{"kind__religious","theme__spirituality"}});
         // Idempotent migration must not restore old defaults over administrator choices.
-        await PlaceTypeFeatureSchema.EnsureAsync(db);
+        await DbMigrations.RunAsync(db, "023");
         var detail=await repo.Detail("place-types",type,default);
         Check(detail!.Value.GetProperty("feature_codes").GetArrayLength()==2,"Type feature detail/migration lost mapping");
         var lookups=JsonSerializer.SerializeToElement(await repo.Lookups(default));

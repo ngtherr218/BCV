@@ -12,5 +12,6 @@ public sealed record RecommendationSettings(string DatasetVersion, string ModelV
         && ModelSha256 is { Length: 64 } && ModelSha256.All(Uri.IsHexDigit)
         && ActivityThresholds is { Count: 3 }
         && new[]{"LOW","MEDIUM","HIGH"}.All(k => ActivityThresholds.TryGetValue(k,out var v) && v>0 && v<=100000);
-    // InterestFeatures is no longer used: users pick place types, matched through place_type_feature.
+    // InterestFeatures is read only by Bcv.RecommendationEvaluation; the API matches favourite place types
+    // through place_type_feature instead.
 }

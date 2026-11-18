@@ -1,5 +1,7 @@
 package com.project.bcv.feature.questitem.quest.presentation
 
+import com.project.bcv.feature.engagement.domain.EngagementSummary
+import com.project.bcv.feature.engagement.domain.EngagementRepository
 import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -24,9 +26,20 @@ sealed interface QuestUiState {
 }
 
 class QuestViewModel(private val repository: QuestRepository,
+    private val engagement: EngagementRepository,
     private val freshness: TabRefresh = TabRefresh()) : ViewModel() {
     private val mutableState = MutableLiveData<QuestUiState>(QuestUiState.Loading)
     val state: LiveData<QuestUiState> = mutableState
+    private val mutableSummary = MutableLiveData<EngagementSummary?>()
+    /** Streak card and badges; they load on their own, after today's steps are reported. */
+    val summary: LiveData<EngagementSummary?> = mutableSummary
+
+    fun loadEngagement() {
+        viewModelScope.launch {
+            runCatching { engagement.reportToday() }
+            runCatching { withContext(Dispatchers.IO) { engagement.summary() } }.onSuccess { mutableSummary.value = it }
+        }
+    }
 
     private var loading = false
     var weeklySelected = false
@@ -72,7 +85,10 @@ class QuestViewModel(private val repository: QuestRepository,
     private companion object { const val TAG = "QuestViewModel" }
 }
 
-class QuestViewModelFactory(private val repository: QuestRepository) : ViewModelProvider.Factory {
+class QuestViewModelFactory(
+    private val repository: QuestRepository,
+    private val engagement: EngagementRepository
+) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
-    override fun <T : ViewModel> create(modelClass: Class<T>): T = QuestViewModel(repository) as T
+    override fun <T : ViewModel> create(modelClass: Class<T>): T = QuestViewModel(repository, engagement) as T
 }

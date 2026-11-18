@@ -1,6 +1,7 @@
 package com.project.bcv.feature.engagement
 
 import com.project.bcv.feature.engagement.EngagementUi.icon
+import com.project.bcv.feature.engagement.EngagementUi.leadingIcon
 import android.content.Context
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -92,6 +93,7 @@ internal object LeaderboardViews {
         col.addView(avatar(this, scope, row, ring, size), LinearLayout.LayoutParams(dp(size), dp(size)))
         col.addView(text(row?.optString("name")?.let { if (row.optBoolean("isMe")) "$it (bạn)" else it } ?: "—", 13f, FOREST).apply {
             gravity = Gravity.CENTER; maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(4), dp(6), dp(4), 0)
+            if (row?.optBoolean("champion") == true) championMark()
         }, LinearLayout.LayoutParams(-1, -2))
         col.addView(text(row?.let { "${number(it.getInt("value"))} ${it.optString("unit")}" } ?: " ", 15f, valueColor, true).apply {
             gravity = Gravity.CENTER; setPadding(0, dp(2), 0, dp(6))
@@ -131,6 +133,33 @@ internal object LeaderboardViews {
         frame
     }
 
+    /** Last week's #1 of this board ("Quán quân tuần"): a gold crown before the name. */
+    private fun TextView.championMark() {
+        leadingIcon(com.project.bcv.R.drawable.ic_m3_workspace_premium, GOLD_RING, 16, 3)
+        contentDescription = "$text, quán quân tuần trước"
+    }
+
+    /** The icon for a prize item: plane for a flight ticket, runner for speed shoes, backpack otherwise. */
+    fun itemIcon(itemType: String?) = when (itemType) {
+        "FLIGHT_TICKET" -> com.project.bcv.R.drawable.ic_flight
+        "SPEED_SHOES" -> com.project.bcv.R.drawable.ic_directions_run
+        else -> com.project.bcv.R.drawable.ic_backpack_outline
+    }
+
+    /** A round medal with the rank in it: gold, silver or bronze. */
+    fun medal(context: Context, rank: Int, sizeDp: Int): TextView = with(context) {
+        val (fill, ink) = when (rank) {
+            1 -> 0xFFF6D98B.toInt() to 0xFF7A5512.toInt()
+            2 -> 0xFFDDE3EA.toInt() to 0xFF4E5B6A.toInt()
+            else -> 0xFFF0CDB9.toInt() to 0xFF7E432A.toInt()
+        }
+        text("$rank", sizeDp * 0.45f, ink, true).apply {
+            gravity = Gravity.CENTER; includeFontPadding = false
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(fill) }
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+    }
+
     /** One line of the full board: rank, avatar, name, value. */
     fun rankRow(context: Context, scope: LifecycleCoroutineScope, row: JSONObject): LinearLayout = with(context) {
         val isMe = row.getBoolean("isMe")
@@ -143,6 +172,7 @@ internal object LeaderboardViews {
             addView(avatar(this@with, scope, row, 0xFFE3EBE3.toInt(), 40), LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginStart = dp(4) })
             addView(text(row.getString("name") + if (isMe) " (bạn)" else "", 15f, FOREST, isMe).apply {
                 maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(12), 0, dp(8), 0)
+                if (row.optBoolean("champion")) championMark()
             }, LinearLayout.LayoutParams(0, -2, 1f))
             addView(text("${number(row.getInt("value"))} ${row.optString("unit")}", 15f, TEAL, true))
         }

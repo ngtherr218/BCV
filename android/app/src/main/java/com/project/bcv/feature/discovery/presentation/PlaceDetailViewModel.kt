@@ -1,5 +1,8 @@
 package com.project.bcv.feature.discovery.presentation
 
+import com.project.bcv.feature.engagement.domain.EngagementRepository
+import com.project.bcv.feature.engagement.domain.CheckinResult
+import com.project.bcv.core.presentation.Event
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
@@ -23,9 +26,39 @@ data class PlaceDetailState(
     val unavailable: Boolean = false
 )
 
-class PlaceDetailViewModel(private val repository: ExploreRepository) : ViewModel() {
+/** A finished check-in attempt; [test] tells a debug check-in apart (shown and retried the same way). */
+data class CheckinOutcome(val test: Boolean, val result: Result<CheckinResult>)
+
+class PlaceDetailViewModel(
+    private val repository: ExploreRepository,
+    private val engagement: EngagementRepository
+) : ViewModel() {
     private val mutableState = MutableLiveData(PlaceDetailState())
     val state: LiveData<PlaceDetailState> = mutableState
+    private val mutableCheckin = MutableLiveData<Event<CheckinOutcome>>()
+    val checkin: LiveData<Event<CheckinOutcome>> = mutableCheckin
+    private val mutableHasJournal = MutableLiveData(false)
+    /** The journal is for real visits only: the user has a page here once they checked in. */
+    val hasJournal: LiveData<Boolean> = mutableHasJournal
+
+    fun checkJournal(placeId: Long) {
+        viewModelScope.launch { mutableHasJournal.value = withContext(Dispatchers.IO) { engagement.hasJournal(placeId) } }
+    }
+
+    /** Sends the check-in; on success the page and its journal button refresh. */
+    fun checkIn(placeId: Long, latitude: Double, longitude: Double, test: Boolean = false) {
+        viewModelScope.launch {
+            val result = try {
+                Result.success(withContext(Dispatchers.IO) { engagement.checkIn(placeId, latitude, longitude, test) })
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Result.failure(error)
+            }
+            if (result.isSuccess) { refresh(placeId); checkJournal(placeId) }
+            mutableCheckin.value = Event(CheckinOutcome(test, result))
+        }
+    }
 
     fun load(placeId: Long) {
         mutableState.value = PlaceDetailState()
@@ -53,7 +86,7 @@ class PlaceDetailViewModel(private val repository: ExploreRepository) : ViewMode
         viewModelScope.launch {
             try {
                 val place = withContext(Dispatchers.IO) { repository.loadPlace(placeId) }
-                mutableState.value = mutableState.value?.copy(place = place, loading = false) ?: PlaceDetailState(place = place, loading = false)
+                mutableState.value = mutableState.value!!.copy(place = place, loading = false)
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
@@ -89,8 +122,11 @@ class PlaceDetailViewModel(private val repository: ExploreRepository) : ViewMode
     }
 }
 
-class PlaceDetailViewModelFactory(private val repository: ExploreRepository) : ViewModelProvider.Factory {
+class PlaceDetailViewModelFactory(
+    private val repository: ExploreRepository,
+    private val engagement: EngagementRepository
+) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        PlaceDetailViewModel(repository) as T
+        PlaceDetailViewModel(repository, engagement) as T
 }

@@ -1,3 +1,4 @@
+using Bcv.Api.Modules.Shared.Infrastructure;
 using System.Buffers.Binary;
 using System.Net;
 using System.Net.Http.Headers;
@@ -50,7 +51,7 @@ static class PlaceVideoChecks
         try
         {
             await Exec("INSERT INTO user_discovered_place(user_id,place_id) VALUES(950005,910001) ON CONFLICT DO NOTHING");
-            await PlaceMediaEndpoints.EnsureAsync(db); // A second startup must accept existing 60-second rows.
+            await DbMigrations.RunAsync(db, "030"); // Running it again must accept existing 60-second rows.
             var large=Fixture(60,1920,1080);var mediaOffset=large.Length-9;
             Array.Resize(ref large,31*1024*1024);BinaryPrimitives.WriteUInt32BigEndian(large.AsSpan(mediaOffset),(uint)(large.Length-mediaOffset));
             using(var content=new ByteArrayContent(large))

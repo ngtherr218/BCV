@@ -1,3 +1,4 @@
+using Bcv.Api.Modules.Shared.Infrastructure;
 using Bcv.Api.Modules.Admin;
 using Bcv.Api.Modules.Account.Application;
 using Bcv.Api.Modules.Account.Domain;
@@ -52,8 +53,7 @@ try
     settings.SearchPath = schema;
     await using var isolated = NpgsqlDataSource.Create(settings.ConnectionString);
     var repo = new AdminRepository(isolated, new TestSessions());
-    await PlaceTypeFeatureSchema.EnsureAsync(isolated);
-    await Bcv.Api.Modules.PlaceMedia.PlaceMediaEndpoints.EnsureAsync(isolated);
+    await DbMigrations.RunAsync(isolated, "023", "030", "029");
     await FeatureInheritanceChecks.Run(isolated, repo);
     await ModerationChecks.Run(isolated);
     void Assert(bool condition, string message) { if (!condition) throw new Exception(message); }
@@ -82,7 +82,7 @@ try
     await using(var cmd=isolated.CreateCommand("DELETE FROM collection_card")) await cmd.ExecuteNonQueryAsync();
     Console.WriteLine("PASS link added after preflight is blocked at DELETE");
     // Actual state change leaves the linked parent and its child untouched.
-    await repo.Save("regions", 910001, System.Text.Json.JsonSerializer.SerializeToElement(new { name="Delete check region", status="INACTIVE" }), 1, default);
+    await repo.Save("regions", 910001, System.Text.Json.JsonSerializer.SerializeToElement(new { name="Delete check region", zone="SONG_HONG", status="INACTIVE" }), 1, default);
     await using(var cmd=isolated.CreateCommand("SELECT status FROM region WHERE region_id=910001"))
         Assert((string?)(await cmd.ExecuteScalarAsync()) == "INACTIVE", "Status update failed");
     Assert(await Count("place")==1,"Status update removed child");

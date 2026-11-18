@@ -240,7 +240,7 @@ public sealed class PostgresJourneyRepository(NpgsqlDataSource db) : IJourneyRep
                     command.Parameters.Add(new NpgsqlParameter<long> { TypedValue = destinationPlaceId, NpgsqlDbType = NpgsqlDbType.Bigint });
                     await command.ExecuteNonQueryAsync(ct);
                 }
-                await PlaceUnlock.UnlockAsync(connection, transaction, userId, destinationPlaceId, ct, grantCard: true);
+                await PlaceUnlock.ArriveWithCardAsync(connection, transaction, userId, destinationPlaceId, ct);
 
                 await using (var name = new NpgsqlCommand("SELECT name FROM public.place WHERE place_id = $1",
                     connection, transaction))
