@@ -47,7 +47,27 @@ builder.Services.AddSingleton<ISessionStore>(services =>
 builder.Services.AddSingleton<IPasswordResetStore, InMemoryPasswordResetStore>();
 builder.Services.AddScoped<PasswordResetService>();
 var smtp = builder.Configuration.GetSection("Smtp");
-if (!string.IsNullOrWhiteSpace(smtp["Host"]))
+var resend = builder.Configuration.GetSection("Resend");
+var brevo = builder.Configuration.GetSection("Brevo");
+var onRender = !string.IsNullOrWhiteSpace(builder.Configuration["RENDER"]);
+if (!string.IsNullOrWhiteSpace(brevo["ApiKey"]) && !string.IsNullOrWhiteSpace(brevo["FromEmail"]))
+{
+    builder.Services.AddSingleton(new BrevoSettings(brevo["ApiKey"]!, brevo["FromEmail"]!,
+        brevo["FromName"] ?? "Bước Chân Việt"));
+    builder.Services.AddHttpClient<IPasswordResetMailer, BrevoPasswordResetMailer>(client =>
+        client.Timeout = TimeSpan.FromSeconds(20)).RemoveAllLoggers();
+}
+else if (!string.IsNullOrWhiteSpace(resend["ApiKey"]) && !string.IsNullOrWhiteSpace(resend["From"]))
+{
+    builder.Services.AddSingleton(new ResendSettings(resend["ApiKey"]!, resend["From"]!));
+    builder.Services.AddHttpClient<IPasswordResetMailer, ResendPasswordResetMailer>(client =>
+        client.Timeout = TimeSpan.FromSeconds(20)).RemoveAllLoggers();
+}
+else if (onRender || builder.Configuration.GetValue("Email:RequireDelivery", false))
+{
+    builder.Services.AddSingleton<IPasswordResetMailer, UnavailablePasswordResetMailer>();
+}
+else if (!string.IsNullOrWhiteSpace(smtp["Host"]))
 {
     builder.Services.AddSingleton(new SmtpSettings(smtp["Host"]!, smtp.GetValue("Port", 587), smtp["User"],
         smtp["Password"], smtp["From"] ?? smtp["User"] ?? "no-reply@buocchanviet.local", smtp.GetValue("EnableSsl", true)));

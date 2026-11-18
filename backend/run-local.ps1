@@ -2,6 +2,14 @@ param([string]$ConfigPath = '')
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'local-config.ps1')
 $config = Get-BcvLocalConfig $ConfigPath
+# VS Code may have started before user environment variables were configured.
+# Import email settings on every run so a new terminal is not required.
+$originalEmailEnvironment = @{}
+foreach ($name in @('Brevo__ApiKey', 'Brevo__FromEmail', 'Brevo__FromName', 'Resend__ApiKey', 'Resend__From', 'Email__RequireDelivery')) {
+    $originalEmailEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+    $value = Get-BcvEnvironment $name
+    if ($value) { [Environment]::SetEnvironmentVariable($name, $value, 'Process') }
+}
 $dotnet = Join-Path $env:USERPROFILE '.dotnet\dotnet.exe'
 if (-not (Test-Path -LiteralPath $dotnet)) {
     $dotnet = (Get-Command dotnet -ErrorAction Stop).Source
@@ -53,7 +61,15 @@ if ($smtpPassword) {
     Write-Host "Password reset codes will be emailed from $smtpUser."
 }
 else {
-    Write-Host 'SMTP skipped: password reset codes will be written to this log.'
+    if ($env:Brevo__ApiKey -and $env:Brevo__FromEmail) {
+        Write-Host "Password reset emails: Brevo HTTPS, sender $env:Brevo__FromEmail."
+    } elseif ($env:Resend__ApiKey -and $env:Resend__From) {
+        Write-Host 'Password reset emails: Resend HTTPS.'
+    } elseif ($env:Email__RequireDelivery -eq 'true') {
+        Write-Host 'Email delivery is required but no email API is configured. Run backend/set-local-email.ps1.' -ForegroundColor Yellow
+    } else {
+        Write-Host 'Email API/SMTP not configured: reset codes only appear in this log; no email is sent. Run backend/set-local-email.ps1.' -ForegroundColor Yellow
+    }
 }
 $smtpPassword = $null
 
@@ -85,6 +101,9 @@ try {
     & $dotnet (Join-Path $PSScriptRoot 'Bcv.Api\bin\Debug\net10.0\Bcv.Api.dll') --urls $config.ApiUrls
 }
 finally {
+    foreach ($name in $originalEmailEnvironment.Keys) {
+        [Environment]::SetEnvironmentVariable($name, $originalEmailEnvironment[$name], 'Process')
+    }
     if ($null -eq $originalGoongKey) { Remove-Item Env:Goong__ApiKey -ErrorAction SilentlyContinue }
     else { $env:Goong__ApiKey = $originalGoongKey }
     Remove-Item Env:ConnectionStrings__Bcv -ErrorAction SilentlyContinue

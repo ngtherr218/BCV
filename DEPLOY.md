@@ -7,10 +7,80 @@ Bộ cấu hình này phục vụ web quản trị và API trên cùng một tê
 - Render chạy image Docker của web và backend, cấp địa chỉ dạng `https://<ten-dich-vu>.onrender.com`.
 - Neon lưu PostgreSQL và hỗ trợ extension PostGIS. Chọn gói phù hợp dung lượng và hạn mức thực tế của nhóm; kiểm tra điều kiện gói trên trang nhà cung cấp khi đăng ký.
 - Gói Render Free có thể ngủ sau 15 phút không có truy cập, lần mở tiếp theo mất thời gian khởi động. Dữ liệu trên ổ đĩa container không bền vững, nên phiên đăng nhập dạng file có thể mất sau restart/redeploy; đăng nhập lại để tiếp tục. Dữ liệu nghiệp vụ trong Neon vẫn ở database riêng.
-- Gói Render Free chặn cổng SMTP 25/465/587. Chưa cấu hình SMTP cho phương án này; email đặt lại mật khẩu qua Gmail SMTP không hoạt động. Không công khai log backend vì chế độ chưa cấu hình SMTP ghi mã đặt lại mật khẩu vào log.
+- Gói Render Free chặn cổng SMTP 25/465/587. Backend dùng Brevo (ưu tiên) hoặc Resend qua HTTPS để gửi mã đặt lại mật khẩu. Trên Render, thiếu cấu hình email sẽ trả lỗi gửi email và không ghi mã vào log.
 - Không dùng Render Postgres Free cho dữ liệu cần giữ lâu: theo tài liệu hiện tại database miễn phí này hết hạn sau 30 ngày.
 
 Tài liệu: [Render Free](https://render.com/docs/free), [PostGIS trên Neon](https://neon.com/docs/extensions/postgis), [Docker trên Render](https://render.com/docs/docker).
+
+## Email khôi phục mật khẩu trên Render bằng Brevo
+
+Sender đã được xác minh cho dự án: `quanggm7a1@gmail.com` (BuocChanViet).
+
+1. Brevo → SMTP & API → API Keys: tạo API key Restricted, Transactional email = All.
+   Dùng API key, không dùng SMTP key. Nếu key từng xuất hiện trong ảnh hoặc chat, thu hồi và tạo key mới.
+2. Render → service `bcv-admin-test` → Environment, thêm:
+
+   | Key | Value |
+   | --- | --- |
+   | `Brevo__ApiKey` | API key mới, nhập riêng trên Render |
+   | `Brevo__FromEmail` | `quanggm7a1@gmail.com` |
+   | `Brevo__FromName` | `Bước Chân Việt` |
+   | `Email__RequireDelivery` | `true` |
+
+3. Giữ biến database/map/R2. Xóa các biến `Resend__*` nếu chuyển hoàn toàn sang Brevo.
+4. Đưa code có `BrevoPasswordResetMailer` lên GitHub nhánh `ther`, kiểm tra Render đang deploy
+   nhánh đó rồi Manual Deploy → Deploy latest commit. Thêm biến vào backend cũ chưa đủ.
+5. Hoàn tất xác minh điện thoại/kích hoạt gửi transactional theo yêu cầu tài khoản Brevo.
+6. Trên app dùng API Render, dùng email đã đăng ký BCV ở trạng thái ACTIVE:
+   Quên mật khẩu → nhận mã 6 số → Xác minh → nhập mật khẩu mới → đăng nhập lại.
+   App debug local cần backend local được cấu hình các biến `Brevo__*` tương tự.
+7. Kiểm tra Brevo → Transactional → Logs nếu email chưa tới, và kiểm tra Spam.
+   API chấp nhận gửi không bảo đảm email đã tới inbox; Brevo có thể từ chối do key, quyền, sender,
+   trạng thái tài khoản, địa chỉ bị chặn hoặc hạn mức. Backend chỉ log HTTP status, không log key/mã.
+
+Không cần tạo template Brevo: backend gửi nội dung mã trực tiếp bằng `textContent`.
+Mã hết hạn sau 10 phút, gửi lại sau 60 giây; restart backend làm mất mã đang chờ.
+Tài liệu: [Brevo transactional email API](https://developers.brevo.com/docs/send-a-transactional-email).
+
+## Phương án khác: Resend
+
+### Chạy thử khi chưa có tên miền riêng
+
+Đăng ký Resend bằng email bạn muốn nhận mã thử, tạo API key, rồi đặt
+`Resend__From=BCV <onboarding@resend.dev>` và `Resend__ApiKey` trong Render Environment.
+Đăng ký tài khoản BCV bằng đúng email đó. Cấu hình này chỉ phục vụ kiểm thử;
+Resend từ chối gửi tới người nhận khác cho đến khi bạn xác minh domain riêng.
+Không cần thay đổi luồng giao diện để chạy thử.
+
+### Gửi cho tất cả người dùng
+
+1. Tạo tài khoản [Resend](https://resend.com), thêm domain gửi email trong Domains và xác minh DNS.
+   Địa chỉ `onboarding@resend.dev` chỉ gửi thử tới email chủ tài khoản Resend; muốn gửi cho người dùng
+   khác phải dùng domain đã xác minh. Xem [giới hạn địa chỉ thử](https://resend.com/docs/knowledge-base/403-error-resend-dev-domain).
+2. Tạo API key có quyền gửi email cho domain đó. Không đưa key vào GitHub, APK hoặc biến `VITE_*`.
+3. Render Dashboard → service backend → Settings: chọn repository `ngtherr218/BCV`, branch `ther`.
+   Với service đã tồn tại, sửa trực tiếp trên Dashboard; sửa Blueprint không tự đổi service thủ công.
+4. Render → Environment, thêm các biến sau rồi Save, rebuild, and deploy:
+
+   | Key | Value |
+   | --- | --- |
+   | `Resend__ApiKey` | API key tạo trong Resend |
+   | `Resend__From` | `Bước Chân Việt <no-reply@your-verified-domain>` (thay bằng domain thực tế) |
+   | `Email__RequireDelivery` | `true` |
+
+   Giữ nguyên `ConnectionStrings__Bcv` và các biến đang dùng. SMTP không được sử dụng trên Render.
+   `render.yaml` đã khai báo hai biến Resend là secret nhập riêng (`sync: false`).
+5. Triển khai bản code có `ResendPasswordResetMailer`. Chỉ thêm biến vào bản backend cũ chưa đủ.
+6. App dùng API Render (`https://bcv-admin-test.onrender.com/` hoặc URL thực tế của service).
+   Bản debug đang trỏ localhost sẽ gọi backend local; build bản online bằng tham số
+   `-PbcvApiBaseUrl=https://bcv-admin-test.onrender.com/`.
+7. Dùng một tài khoản ACTIVE có email thật: Quên mật khẩu → Gửi mã → nhập mã 6 số trong email
+   → Xác minh → màn nhập mật khẩu mới → Đăng nhập. Mã có hạn 10 phút, chờ 60 giây để gửi lại;
+   mã và token đổi mật khẩu chỉ dùng một lần. Đổi mật khẩu xong phải đăng nhập lại.
+
+Nếu Resend trả lỗi, xem trạng thái gửi trong Resend Dashboard và HTTP status trong Render Logs;
+kiểm tra domain, quyền API key và hạn mức. Không ghi mã xác minh vào log Render.
+Mã đang lưu trong RAM của một instance; restart/redeploy làm mất mã đang chờ, cần yêu cầu mã mới.
 
 ## 1. Tạo database online
 

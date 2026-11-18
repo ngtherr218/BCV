@@ -4,7 +4,7 @@ services:
   - type: web
     name: bcv-admin-test
     runtime: docker
-    branch: Web
+    branch: ther
     plan: free
     region: singapore
     dockerfilePath: ./Dockerfile
@@ -12,6 +12,14 @@ services:
     healthCheckPath: /health
     autoDeployTrigger: "off"
     envVars:
+      - key: Email__RequireDelivery
+        value: "true"
+      - key: Brevo__ApiKey
+        sync: false
+      - key: Brevo__FromEmail
+        sync: false
+      - key: Brevo__FromName
+        value: "Bước Chân Việt"
       - key: ConnectionStrings__Bcv
         sync: false
       - key: Goong__ApiKey

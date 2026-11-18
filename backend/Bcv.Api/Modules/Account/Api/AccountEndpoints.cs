@@ -54,6 +54,7 @@ public static class AccountEndpoints
                 "EMAIL_EXISTS" => 409,
                 "INVALID_CREDENTIALS" or "ACCOUNT_INACTIVE" => 401,
                 "RESEND_TOO_SOON" or "TOO_MANY_ATTEMPTS" => 429,
+                "EMAIL_DELIVERY_FAILED" => 503,
                 _ => 400
             };
             return Results.Json(new ApiError(ex.Code, ex.Message, ex.Field), statusCode: status);
