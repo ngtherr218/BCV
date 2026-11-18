@@ -10,10 +10,11 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="80dp"
+        android:clipChildren="false"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="20dp"
-        android:paddingEnd="16dp">
+        android:paddingEnd="20dp">
 
         <LinearLayout
             android:layout_width="0dp"
@@ -25,7 +26,7 @@
                 android:layout_height="wrap_content"
                 android:text="BƯỚC CHÂN VIỆT"
                 android:textColor="@color/teal"
-                android:textSize="10sp"
+                android:textSize="12sp"
                 android:textStyle="bold" />
             <LinearLayout
                 android:layout_width="wrap_content"
@@ -37,45 +38,50 @@
                     android:layout_height="wrap_content"
                     android:text="Khám phá"
                     android:textColor="@color/forest"
-                    android:textSize="27sp"
+                    android:textSize="30sp"
                     android:textStyle="bold" />
-                <!-- Debug/preview-only simulator; sends authenticated cumulative step totals. -->
-                <ImageButton
-                    android:id="@+id/demoStepsButton"
-                    android:layout_width="44dp"
-                    android:layout_height="44dp"
-                    android:layout_marginStart="10dp"
-                    android:background="@drawable/demo_steps_button_bg"
-                    android:contentDescription="Test bước chân: gửi số bước hoặc mô phỏng đi bộ"
-                    android:padding="6dp"
-                    android:scaleType="fitCenter"
-                    android:src="@drawable/ic_demo_steps"
-                    android:visibility="gone" />
             </LinearLayout>
         </LinearLayout>
 
+        <!-- Three equal 44dp circles, 10dp apart, centred on one line. -->
+        <ImageButton
+            android:id="@+id/searchButton"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="@drawable/explore_header_circle"
+            android:contentDescription="Tìm địa danh"
+            android:padding="11dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_explore_search" />
         <FrameLayout
-            android:layout_width="56dp"
-            android:layout_height="56dp">
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="10dp"
+            android:clipChildren="false"
+            android:clipToPadding="false">
         <ImageButton
             android:id="@+id/notificationsButton"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
             android:background="@drawable/explore_header_circle"
             android:contentDescription="Thông báo"
-            android:padding="13dp"
+            android:padding="11dp"
+            android:scaleType="fitCenter"
             android:src="@drawable/ic_explore_bell" />
             <TextView
                 android:id="@+id/notificationBadge"
                 android:layout_width="wrap_content"
-                android:layout_height="20dp"
+                android:layout_height="18dp"
                 android:layout_gravity="top|end"
+                android:translationX="5dp"
+                android:translationY="-5dp"
+                android:elevation="2dp"
                 android:minWidth="20dp"
                 android:paddingHorizontal="4dp"
                 android:gravity="center"
                 android:background="@drawable/notification_badge_bg"
                 android:textColor="@android:color/white"
-                android:textSize="10sp"
+                android:textSize="11sp"
                 android:textStyle="bold"
                 android:importantForAccessibility="no"
                 android:visibility="gone" />
@@ -83,10 +89,10 @@
         <!-- The user's avatar when one is set; the person icon otherwise (or until it loads). -->
         <FrameLayout
             android:id="@+id/profileButton"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_marginStart="8dp"
-            android:background="@drawable/health_icon_box_bg"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="10dp"
+            android:background="@drawable/explore_header_circle"
             android:clickable="true"
             android:contentDescription="Hồ sơ"
             android:focusable="true"
@@ -96,7 +102,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:importantForAccessibility="no"
-                android:padding="13dp"
+                android:padding="11dp"
                 android:src="@drawable/ic_explore_person" />
             <com.google.android.material.imageview.ShapeableImageView
                 android:id="@+id/profileAvatar"
@@ -109,18 +115,6 @@
         </FrameLayout>
     </LinearLayout>
 
-    <LinearLayout android:id="@+id/mapFilterBar" android:layout_width="match_parent"
-        android:layout_height="wrap_content" android:orientation="horizontal"
-        android:gravity="center_vertical" android:paddingHorizontal="20dp"
-        android:paddingBottom="8dp" android:visibility="gone">
-        <TextView android:id="@+id/filterSummary" android:layout_width="0dp"
-            android:layout_height="wrap_content" android:layout_weight="1"
-            android:textSize="13sp" android:textColor="@color/teal" />
-        <com.google.android.material.button.MaterialButton android:id="@+id/clearFiltersButton"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
-            android:layout_width="wrap_content" android:layout_height="48dp"
-            android:text="Hiện tất cả" android:textAllCaps="false" />
-    </LinearLayout>
     <FrameLayout
         android:id="@+id/mapContainer"
         android:layout_width="match_parent"
@@ -189,19 +183,80 @@
                 app:tint="#8AAA8B" />
         </LinearLayout>
 
-        <ImageButton
-            android:id="@+id/recenterButton"
+        <LinearLayout
+            android:id="@+id/mapTools"
             android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_height="wrap_content"
             android:layout_gravity="end|top"
             android:layout_marginTop="14dp"
             android:layout_marginEnd="16dp"
-            android:background="@drawable/starting_point_card_bg"
-            android:contentDescription="Về vị trí ảo"
             android:elevation="4dp"
-            android:padding="11dp"
-            android:src="@drawable/ic_starting_target"
-            app:tint="@color/teal" />
+            android:orientation="vertical">
+            <ImageButton
+                android:id="@+id/recenterButton"
+                android:layout_width="48dp" android:layout_height="48dp"
+                android:background="@drawable/starting_point_card_bg"
+                android:contentDescription="Về vị trí ảo"
+                android:padding="11dp" android:src="@drawable/ic_starting_target"
+                app:tint="@color/teal" />
+            <ImageButton
+                android:id="@+id/quizMapButton"
+                android:layout_width="48dp" android:layout_height="48dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/starting_point_card_bg"
+                android:contentDescription="Trạm câu hỏi văn hóa về điểm đến"
+                android:padding="11dp" android:scaleType="fitCenter"
+                android:src="@drawable/ic_quiz" android:visibility="gone"
+                app:tint="@color/teal" />
+            <ImageButton
+                android:id="@+id/addStepsMapButton"
+                android:layout_width="48dp" android:layout_height="48dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/starting_point_card_bg"
+                android:contentDescription="Test bước chân trên bản đồ"
+                android:padding="10dp" android:scaleType="fitCenter"
+                android:src="@drawable/ic_demo_steps" android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- Shown only while a search filter is active; tap to edit, ✕ to clear. -->
+        <LinearLayout
+            android:id="@+id/mapFilterBar"
+            android:layout_width="match_parent"
+            android:layout_height="36dp"
+            android:layout_gravity="start|top"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="80dp"
+            android:layout_marginTop="74dp"
+            android:background="@drawable/starting_point_card_bg"
+            android:elevation="4dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="12dp"
+            android:paddingEnd="4dp"
+            android:visibility="gone">
+            <TextView
+                android:id="@+id/filterSummary"
+                android:layout_weight="1"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxWidth="240dp"
+                android:maxLines="1"
+                android:textColor="@color/forest"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+            <ImageButton
+                android:id="@+id/clearFiltersButton"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:layout_marginStart="2dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Xóa bộ lọc"
+                android:padding="7dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_close"
+                app:tint="#6F8579" />
+        </LinearLayout>
 
         <TextView
             android:layout_width="wrap_content"
@@ -235,7 +290,7 @@
                 android:layout_marginTop="14dp"
                 android:text="Đang tải bản đồ khám phá"
                 android:textColor="@color/forest"
-                android:textSize="14sp"
+                android:textSize="15sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
@@ -262,7 +317,7 @@
                 android:layout_marginTop="16dp"
                 android:text="Chưa tải được bản đồ khám phá"
                 android:textColor="@color/forest"
-                android:textSize="18sp"
+                android:textSize="17sp"
                 android:textStyle="bold" />
             <TextView
                 android:layout_width="wrap_content"
@@ -321,7 +376,7 @@
                 android:layout_marginTop="2dp"
                 android:text="Vui lòng chờ trong giây lát."
                 android:textColor="@color/teal"
-                android:textSize="10sp" />
+                android:textSize="11sp" />
         </LinearLayout>
         <TextView
             android:id="@+id/sheetTitle"
@@ -330,7 +385,7 @@
             android:layout_marginTop="14dp"
             android:text="Điểm đến đang chờ bạn."
             android:textColor="@color/forest"
-            android:textSize="25sp"
+            android:textSize="26sp"
             android:textStyle="bold" />
         <TextView
             android:id="@+id/sheetDescription"
@@ -363,7 +418,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:textColor="@color/forest"
-                    android:textSize="28sp"
+                    android:textSize="26sp"
                     android:textStyle="bold" />
                 <TextView
                     android:id="@+id/stepsTotal"
@@ -429,7 +484,7 @@
                 android:text="Đồng bộ"
                 android:textAllCaps="false"
                 android:textColor="@color/teal"
-                android:textSize="14sp"
+                android:textSize="15sp"
                 android:textStyle="bold"
                 android:visibility="gone"
                 app:cornerRadius="16dp"
@@ -457,7 +512,7 @@
             android:gravity="center"
             android:text="Gợi ý được tìm từ vị trí ảo hiện tại."
             android:textColor="#819387"
-            android:textSize="10sp" />
+            android:textSize="11sp" />
     </LinearLayout>
     </FrameLayout>
     <include

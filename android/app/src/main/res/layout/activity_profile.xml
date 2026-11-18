@@ -134,6 +134,14 @@
                 android:textStyle="bold" />
 
             <include
+                android:id="@+id/achievementsLink"
+                layout="@layout/item_profile_link" />
+
+            <include
+                android:id="@+id/journalLink"
+                layout="@layout/item_profile_link" />
+
+            <include
                 android:id="@+id/statsLink"
                 layout="@layout/item_profile_link" />
 

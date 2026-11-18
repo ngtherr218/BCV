@@ -61,7 +61,7 @@
                     android:layout_height="wrap_content"
                     android:text="ĐI ĐỂ KHÁM PHÁ"
                     android:textColor="@color/white"
-                    android:textSize="10sp"
+                    android:textSize="11sp"
                     android:textStyle="bold" />
                 <TextView
                     android:id="@+id/heroHeadline"
@@ -109,7 +109,7 @@
                     android:gravity="center"
                     android:text="Đang khôi phục phiên đăng nhập"
                     android:textColor="@color/forest"
-                    android:textSize="18sp"
+                    android:textSize="17sp"
                     android:textStyle="bold" />
                 <TextView
                     android:layout_width="match_parent"
@@ -118,7 +118,7 @@
                     android:gravity="center"
                     android:text="Đang kiểm tra tài khoản và hành trình đã lưu của bạn."
                     android:textColor="@color/muted"
-                    android:textSize="14sp" />
+                    android:textSize="15sp" />
             </LinearLayout>
             <LinearLayout
                 android:id="@+id/formContainer"
@@ -133,7 +133,7 @@
                     android:layout_marginTop="8dp"
                     android:text="@string/login_title"
                     android:textColor="@color/forest"
-                    android:textSize="24sp"
+                    android:textSize="26sp"
                     android:textStyle="bold" />
                 <TextView
                     android:id="@+id/formSubtitle"
@@ -227,7 +227,7 @@
                     android:maxLines="2"
                     android:padding="3dp"
                     android:textColor="@color/error_red"
-                    android:textSize="10sp"
+                    android:textSize="11sp"
                     android:visibility="invisible" />
                 <Space
                     android:layout_width="match_parent"
@@ -269,7 +269,7 @@
                             android:layout_height="wrap_content"
                             android:text="Đang đăng nhập..."
                             android:textColor="@color/auth_loading_text"
-                            android:textSize="14sp"
+                            android:textSize="15sp"
                             android:textStyle="bold" />
                     </LinearLayout>
                 </FrameLayout>
@@ -332,7 +332,7 @@
                     android:gravity="center"
                     android:text="Đăng ký thành công!"
                     android:textColor="@color/forest"
-                    android:textSize="24sp"
+                    android:textSize="26sp"
                     android:textStyle="bold" />
                 <TextView
                     android:id="@+id/successMessage"
@@ -357,7 +357,7 @@
                         android:layout_height="wrap_content"
                         android:text="Cá nhân hóa hành trình của bạn"
                         android:textColor="@color/forest"
-                        android:textSize="14sp"
+                        android:textSize="15sp"
                         android:textStyle="bold" />
 
                     <TextView

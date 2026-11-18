@@ -11,5 +11,8 @@ END $$;
 \ir seed/002_reference.sql
 \ir seed/003_rewards_quests.sql
 \ir migrations/030_photo_lifecycle.sql
+\ir migrations/031_culture_quiz.sql
+\ir seed/004_place_questions.sql
+\ir migrations/032_collection_challenges.sql
 \ir verify.sql
 COMMIT;

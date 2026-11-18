@@ -189,6 +189,9 @@ public sealed class PostgresJourneyRepository(NpgsqlDataSource db) : IJourneyRep
                 await command.ExecuteNonQueryAsync(ct);
             }
 
+            await Bcv.Api.Modules.Engagement.CollectionActivityData.RecordJourneyStepsAsync(connection, transaction,
+                userId, cumulativeSteps - previousSteps, ct);
+
             // Only the steps new since the last sync count toward today's and this week's quests.
             await QuestProgress.RecordAsync(connection, transaction, userId, QuestProgress.StepCount,
                 cumulativeSteps - previousSteps, ct);
@@ -242,6 +245,28 @@ public sealed class PostgresJourneyRepository(NpgsqlDataSource db) : IJourneyRep
                     var hasCard = (bool)(await ownedCard.ExecuteScalarAsync(ct))!;
                     var celebration = $"Bạn đã hoàn thành hành trình và khám phá địa điểm {placeName}!";
                     if(rankingPoints>0)celebration += $"\n+{rankingPoints} điểm khám phá.";
+                    await using (var quizReceipt = new NpgsqlCommand("""
+                        SELECT (SELECT count(*) FROM journey_quiz_answer WHERE journey_id=j.journey_id),
+                          (SELECT count(*) FROM journey_quiz_answer WHERE journey_id=j.journey_id AND is_correct),
+                          COALESCE((SELECT sum(points) FROM explorer_score_event e WHERE e.user_id=j.user_id
+                            AND e.event_type='QUIZ' AND e.source_key LIKE j.journey_id::text||':%'),0),
+                          COALESCE((SELECT sum(points) FROM explorer_score_event e WHERE e.user_id=j.user_id
+                            AND e.event_type='MASTERY' AND e.place_id=j.destination_place_id
+                            AND e.occurred_at>=j.started_at::timestamptz AND e.occurred_at<=j.completed_at::timestamptz),0)
+                        FROM journey j WHERE j.journey_id=$1 AND j.user_id=$2
+                        """,connection,transaction))
+                    {
+                        quizReceipt.Parameters.AddWithValue(request.JourneyId);quizReceipt.Parameters.AddWithValue(userId);
+                        await using var quizReader=await quizReceipt.ExecuteReaderAsync(ct);
+                        if(await quizReader.ReadAsync(ct))
+                        {
+                            var answered=quizReader.GetInt64(0);var correct=quizReader.GetInt64(1);
+                            var quizPoints=quizReader.GetInt64(2);var masteryPoints=quizReader.GetInt64(3);
+                            if(answered>0) celebration+=$"\nTrả lời đúng {correct}/{answered} câu: +{quizPoints} điểm.";
+                            if(masteryPoints>0) celebration+=$"\nThưởng Am hiểu: +{masteryPoints} điểm.";
+                            celebration+=$"\nTổng điểm hành trình: +{rankingPoints+quizPoints+masteryPoints}.";
+                        }
+                    }
                     celebration += "\n" + JourneyRanking.Describe(rankBefore, rankAfter);
                     if (hasCard) celebration += $"\n\nThẻ địa danh {placeName} đã có trong bộ sưu tập của bạn.";
                     await Notifications.AddAsync(connection, transaction, userId, Notifications.JourneyCompleted,

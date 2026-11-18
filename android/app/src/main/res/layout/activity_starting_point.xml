@@ -17,7 +17,7 @@
             android:gravity="center"
             android:text="Điểm xuất phát"
             android:textColor="#21493B"
-            android:textSize="16sp"
+            android:textSize="17sp"
             android:textStyle="bold" />
 
         <ImageButton
@@ -72,7 +72,7 @@
                         android:layout_marginStart="9dp"
                         android:text="HÀNH TRÌNH BẮT ĐẦU TỪ ĐÂY"
                         android:textColor="#728C75"
-                        android:textSize="10sp"
+                        android:textSize="11sp"
                         android:textStyle="bold" />
                 </LinearLayout>
 
@@ -84,7 +84,7 @@
                     android:layout_marginEnd="24dp"
                     android:text="Bạn muốn bắt đầu"
                     android:textColor="#163E30"
-                    android:textSize="31sp"
+                    android:textSize="30sp"
                     android:textStyle="bold" />
 
                 <TextView
@@ -94,7 +94,7 @@
                     android:layout_marginEnd="24dp"
                     android:text="khám phá từ đâu?"
                     android:textColor="@color/teal"
-                    android:textSize="31sp"
+                    android:textSize="30sp"
                     android:textStyle="bold" />
 
                 <TextView
@@ -105,7 +105,7 @@
                     android:layout_marginEnd="24dp"
                     android:text="Chọn vị trí ảo đầu tiên của bạn."
                     android:textColor="#718A78"
-                    android:textSize="14sp" />
+                    android:textSize="15sp" />
 
                 <FrameLayout
                     android:layout_width="match_parent"
@@ -171,7 +171,7 @@
                         android:layout_marginTop="10dp"
                         android:text="Chọn cách khởi tạo"
                         android:textColor="#21493B"
-                        android:textSize="18sp"
+                        android:textSize="17sp"
                         android:textStyle="bold" />
 
                     <LinearLayout
@@ -207,7 +207,7 @@
                                 android:layout_height="wrap_content"
                                 android:text="Điểm hệ thống đề xuất"
                                 android:textColor="#21493B"
-                                android:textSize="14sp"
+                                android:textSize="15sp"
                                 android:textStyle="bold" />
 
                             <TextView
@@ -259,7 +259,7 @@
                                 android:layout_height="wrap_content"
                                 android:text="Dùng vị trí hiện tại"
                                 android:textColor="#21493B"
-                                android:textSize="14sp"
+                                android:textSize="15sp"
                                 android:textStyle="bold" />
 
                             <TextView
@@ -286,7 +286,7 @@
                         android:gravity="center"
                         android:text="Vị trí ảo không phải theo dõi vị trí thực."
                         android:textColor="#829687"
-                        android:textSize="10sp" />
+                        android:textSize="11sp" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -372,7 +372,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginStart="8dp"
                         android:textColor="#728C75"
-                        android:textSize="10sp"
+                        android:textSize="11sp"
                         android:textStyle="bold" />
                 </LinearLayout>
 
@@ -382,7 +382,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="13dp"
                     android:textColor="#21493B"
-                    android:textSize="29sp"
+                    android:textSize="26sp"
                     android:textStyle="bold" />
 
                 <TextView
@@ -390,7 +390,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:textColor="@color/teal"
-                    android:textSize="29sp"
+                    android:textSize="26sp"
                     android:textStyle="bold" />
 
                 <TextView
@@ -400,7 +400,7 @@
                     android:layout_marginTop="16dp"
                     android:lineSpacingExtra="4dp"
                     android:textColor="#718A78"
-                    android:textSize="14sp" />
+                    android:textSize="15sp" />
 
                 <LinearLayout
                     android:id="@+id/stateDetailCard"
@@ -433,7 +433,7 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:textColor="#21493B"
-                            android:textSize="14sp"
+                            android:textSize="15sp"
                             android:textStyle="bold" />
 
                         <TextView
@@ -503,6 +503,6 @@
             android:gravity="center"
             android:text="Dùng làm điểm khởi đầu cho hành trình khám phá."
             android:textColor="#829687"
-            android:textSize="10sp" />
+            android:textSize="11sp" />
     </LinearLayout>
 </LinearLayout>

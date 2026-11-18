@@ -2,6 +2,8 @@
 
 Bước Chân Việt chuyển bước chân thật thành hành trình khám phá các địa danh Việt Nam. Repository gồm app Android, ASP.NET Core API, web quản trị và dữ liệu mô hình gợi ý ngoại tuyến. Tài liệu này dành cho nhánh **bcv_v2**, cập nhật ngày 16/11/2026.
 
+Đã bổ sung Trạm câu hỏi văn hóa từ BCV-ther; xem [hướng dẫn tích hợp và nâng cấp database v2](docs/technical/BCV_THER_INTEGRATION.md).
+
 ## Chức năng
 
 - Chọn sở thích từ 12 nhóm loại địa danh; lọc và tìm kiếm điểm đến theo khoảng cách, số ngày dự kiến và loại địa danh. Gợi ý điểm đến mới dựa trên sở thích và mức vận động.
@@ -42,7 +44,7 @@ createdb -h localhost -U postgres -T template0 -E UTF8 vietnam_explorer_dev_v2
 psql -X -h localhost -U postgres -d vietnam_explorer_dev_v2 -v ON_ERROR_STOP=1 -f sql/install.sql
 ```
 
-Database đang có dữ liệu: backup trước, kiểm tra điều kiện rồi chạy `sql/upgrade.sql`. Không chạy lại schema/seed cài mới trên database đang sử dụng. Bộ seed không chứa tài khoản, mật khẩu, lịch sử hay dữ liệu cá nhân. Schema cuối có **33 bảng nghiệp vụ**, không tính bảng của PostGIS.
+Database đang có dữ liệu: backup trước, kiểm tra điều kiện rồi chạy `sql/upgrade.sql`. Không chạy lại schema/seed cài mới trên database đang sử dụng. Bộ seed không chứa tài khoản, mật khẩu, lịch sử hay dữ liệu cá nhân. Schema cuối có **40 bảng nghiệp vụ**, không tính bảng của PostGIS.
 
 ## Chạy local v2
 

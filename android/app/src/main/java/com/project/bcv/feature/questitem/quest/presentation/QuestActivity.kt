@@ -12,6 +12,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import com.project.bcv.R
 import com.project.bcv.core.di.QuestModule
 import com.project.bcv.core.ui.BottomNav
@@ -60,19 +62,12 @@ class QuestActivity : AppCompatActivity() {
         weekly = savedInstanceState?.getBoolean(WEEKLY_KEY) ?: model.weeklySelected
         model.weeklySelected = weekly
 
-        BottomNav.select(binding.bottomNavigation, NavTab.QUEST)
+        BottomNav.select(binding.bottomNavigation, NavTab.CHALLENGE)
         BottomNav.skipTransition(this, opening = true)
         BottomNav.skipTransition(this, opening = false)
         BottomNav.enter(BottomNav.contentOf(binding.root, binding.bottomNavigation),
-            fromRight = BottomNav.enteredFromRight(this, NavTab.QUEST))
-        binding.bottomNavigation.tabExplore.setOnClickListener { leave() }
-        binding.bottomNavigation.tabJourney.setOnClickListener {
-            leave(BottomNav.intent(this, JourneyActivity::class.java, NavTab.QUEST))
-        }
-        binding.bottomNavigation.tabCollection.setOnClickListener {
-            leave(BottomNav.intent(this, CollectionActivity::class.java, NavTab.QUEST))
-        }
-        binding.bottomNavigation.tabQuest.setOnClickListener { model.refreshIfNeeded() }
+            fromRight = BottomNav.enteredFromRight(this, NavTab.CHALLENGE))
+        BottomNav.wire(this, binding.bottomNavigation, NavTab.CHALLENGE, binding.root) { model.refreshIfNeeded() }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = leave()
         })
@@ -90,7 +85,20 @@ class QuestActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         model.refreshIfNeeded()
+        loadEngagement()
     }
+
+    /** Streak card on top and badges at the bottom; quests still load on their own. */
+    private fun loadEngagement(): Unit { lifecycleScope.launch {
+        val api = com.project.bcv.feature.engagement.EngagementApi(this@QuestActivity)
+        api.reportToday()
+        val data = runCatching { api.summary() }.getOrNull() ?: return@launch
+        val blocks = com.project.bcv.feature.engagement.EngagementBlocks
+        binding.streakSlot.removeAllViews()
+        binding.streakSlot.addView(blocks.streakCard(this@QuestActivity, data.getJSONObject("streak")) { loadEngagement() })
+        binding.badgeSlot.removeAllViews()
+        blocks.badges(this@QuestActivity, binding.badgeSlot, data.getJSONArray("badges"))
+    } }
 
     override fun onPause() {
         (binding.root.getChildAt(0) as? android.widget.ScrollView)?.let { model.scrollY = it.scrollY }
@@ -143,8 +151,7 @@ class QuestActivity : AppCompatActivity() {
                 if (state.refreshError != null) {
                     status(failed = true, title = "Chưa cập nhật được", body = state.refreshError)
                     retryButton.visibility = View.VISIBLE
-                } else status(title = "Tiến độ đã cập nhật",
-                    body = "Cập nhật lúc $time từ bước chân và địa danh đã xác nhận.")
+                } else { binding.statusCard.visibility = View.GONE; updatedAt = time }
                 shown = state.overview
                 showQuests()
                 if (!restoredScroll) {
@@ -158,8 +165,12 @@ class QuestActivity : AppCompatActivity() {
         }
     }
 
+    /** Only problems get a card; a normal refresh is just "cập nhật hh:mm" next to the quest count. */
+    private var updatedAt: String? = null
+
     private fun status(title: String, body: String, updating: Boolean = false, failed: Boolean = false) = with(binding) {
         retryButton.visibility = View.GONE
+        statusCard.visibility = if (failed) View.VISIBLE else View.GONE
         statusTitle.text = title
         statusBody.text = body
         val accent = when {
@@ -169,6 +180,8 @@ class QuestActivity : AppCompatActivity() {
         }
         statusEyebrow.setTextColor(accent)
         statusEyebrow.text = if (failed) "CHƯA TẢI ĐƯỢC DỮ LIỆU" else "DỮ LIỆU ĐÃ XÁC NHẬN"
+        // Only a failure needs the extra label; the normal state stays a quiet one-liner.
+        statusEyebrow.visibility = if (failed) View.VISIBLE else View.GONE
         statusIcon.setImageResource(if (updating || failed) R.drawable.ic_sync_outline else R.drawable.ic_check_circle)
         statusIcon.imageTintList = ColorStateList.valueOf(accent)
         statusCard.backgroundTintList = ColorStateList.valueOf(when {
@@ -195,13 +208,14 @@ class QuestActivity : AppCompatActivity() {
             tab.isSelected = active
             tab.contentDescription = "${tab.text}${if (active) ", đang chọn" else ""}"
         }
-        sectionTitle.text = if (weekly) "Nhiệm vụ tuần này" else "Nhiệm vụ hôm nay"
+        sectionTitle.text = "Nhiệm vụ"
     }
 
     private fun showQuests() = with(binding) {
         val overview = shown ?: return@with
         val quests = if (weekly) overview.weekly else overview.daily
-        sectionCount.text = "${quests.size} nhiệm vụ"
+        val done = quests.count { it.completed }
+        sectionCount.text = "$done/${quests.size} xong" + (updatedAt?.let { " · cập nhật $it" } ?: "")
         questList.visibility = View.VISIBLE
         if (renderedQuests == quests) return@with
         renderedQuests = quests
@@ -219,9 +233,11 @@ class QuestActivity : AppCompatActivity() {
             "COMPLETE_JOURNEY" -> "hành trình"
             "PHOTO_APPROVED" -> "ảnh"
             "MEDIA_APPROVED" -> "nội dung"
+            "QUIZ_CORRECT" -> "câu đúng"
             else -> "lượt"
         }
         val (icon, iconTint, iconBox) = when (quest.conditionType) {
+            "QUIZ_CORRECT" -> Triple(R.drawable.ic_quiz, 0xFFC9962B.toInt(), 0xFFFBF3E2.toInt())
             "DISCOVER_PLACE" -> Triple(R.drawable.ic_travel_explore, 0xFF3C7DB0.toInt(), 0xFFE6EEF3.toInt())
             "COMPLETE_JOURNEY" -> Triple(R.drawable.ic_nav_route, 0xFFA0702E.toInt(), 0xFFF3EBDD.toInt())
             "PHOTO_APPROVED", "MEDIA_APPROVED" -> Triple(R.drawable.ic_check_circle, teal, 0xFFE8F0E2.toInt())
@@ -232,7 +248,6 @@ class QuestActivity : AppCompatActivity() {
         item.questIcon.backgroundTintList = ColorStateList.valueOf(if (done) 0xFFDDEAD6.toInt() else iconBox)
 
         item.questName.text = quest.name
-        item.questCycle.text = if (weekly) "HẰNG TUẦN" else "HẰNG NGÀY"
         val shownProgress = quest.progress.coerceAtMost(quest.target)
         item.questProgressText.text = "${format(shownProgress)} / ${format(quest.target)} $unit"
         item.questProgress.max = quest.target
@@ -241,17 +256,16 @@ class QuestActivity : AppCompatActivity() {
         item.root.setBackgroundResource(if (done) R.drawable.quest_done_bg else R.drawable.journey_card_bg)
 
         val rewardColor = if (done) teal else 0xFFA0702E.toInt()
+        // A quest pays an item, explorer points, or both.
+        val itemReward = quest.rewardName?.let { "$it × ${quest.rewardQuantity ?: 1}" }
         val points = if (quest.completed) quest.awardedRankingPoints else quest.rankingPoints
-        item.questPoints.text = if (points>0) "+$points điểm xếp hạng${if(quest.completed) " · Đã cộng" else ""}"
-            else if(quest.completed) "Không nhận điểm xếp hạng" else "Không thưởng điểm xếp hạng"
-        item.questPoints.setTextColor(if(points>0) teal else 0xFF62786D.toInt())
-        item.questReward.text = quest.rewardName?.let { "${if(quest.rewardReceived) "Đã nhận" else "Vật phẩm"}: $it × ${quest.rewardQuantity ?: 1}" }.orEmpty()
-        item.questReward.visibility = if(quest.rewardName==null) View.GONE else View.VISIBLE
+        val pointReward = points.takeIf { it > 0 }?.let { "⭐ +$it điểm khám phá${if (quest.completed) " · Đã cộng" else ""}" }
+        item.questReward.text = listOfNotNull(itemReward, pointReward).joinToString(" · ").ifEmpty { "Không có phần thưởng" }
         item.questReward.setTextColor(rewardColor)
         // Same icons as the items in Túi đồ.
         val rewardIcon = if (quest.rewardType == "FLIGHT_TICKET") R.drawable.ic_flight else R.drawable.ic_sneaker
         ContextCompat.getDrawable(this, rewardIcon)?.mutate()?.let { drawable ->
-            val size = (20 * resources.displayMetrics.density).toInt()
+            val size = (16 * resources.displayMetrics.density).toInt()
             drawable.setBounds(0, 0, size, size)
             drawable.setTint(rewardColor)
             item.questReward.setCompoundDrawablesRelative(if (quest.rewardName != null) drawable else null, null, null, null)
@@ -259,14 +273,14 @@ class QuestActivity : AppCompatActivity() {
 
         val percent = if (quest.target <= 0) 0 else (shownProgress * 100L / quest.target).toInt()
         item.questStatus.text = when {
-            done && quest.rewardReceived && (points>0 || quest.rewardName!=null) -> "Đã nhận thưởng"
+            done && quest.rewardReceived -> "Đã nhận thưởng"
             done -> "Đã hoàn thành"
             else -> "$percent% hoàn thành"
         }
         item.questStatus.setTextColor(if (done) teal else 0xFF7C9086.toInt())
         item.questStatus.setTypeface(null, if (done) Typeface.BOLD else Typeface.NORMAL)
         item.root.contentDescription = "${quest.name}, ${item.questProgressText.text}, ${item.questStatus.text}. " +
-            "Phần thưởng: ${item.questPoints.text}. ${item.questReward.text}"
+            "Phần thưởng: ${item.questReward.text}"
         return item
     }
 

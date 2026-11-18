@@ -22,8 +22,8 @@ object StepTestDialog {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(8), dp(20), dp(12))
         }
-        fun text(value: String) = TextView(activity).apply { text = value; textSize = 14f; setPadding(0, dp(8), 0, dp(8)) }
-        content.addView(text("Bước thử được lưu thật vào tài khoản đang đăng nhập và tác động hành trình, nhiệm vụ, vật phẩm. Hành trình đã test sẽ dùng bước mô phỏng thay cho bộ đếm thiết bị đến khi kết thúc. Không ghi vào Health Connect."))
+        fun text(value: String) = TextView(activity).apply { text = value; textSize = 15f; setPadding(0, dp(8), 0, dp(8)) }
+        content.addView(text("Bước thử được lưu thật vào tài khoản đang đăng nhập và tác động hành trình, nhiệm vụ, vật phẩm. Hành trình đã test sẽ dùng bước mô phỏng thay cho bộ đếm thiết bị đến khi kết thúc. Không cần quyền cảm biến để mô phỏng và không ghi vào Health Connect. Nếu thiết bị đang đồng bộ, bước thử sẽ chờ lần đó kết thúc."))
         fun number(label: String, initial: String): EditText {
             content.addView(text(label))
             return EditText(activity).apply {
@@ -64,7 +64,7 @@ object StepTestDialog {
             val journey = model.state.value?.snapshot?.journey
             status.text = "${journey?.destinationName ?: "Chưa có hành trình"}\n" +
                 "Bước gốc: ${journey?.sourceSteps ?: "—"}; tiến độ: ${journey?.recordedSteps ?: 0}/${journey?.requiredSteps ?: 0}\n" +
-                "${if (test.running) "Đang mô phỏng" else "Đã dừng"}${if (test.busy) " · Đang gửi…" else ""}\n${test.message}"
+                "${if (test.running && test.batches == 0) "Chờ xác nhận lượt đầu" else if (test.running) "Đang mô phỏng" else "Đã dừng"}${if (test.busy) " · Đang xử lý…" else ""}\n${test.message}"
             send.isEnabled = !test.busy && !test.running && journey?.status == "IN_PROGRESS"
             start.isEnabled = send.isEnabled
             stop.isEnabled = test.running

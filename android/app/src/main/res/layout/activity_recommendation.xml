@@ -58,7 +58,7 @@
             </LinearLayout>
             <TextView android:id="@+id/subtitle" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:layout_marginTop="6dp"
-                android:textColor="@color/muted" android:textSize="14sp" />
+                android:textColor="@color/muted" android:textSize="15sp" />
 
             <LinearLayout android:id="@+id/cards" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:layout_marginTop="18dp"

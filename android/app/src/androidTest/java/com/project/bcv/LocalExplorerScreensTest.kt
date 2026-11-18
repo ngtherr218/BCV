@@ -128,6 +128,14 @@ class LocalExplorerScreensTest {
     }
 
     @Test fun searchPassportAndLeaderboardRenderLocalApiResults() {
+        runExplorerScreens(false)
+    }
+
+    @Test fun destinationFiltersRenderLocalApiResults() {
+        runExplorerScreens(true)
+    }
+
+    private fun runExplorerScreens(discoveryOnly: Boolean) {
         val uri = URI(BuildConfig.API_BASE_URL)
         assumeTrue("Local v2 only", uri.port == 5082 && uri.host in listOf("127.0.0.1", "10.0.2.2", "localhost"))
         val context = instrumentation.targetContext
@@ -164,46 +172,79 @@ class LocalExplorerScreensTest {
             }
             screen(com.project.bcv.feature.discovery.presentation.RecommendationActivity::class.java) { activity ->
                 waitFor(activity) { list -> list.filterIsInstance<TextView>().any { it.text.contains("địa danh · Trang 1") } }
-                capture("discovery-redesign-results")
                 instrumentation.runOnMainSync {
-                    val list=views(activity.window.decorView)
-                    org.junit.Assert.assertTrue(list.filterIsInstance<android.widget.CheckBox>().first { it.text == "Ưu tiên sở thích của tôi" }.isChecked)
-                    activity.findViewById<EditText>(R.id.destinationQuery).setText("zz-no-matching-destination")
-                }
-                waitFor(activity) { list -> list.filterIsInstance<TextView>().any { it.text.startsWith("Không có địa danh phù hợp") } }
-                instrumentation.runOnMainSync {
-                    val list=views(activity.window.decorView)
-                    activity.findViewById<EditText>(R.id.destinationQuery).text.clear()
+                    assertTrue(views(activity.window.decorView).filterIsInstance<android.widget.CheckBox>().isEmpty())
                     activity.findViewById<Button>(R.id.destinationFilterToggle).performClick()
                 }
-                capture("discovery-redesign-filters")
-                for (name in listOf("Di tích và bảo tàng", "Biển và đảo", "Rừng và khu bảo tồn")) {
-                    androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withText(name))
-                        .check(androidx.test.espresso.assertion.ViewAssertions.matches(androidx.test.espresso.matcher.ViewMatchers.isChecked()))
+                fun tap(label: String) {
+                    instrumentation.waitForIdleSync(); SystemClock.sleep(350)
+                    androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withText(label))
+                        .perform(androidx.test.espresso.action.ViewActions.click())
                 }
+                fun checked(label: String, expected: Boolean) {
+                    val matcher = androidx.test.espresso.matcher.ViewMatchers.isChecked()
+                    androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withText(label))
+                        .check(androidx.test.espresso.assertion.ViewAssertions.matches(if (expected) matcher else org.hamcrest.Matchers.not(matcher)))
+                }
+                tap("Bỏ chọn tất cả")
+                tap("Áp dụng bộ lọc")
+                androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withId(R.id.typeSelectionError))
+                    .check(androidx.test.espresso.assertion.ViewAssertions.matches(androidx.test.espresso.matcher.ViewMatchers.isDisplayed()))
+                tap("Đặt lại theo sở thích")
+                for (label in listOf("Di tích và bảo tàng", "Biển và đảo", "Rừng và khu bảo tồn")) checked(label, true)
                 androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withText("Công trình kiến trúc"))
-                    .check(androidx.test.espresso.assertion.ViewAssertions.matches(org.hamcrest.Matchers.not(androidx.test.espresso.matcher.ViewMatchers.isChecked())))
+                    .perform(androidx.test.espresso.action.ViewActions.scrollTo(), androidx.test.espresso.action.ViewActions.click())
+                checked("Công trình kiến trúc", false)
+                tap("Áp dụng bộ lọc")
+                waitFor(activity) { list -> list.filterIsInstance<TextView>().any { it.text.contains("địa danh · Trang 1") } }
+                capture("discovery-redesign-results")
+                instrumentation.runOnMainSync { activity.findViewById<Button>(R.id.destinationFilterToggle).performClick() }
+                tap("Bỏ chọn tất cả")
                 androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withText("Biển và đảo"))
                     .perform(androidx.test.espresso.action.ViewActions.scrollTo(), androidx.test.espresso.action.ViewActions.click())
-                androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withText("Xem kết quả"))
-                    .perform(androidx.test.espresso.action.ViewActions.click())
-                waitFor(activity) { list -> list.filterIsInstance<TextView>().any { it.text.contains("địa danh · Trang 1") } }
+                tap("Áp dụng bộ lọc")
+                waitFor(activity) { list -> list.filterIsInstance<TextView>().any { it.text.contains("địa danh · Trang 1") || it.text.startsWith("Không có địa danh phù hợp") } }
                 instrumentation.runOnMainSync {
-                    views(activity.window.decorView).filterIsInstance<android.widget.CheckBox>().first().isChecked=false
+                    assertTrue(activity.findViewById<Button>(R.id.destinationFilterToggle).text.contains("1/3 loại"))
+                    activity.findViewById<Button>(R.id.destinationFilterToggle).performClick()
                 }
-                waitFor(activity) { list -> list.filterIsInstance<TextView>().any { it.text.contains("· Gần nhất") } }
+                tap("Bỏ chọn tất cả")
+                tap("Hủy")
+                instrumentation.runOnMainSync {
+                    assertTrue(activity.findViewById<Button>(R.id.destinationFilterToggle).text.contains("1/3 loại"))
+                    activity.findViewById<Button>(R.id.destinationFilterToggle).performClick()
+                }
+                checked("Biển và đảo", true)
+                tap("Đặt lại theo sở thích")
+                capture("discovery-redesign-filters")
+                androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withId(R.id.maxSteps))
+                    .perform(androidx.test.espresso.action.ViewActions.scrollTo(), androidx.test.espresso.action.ViewActions.replaceText("0"), androidx.test.espresso.action.ViewActions.closeSoftKeyboard())
+                tap("Áp dụng bộ lọc")
+                androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withText("Nhập số bước nguyên lớn hơn 0."))
+                    .check(androidx.test.espresso.assertion.ViewAssertions.matches(androidx.test.espresso.matcher.ViewMatchers.isDisplayed()))
+                tap("Hủy")
                 instrumentation.runOnMainSync { activity.findViewById<Button>(R.id.destinationFilterToggle).performClick() }
-                androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withText("Biển và đảo"))
-                    .check(androidx.test.espresso.assertion.ViewAssertions.matches(org.hamcrest.Matchers.not(androidx.test.espresso.matcher.ViewMatchers.isChecked())))
-                androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withText("Đặt lại theo sở thích"))
-                    .perform(androidx.test.espresso.action.ViewActions.click())
-                androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withText("Biển và đảo"))
-                    .check(androidx.test.espresso.assertion.ViewAssertions.matches(androidx.test.espresso.matcher.ViewMatchers.isChecked()))
-                androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withText("Xem kết quả"))
-                    .perform(androidx.test.espresso.action.ViewActions.click())
-                waitFor(activity) { list -> list.filterIsInstance<TextView>().any { it.text.contains("· Ưu tiên sở thích") } }
+                tap("Đặt lại theo sở thích")
+                androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withId(R.id.maxDistance))
+                    .perform(androidx.test.espresso.action.ViewActions.scrollTo(), androidx.test.espresso.action.ViewActions.replaceText("12"), androidx.test.espresso.action.ViewActions.closeSoftKeyboard())
+                androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withId(R.id.maxSteps))
+                    .perform(androidx.test.espresso.action.ViewActions.scrollTo(), androidx.test.espresso.action.ViewActions.replaceText("2000"), androidx.test.espresso.action.ViewActions.closeSoftKeyboard())
+                tap("Áp dụng bộ lọc")
+                waitFor(activity) { list -> list.filterIsInstance<TextView>().any { it.text.contains("địa danh · Trang 1") || it.text.startsWith("Không có địa danh phù hợp") } }
+                instrumentation.runOnMainSync {
+                    val result = androidx.lifecycle.ViewModelProvider(activity as androidx.appcompat.app.AppCompatActivity)[com.project.bcv.feature.discovery.presentation.ExplorerToolsViewModel::class.java].state.value!!.result!!
+                    assertEquals(2000, result.getInt("maxRequiredSteps"))
+                    assertEquals(12.0, result.getDouble("maxDistanceKm"), 0.0)
+                    val rows = result.getJSONArray("places")
+                    for (i in 0 until rows.length()) {
+                        assertTrue(rows.getJSONObject(i).getInt("requiredSteps") <= 2000)
+                        assertTrue(rows.getJSONObject(i).getDouble("distanceKm") <= 12)
+                    }
+                }
+                capture("discovery-combined-limits")
                 assertEquals(listOf(101L,108L,112L), api.get("api/interests", token).getJSONArray("selectedPlaceTypeIds").let { rows -> (0 until rows.length()).map { rows.getLong(it) } })
             }
+            if (discoveryOnly) return
             screen(PlaceSearchActivity::class.java) { activity ->
                 waitFor(activity) { list -> list.filterIsInstance<TextView>().any { it.text.contains("địa danh · Trang 1") } }
                 instrumentation.runOnMainSync {
@@ -248,15 +289,10 @@ class LocalExplorerScreensTest {
                     assertTrue("No expanded unread-card banner",views(activity.window.decorView).filterIsInstance<TextView>().none { it.text.contains("thẻ mới đang chờ") })
                 }
                 capture("redesign-collections")
-                val monitor=instrumentation.addMonitor(com.project.bcv.feature.collection.presentation.CollectionDetailActivity::class.java.name,null,false)
-                try {
-                    instrumentation.runOnMainSync { activity.findViewById<Button>(R.id.newCardsButton).performClick() }
-                    val inbox=instrumentation.waitForMonitorWithTimeout(monitor,5000) ?: throw AssertionError("New-card section did not open")
-                    try {
-                        waitFor(inbox) { list -> list.filterIsInstance<TextView>().any { it.text.startsWith("Bạn đã xem hết thẻ mới") } }
-                        capture("redesign-new-card-inbox")
-                    } finally { instrumentation.runOnMainSync { inbox.finish() } }
-                } finally { instrumentation.removeMonitor(monitor) }
+                instrumentation.runOnMainSync {
+                    assertTrue("Empty unread-card inbox does not show a new-card banner",
+                        !activity.findViewById<View>(R.id.newCardsPanel).isShown)
+                }
             }
             val detailActivity = instrumentation.startActivitySync(Intent(context, com.project.bcv.feature.collection.presentation.CollectionDetailActivity::class.java)
                 .putExtra("collection_id",collectionId).putExtra("all_cards",true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

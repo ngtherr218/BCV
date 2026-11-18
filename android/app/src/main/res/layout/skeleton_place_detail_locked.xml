@@ -17,7 +17,7 @@
 
     <TextView android:id="@+id/skeletonName" android:layout_width="match_parent"
         android:layout_height="wrap_content" android:layout_marginTop="22dp" android:maxLines="3"
-        android:textColor="@color/forest" android:textSize="32sp" android:textStyle="bold" />
+        android:textColor="@color/forest" android:textSize="30sp" android:textStyle="bold" />
 
     <LinearLayout android:layout_width="match_parent" android:layout_height="76dp"
         android:layout_marginTop="20dp" android:background="@drawable/destination_distance_bg"

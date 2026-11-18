@@ -29,14 +29,14 @@
         <FrameLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:layout_marginTop="24dp">
             <TextView style="@style/Skeleton.TextRow" android:text="Điểm đến dành cho bạn"
-                android:textSize="27sp" />
+                android:textSize="26sp" />
             <View style="@style/Skeleton.TextBar" android:layout_marginTop="6dp"
                 android:layout_marginBottom="6dp" />
         </FrameLayout>
         <FrameLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:layout_marginTop="6dp">
             <TextView style="@style/Skeleton.TextRow" android:text="3 gợi ý phù hợp từ vị trí ảo hiện tại"
-                android:textSize="14sp" android:textStyle="normal" />
+                android:textSize="15sp" android:textStyle="normal" />
             <View style="@style/Skeleton.TextBar" />
         </FrameLayout>
 

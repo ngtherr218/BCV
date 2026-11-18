@@ -48,18 +48,6 @@ class CollectionActivity : AppCompatActivity() {
         }
         binding = ActivityCollectionBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        binding.passportButton.setOnClickListener { startActivity(Intent(this, com.project.bcv.feature.discovery.presentation.PassportActivity::class.java)) }
-        binding.leaderboardButton.setOnClickListener { startActivity(Intent(this, com.project.bcv.feature.discovery.presentation.LeaderboardActivity::class.java)) }
-        binding.allCardsButton.setOnClickListener {
-            startActivity(Intent(this,CollectionDetailActivity::class.java).putExtra("all_cards",true)
-                .putExtra(CollectionDetailActivity.EXTRA_COLLECTION_ID,0L)
-                .putExtra(CollectionDetailActivity.EXTRA_COLLECTION_NAME,"Tất cả thẻ"))
-        }
-        binding.newCardsButton.setOnClickListener {
-            startActivity(Intent(this,CollectionDetailActivity::class.java).putExtra("all_cards",true)
-                .putExtra("new_cards",true).putExtra(CollectionDetailActivity.EXTRA_COLLECTION_ID,0L)
-                .putExtra(CollectionDetailActivity.EXTRA_COLLECTION_NAME,"Thẻ mới"))
-        }
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.setPadding(bars.left, bars.top, bars.right, 0)
@@ -71,16 +59,18 @@ class CollectionActivity : AppCompatActivity() {
         BottomNav.select(binding.bottomNavigation, NavTab.COLLECTION)
         BottomNav.skipTransition(this, opening = true)
         BottomNav.skipTransition(this, opening = false)
-        BottomNav.enter(BottomNav.contentOf(binding.root, binding.bottomNavigation),
-            fromRight = BottomNav.enteredFromRight(this, NavTab.COLLECTION))
-        binding.bottomNavigation.tabExplore.setOnClickListener { leave() }
-        binding.bottomNavigation.tabJourney.setOnClickListener {
-            leave(Intent(BottomNav.intent(this, JourneyActivity::class.java, NavTab.COLLECTION)))
+        if (!intent.getBooleanExtra(BottomNav.EXTRA_SAME_TAB, false))
+            BottomNav.enter(BottomNav.contentOf(binding.root, binding.bottomNavigation),
+                fromRight = BottomNav.enteredFromRight(this, NavTab.COLLECTION))
+        binding.collectionSwitcher.addView(
+            com.project.bcv.feature.engagement.EngagementBlocks.collectionSwitcher(this, "cards"))
+        BottomNav.wire(this, binding.bottomNavigation, NavTab.COLLECTION, binding.root) { model.refreshIfNeeded() }
+        binding.summaryCard.setOnClickListener {
+            startActivity(Intent(this, CollectionDetailActivity::class.java).putExtra("all_cards", true)
+                .putExtra(CollectionDetailActivity.EXTRA_COLLECTION_ID,0L)
+                .putExtra(CollectionDetailActivity.EXTRA_COLLECTION_NAME,"Tất cả thẻ"))
         }
-        binding.bottomNavigation.tabCollection.setOnClickListener { model.refreshIfNeeded() }
-        binding.bottomNavigation.tabQuest.setOnClickListener {
-            leave(BottomNav.intent(this, QuestActivity::class.java, NavTab.COLLECTION), toRight = false)
-        }
+        binding.summaryCard.contentDescription = "Xem tất cả thẻ văn hóa"
         binding.retryButton.setOnClickListener { model.load() }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = leave()
@@ -97,7 +87,7 @@ class CollectionActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
-        (binding.root.getChildAt(0) as? android.widget.ScrollView)?.let { model.scrollY = it.scrollY }
+        (binding.root.getChildAt(1) as? android.widget.ScrollView)?.let { model.scrollY = it.scrollY }
         super.onPause()
     }
 
@@ -144,7 +134,7 @@ class CollectionActivity : AppCompatActivity() {
                 if (!restoredScroll) {
                     restoredScroll = true
                     val scrollY = model.scrollY
-                    (binding.root.getChildAt(0) as? android.widget.ScrollView)?.let { scroll ->
+                    (binding.root.getChildAt(1) as? android.widget.ScrollView)?.let { scroll ->
                         scroll.post { scroll.scrollTo(0, scrollY) }
                     }
                 }
@@ -161,22 +151,35 @@ class CollectionActivity : AppCompatActivity() {
     private fun showOverview(overview: CollectionOverview) = with(binding) {
         if (overview == shownOverview && loadedContent.visibility == View.VISIBLE) return@with
         com.project.bcv.core.ui.CollectionNavBadge.show(binding.bottomNavigation, overview.newCards)
-        newCardsButton.text = if(overview.newCards>0) "Thẻ mới · ${overview.newCards} chưa xem" else "Thẻ mới · Đã xem hết"
+        newCardsPanel.visibility = if (overview.newItems.isEmpty()) View.GONE else View.VISIBLE
+        newCardsTitle.text = "${overview.newCards} thẻ mới đang chờ bạn"
+        newCardList.removeAllViews()
+        overview.newItems.forEach { reward ->
+            val button = com.google.android.material.button.MaterialButton(this@CollectionActivity).apply {
+                text = "${reward.card.name}\n${reward.collectionName} · Xem thẻ →"
+                isAllCaps = false
+                gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
+                setOnClickListener { startActivity(CardIntents.detail(this@CollectionActivity, reward)) }
+            }
+            newCardList.addView(button)
+        }
         shownOverview = overview
         Skeleton.hide(loadingSkeleton.root)
         loadedContent.visibility = View.VISIBLE
         ownedCount.text = overview.ownedCards.toString()
-        ownedTotal.text = "/ ${overview.totalCards} thẻ đã sở hữu"
+        ownedTotal.text = "/ ${overview.totalCards} thẻ đã sở hữu" +
+            if (overview.newCards > 0) " · ${overview.newCards} thẻ mới" else ""
         summaryCard.contentDescription = "Đã sở hữu ${overview.ownedCards} trên ${overview.totalCards} thẻ, ${overview.newCards} thẻ mới chưa xem"
         layoutSummaryBar()
-        collectionCount.text = "${overview.collections.size} bộ"
+        collectionCount.text = "${overview.collections.size} bộ" +
+            if (overview.newCards > 0) " · ${overview.newCards} thẻ mới" else ""
 
         collectionList.removeAllViews()
         overview.collections.forEachIndexed { index, collection ->
             collectionList.addView(collectionCard(collection, ACCENTS[index % ACCENTS.size]).root)
         }
         if (overview.collections.isEmpty()) {
-            showMessage(text = "Các bộ theo chủ đề đang được chuẩn bị. Bạn vẫn có thể xem trước toàn bộ thẻ ở album phía trên.")
+            showMessage(text = "Chưa có bộ sưu tập nào. Hoàn thành hành trình để nhận thẻ.")
         } else {
             messageState.visibility = View.GONE
         }
@@ -197,13 +200,13 @@ class CollectionActivity : AppCompatActivity() {
         val item = ItemCollectionCardBinding.inflate(layoutInflater, binding.collectionList, false)
         item.collectionName.text = collection.name
         item.collectionNewBadge.text = "${collection.newCards} thẻ mới"
-        item.collectionNewBadge.visibility = View.GONE
+        item.collectionNewBadge.visibility = if (collection.newCards > 0) View.VISIBLE else View.GONE
         item.collectionOwned.text = "${collection.ownedCards} / ${collection.totalCards} thẻ đã sở hữu"
         item.collectionProgress.max = collection.totalCards.coerceAtLeast(1)
         item.collectionProgress.progress = collection.ownedCards
         item.collectionProgress.setIndicatorColor(accent)
         item.collectionAction.setTextColor(accent)
-        item.collectionAction.text = "Xem bộ sưu tập"
+        item.collectionAction.text = if (collection.newCards > 0) "${collection.newCards} thẻ mới · Xem ngay" else "Xem bộ sưu tập"
         item.collectionArrow.imageTintList = ColorStateList.valueOf(accent)
         item.root.contentDescription = "${collection.name}, đã sở hữu ${collection.ownedCards} trên " +
             "${collection.totalCards} thẻ, ${collection.newCards} thẻ mới chưa xem. Xem bộ sưu tập"

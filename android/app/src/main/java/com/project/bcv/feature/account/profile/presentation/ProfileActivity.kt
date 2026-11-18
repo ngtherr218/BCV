@@ -71,6 +71,10 @@ class ProfileActivity : AppCompatActivity() {
         link(binding.healthLink, R.drawable.ic_favorite_outline, "Health Connect", "Quyền đọc dữ liệu bước chân") {
             startActivity(Intent(this, HealthConnectActivity::class.java))
         }
+        link(binding.achievementsLink, R.drawable.ic_nav_route, "Hành trình", "Tiến độ hành trình đang đi và bản đồ tuyến đường") {
+            startActivity(Intent(this, com.project.bcv.feature.journey.presentation.JourneyActivity::class.java))
+        }
+        binding.journalLink.root.visibility = View.GONE
         link(binding.statsLink, R.drawable.ic_bar_chart, "Thống kê cá nhân", "Bước chân, địa danh, thẻ và nhiệm vụ") {
             startActivity(Intent(this, StatsActivity::class.java))
         }

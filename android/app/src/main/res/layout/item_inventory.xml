@@ -33,7 +33,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textColor="@color/forest"
-                android:textSize="19sp"
+                android:textSize="17sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -43,7 +43,7 @@
                 android:layout_marginTop="4dp"
                 android:lineSpacingExtra="3dp"
                 android:textColor="#6F8579"
-                android:textSize="14sp" />
+                android:textSize="13sp" />
         </LinearLayout>
 
         <TextView

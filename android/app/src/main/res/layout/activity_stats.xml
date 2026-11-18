@@ -79,7 +79,7 @@
                         android:layout_marginTop="4dp"
                         android:text="Tổng bước chân hợp lệ đã ghi nhận"
                         android:textColor="#E6FFFFFF"
-                        android:textSize="14sp" />
+                        android:textSize="15sp" />
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -120,7 +120,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="14dp"
                         android:textColor="@color/forest"
-                        android:textSize="28sp"
+                        android:textSize="26sp"
                         android:textStyle="bold" />
 
                     <TextView
@@ -156,7 +156,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="14dp"
                         android:textColor="@color/forest"
-                        android:textSize="28sp"
+                        android:textSize="26sp"
                         android:textStyle="bold" />
 
                     <TextView
@@ -199,7 +199,7 @@
                         android:layout_weight="1"
                         android:text="Hằng ngày"
                         android:textColor="@color/forest"
-                        android:textSize="14sp"
+                        android:textSize="15sp"
                         android:textStyle="bold" />
 
                     <TextView
@@ -234,7 +234,7 @@
                         android:layout_weight="1"
                         android:text="Hằng tuần"
                         android:textColor="@color/forest"
-                        android:textSize="14sp"
+                        android:textSize="15sp"
                         android:textStyle="bold" />
 
                     <TextView

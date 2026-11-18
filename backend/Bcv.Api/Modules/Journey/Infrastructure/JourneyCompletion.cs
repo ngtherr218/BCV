@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Npgsql;
 using Bcv.Api.Modules.Journey.Application;
 
@@ -36,6 +37,34 @@ public static class JourneyCompletion
         if(result.GetProperty("status").GetString()!="COMPLETED" || result.GetProperty("completedAt").ValueKind==JsonValueKind.Null
             || result.GetProperty("recordedSteps").GetInt32()<result.GetProperty("requiredSteps").GetInt32())
             throw new JourneyException("JOURNEY_NOT_COMPLETED","Hành trình chưa được máy chủ xác nhận hoàn thành.");
-        return result;
+        await using var details = db.CreateCommand("""
+            WITH trip AS (SELECT * FROM journey WHERE journey_id=$1 AND user_id=$2),
+            totals AS (
+              SELECT e.user_id,
+                sum(e.points) FILTER(WHERE e.occurred_at < j.completed_at::timestamptz) AS before_points,
+                sum(e.points) AS after_points
+              FROM trip j JOIN explorer_score_event e ON
+                e.occurred_at >= (date_trunc('week',j.completed_at::timestamptz AT TIME ZONE 'Asia/Ho_Chi_Minh') AT TIME ZONE 'Asia/Ho_Chi_Minh')
+                AND e.occurred_at <= j.completed_at::timestamptz
+              JOIN app_user u ON u.user_id=e.user_id AND u.status='ACTIVE' GROUP BY e.user_id
+            ), before_ranks AS (SELECT user_id,dense_rank() OVER(ORDER BY before_points DESC) AS rank FROM totals WHERE before_points IS NOT NULL),
+            after_ranks AS (SELECT user_id,dense_rank() OVER(ORDER BY after_points DESC) AS rank FROM totals)
+            SELECT jsonb_build_object(
+              'quizAnswered',(SELECT count(*) FROM journey_quiz_answer WHERE journey_id=$1),
+              'quizCorrect',(SELECT count(*) FROM journey_quiz_answer WHERE journey_id=$1 AND is_correct),
+              'quizPoints',COALESCE((SELECT sum(points) FROM explorer_score_event WHERE user_id=$2 AND event_type='QUIZ' AND source_key LIKE $1::text||':%'),0),
+              'masteryPoints',COALESCE((SELECT sum(e.points) FROM explorer_score_event e JOIN trip j ON e.user_id=j.user_id
+                AND e.place_id=j.destination_place_id AND e.event_type='MASTERY'
+                AND e.occurred_at >= j.started_at::timestamptz AND e.occurred_at <= j.completed_at::timestamptz),0),
+              'rankBefore',(SELECT rank FROM before_ranks WHERE user_id=$2),
+              'rankAfter',(SELECT rank FROM after_ranks WHERE user_id=$2)
+            )::text
+            """);
+        details.Parameters.AddWithValue(journeyId); details.Parameters.AddWithValue(userId);
+        var receipt=JsonNode.Parse(json)!.AsObject();
+        var extra=JsonNode.Parse((string)(await details.ExecuteScalarAsync(ct))!)!.AsObject();
+        foreach(var field in extra) receipt[field.Key]=field.Value?.DeepClone();
+        receipt["totalPoints"]=receipt["rankingPoints"]!.GetValue<long>()+receipt["quizPoints"]!.GetValue<long>()+receipt["masteryPoints"]!.GetValue<long>();
+        return JsonSerializer.SerializeToElement(receipt);
     }
 }

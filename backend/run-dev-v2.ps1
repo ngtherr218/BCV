@@ -1,6 +1,18 @@
 param([int]$Port = 5082,[string]$BuildOutput)
 $ErrorActionPreference = 'Stop'
 if ($Port -lt 1 -or $Port -gt 65535) { throw 'Invalid API port.' }
+# Fail before building or starting adb jobs if another API already owns this port.
+$portProbe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Any, $Port)
+try {
+    $portProbe.Server.ExclusiveAddressUse = $true
+    $portProbe.Start()
+}
+catch [Net.Sockets.SocketException] {
+    throw "Cannot start local API: TCP port $Port is unavailable. Check the existing API at http://127.0.0.1:$Port/health. Stop its launcher before restarting, or use -Port with a free port and update the client API URL. Socket error: $($_.Exception.SocketErrorCode)"
+}
+finally {
+    $portProbe.Stop()
+}
 $root = Split-Path $PSScriptRoot -Parent
 $settings = @{}
 foreach ($line in [IO.File]::ReadAllLines((Join-Path $root '.env.local'))) {

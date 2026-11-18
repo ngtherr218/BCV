@@ -46,16 +46,16 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:accessibilityHeading="true"
-                        android:text="Nhiệm vụ"
+                        android:text="Thử thách"
                         android:textColor="@color/forest"
-                        android:textSize="32sp"
+                        android:textSize="30sp"
                         android:textStyle="bold" />
                 </LinearLayout>
 
                 <TextView
                     android:id="@+id/inventoryButton"
                     android:layout_width="wrap_content"
-                    android:layout_height="48dp"
+                    android:layout_height="40dp"
                     android:background="@drawable/quest_inventory_bg"
                     android:clickable="true"
                     android:drawableStart="@drawable/ic_backpack_outline"
@@ -64,27 +64,35 @@
                     android:focusable="true"
                     android:foreground="?attr/selectableItemBackground"
                     android:gravity="center_vertical"
-                    android:paddingStart="16dp"
-                    android:paddingEnd="20dp"
-                    android:text="Kho vật phẩm"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="14dp"
+                    android:text="Vật phẩm"
                     android:textColor="@color/teal"
-                    android:textSize="14sp"
+                    android:textSize="13sp"
                     android:textStyle="bold" />
             </LinearLayout>
+
+            <!-- Today's steps and the streak, filled in code. -->
+            <FrameLayout
+                android:id="@+id/streakSlot"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp" />
 
             <!-- Data state: updating / confirmed / failed. -->
             <FrameLayout
                 android:id="@+id/statusCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="20dp"
+                android:layout_marginTop="16dp"
+                android:visibility="gone"
                 android:background="@drawable/quest_status_bg"
-                android:padding="16dp">
+                android:paddingStart="14dp" android:paddingTop="10dp" android:paddingEnd="14dp" android:paddingBottom="10dp">
 
                 <ImageView
                     android:id="@+id/statusIcon"
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
                     android:layout_gravity="top|end"
                     android:contentDescription="@null"
                     android:src="@drawable/ic_sync_outline"
@@ -98,6 +106,7 @@
 
                     <TextView
                         android:id="@+id/statusEyebrow"
+                        android:visibility="gone"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="DỮ LIỆU ĐÃ XÁC NHẬN"
@@ -113,17 +122,17 @@
                         android:accessibilityLiveRegion="polite"
                         android:text="Đang cập nhật tiến độ"
                         android:textColor="@color/forest"
-                        android:textSize="22sp"
+                        android:textSize="15sp"
                         android:textStyle="bold" />
 
                     <TextView
                         android:id="@+id/statusBody"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
+                        android:layout_marginTop="2dp"
                         android:text="Các số liệu được giữ đến khi tải xong."
                         android:textColor="#6F8579"
-                        android:textSize="14sp" />
+                        android:textSize="13sp" />
                 </LinearLayout>
             </FrameLayout>
 
@@ -139,8 +148,34 @@
 
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="56dp"
-                android:layout_marginTop="16dp"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/sectionTitle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:accessibilityHeading="true"
+                    android:text="Nhiệm vụ hôm nay"
+                    android:textColor="@color/forest"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/sectionCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="#7C9086"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="10dp"
                 android:background="@drawable/quest_segment_bg"
                 android:orientation="horizontal"
                 android:padding="4dp">
@@ -169,38 +204,19 @@
             </LinearLayout>
 
             <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="20dp"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:id="@+id/sectionTitle"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:accessibilityHeading="true"
-                    android:text="Nhiệm vụ hôm nay"
-                    android:textColor="@color/forest"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/sectionCount"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textColor="#7C9086"
-                    android:textSize="13sp" />
-            </LinearLayout>
-
-            <LinearLayout
                 android:id="@+id/questList"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical" />
 
             <include android:id="@+id/skeleton" layout="@layout/skeleton_quest" />
+
+            <!-- Badges, filled in code. -->
+            <LinearLayout
+                android:id="@+id/badgeSlot"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
         </LinearLayout>
     </ScrollView>
 

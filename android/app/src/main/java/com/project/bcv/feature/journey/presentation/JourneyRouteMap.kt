@@ -39,7 +39,7 @@ import kotlinx.coroutines.withContext
 /** Small read-only Goong map: virtual location → walker at the confirmed progress → destination. */
 class JourneyRouteMap(activity: Activity, savedState: Bundle?, private val host: FrameLayout) {
     private val density = activity.resources.displayMetrics.density
-    private val mapView = MapView(activity)
+    private val mapView: MapView
     private val startPin = ImageView(activity).apply {
         setImageResource(R.drawable.ic_map_marker_red)
         contentDescription = "Vị trí ảo"
@@ -70,6 +70,7 @@ class JourneyRouteMap(activity: Activity, savedState: Bundle?, private val host:
 
     init {
         MapLibre.getInstance(activity)
+        mapView = MapView(activity)
         mapView.onCreate(savedState)
         host.addView(mapView, 0, FrameLayout.LayoutParams(-1, -1))
         val pinSize = (34 * density).toInt()

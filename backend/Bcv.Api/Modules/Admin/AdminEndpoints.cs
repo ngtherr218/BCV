@@ -76,8 +76,8 @@ public static class AdminEndpoints
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             { return Results.Json(new { message = "Goong phản hồi quá lâu. Bạn có thể chọn khu vực trong biểu mẫu." }, statusCode: 503); }
         });
-        group.MapGet("/data/{resource}", (string resource, string? q, string? status, string? cycle, long? regionId, long? typeId, int? page, int? pageSize, AdminRepository repo, CancellationToken ct) =>
-            repo.List(resource, q, status, regionId, typeId, page ?? 1, pageSize ?? 12, ct, cycle));
+        group.MapGet("/data/{resource}", (string resource, string? q, string? status, string? cycle, long? regionId, long? typeId, int? page, int? pageSize, long? placeId, int? difficulty, string? sort, AdminRepository repo, CancellationToken ct) =>
+            repo.List(resource, q, status, regionId, typeId, page ?? 1, pageSize ?? 12, ct, cycle, placeId, difficulty, sort));
         group.MapGet("/data/{resource}/{id:long}", async (string resource, long id, AdminRepository repo, CancellationToken ct) =>
             await repo.Detail(resource, id, ct) is { } data ? Results.Ok(data) : Results.NotFound(new { message = "Không tìm thấy bản ghi." }));
         group.MapPost("/data/{resource}", (string resource, System.Text.Json.JsonElement body, HttpContext http, AdminRepository repo, CancellationToken ct) =>

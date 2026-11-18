@@ -20,6 +20,7 @@ class JsonApiClient(context: Context, private val baseUrl: String) {
     fun get(path: String, token: String) = request("GET", path, null, token)
     fun post(path: String, body: JSONObject, token: String? = null) = request("POST", path, body, token)
     fun put(path: String, body: JSONObject, token: String) = request("PUT", path, body, token)
+    fun delete(path: String, token: String) = request("DELETE", path, null, token)
 
     fun postBytes(path: String, bytes: ByteArray, mime: String, token: String) = request("POST", path, null, token, bytes, mime)
 

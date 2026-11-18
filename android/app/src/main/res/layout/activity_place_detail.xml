@@ -50,196 +50,170 @@
             </LinearLayout>
         </LinearLayout>
 
-        <LinearLayout android:id="@+id/lockedContent" android:layout_width="match_parent"
+        <!--
+          One page for every place. Before the walk it is a preview (cover photo, story, fun fact) with
+          what the walk unlocks; after it, the full gallery and videos join the same layout.
+        -->
+        <LinearLayout android:id="@+id/placeContent" android:layout_width="match_parent"
             android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
 
             <FrameLayout android:id="@+id/heroCard" android:layout_width="match_parent"
-                android:layout_height="202dp" android:background="@drawable/destination_hero_bg"
+                android:layout_height="280dp" android:background="@drawable/place_hero_empty_bg"
                 android:clipToOutline="true">
                 <ImageView android:id="@+id/placeImage" android:layout_width="match_parent"
                     android:layout_height="match_parent" android:contentDescription="Ảnh địa danh"
-                    android:scaleType="centerCrop" android:background="#E7ECEF" />
-                <View android:id="@+id/heroShade" android:layout_width="match_parent"
-                    android:layout_height="match_parent" android:background="#65302721" />
-                <LinearLayout android:id="@+id/lockedHeroContent"
-                    android:layout_width="match_parent" android:layout_height="match_parent"
-                    android:gravity="center" android:orientation="vertical">
-                    <ImageView android:layout_width="48dp" android:layout_height="48dp"
-                        android:background="@drawable/destination_lock_circle"
-                        android:contentDescription="Chưa mở khóa" android:padding="13dp"
+                    android:scaleType="centerCrop" />
+                <!-- No photo of this place yet: a calm branded cover instead of a grey box. -->
+                <ImageView android:id="@+id/heroPlaceholder" android:layout_width="72dp"
+                    android:layout_height="72dp" android:layout_gravity="center"
+                    android:layout_marginBottom="40dp" android:alpha="0.55"
+                    android:contentDescription="@null" android:src="@drawable/ic_travel_explore"
+                    android:visibility="gone" app:tint="@color/white" />
+                <View android:layout_width="match_parent" android:layout_height="170dp"
+                    android:layout_gravity="bottom" android:background="@drawable/place_hero_gradient" />
+
+                <LinearLayout android:id="@+id/statusTag" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:layout_gravity="top|start"
+                    android:layout_margin="14dp" android:background="@drawable/place_preview_tag"
+                    android:gravity="center_vertical" android:orientation="horizontal"
+                    android:paddingStart="10dp" android:paddingTop="6dp" android:paddingEnd="12dp"
+                    android:paddingBottom="6dp">
+                    <ImageView android:id="@+id/statusIcon" android:layout_width="15dp"
+                        android:layout_height="15dp" android:contentDescription="@null"
                         android:src="@drawable/ic_lock" app:tint="@color/forest" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:layout_marginTop="24dp" android:text="Chưa mở khóa"
-                        android:textColor="@color/white" android:textSize="16sp" android:textStyle="bold" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp" android:text="Hoàn thành hành trình để khám phá"
-                        android:textColor="@color/white" android:textSize="13sp" />
+                    <TextView android:id="@+id/statusText" android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" android:layout_marginStart="6dp"
+                        android:text="Chưa mở khóa" android:textColor="@color/forest"
+                        android:textSize="12sp" android:textStyle="bold" />
                 </LinearLayout>
-            </FrameLayout>
-
-            <TextView android:id="@+id/placeName" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:layout_marginTop="22dp"
-                android:textColor="@color/forest" android:textSize="32sp" android:textStyle="bold"
-                android:maxLines="3" />
-
-            <LinearLayout android:layout_width="match_parent" android:layout_height="76dp"
-                android:layout_marginTop="20dp" android:background="@drawable/destination_distance_bg"
-                android:gravity="center_vertical" android:orientation="horizontal"
-                android:paddingStart="20dp" android:paddingEnd="16dp">
-                <ImageView android:layout_width="28dp" android:layout_height="28dp"
-                    android:contentDescription="Khoảng cách đi bộ" android:src="@drawable/ic_directions_walk"
-                    app:tint="@color/teal" />
-                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginStart="16dp" android:orientation="vertical">
-                    <TextView android:id="@+id/distanceText" android:layout_width="wrap_content"
-                        android:layout_height="wrap_content" android:textColor="@color/forest"
-                        android:textSize="19sp" android:textStyle="bold" />
-                    <TextView android:id="@+id/stepsText" android:layout_width="wrap_content"
-                        android:layout_height="wrap_content" android:layout_marginTop="4dp"
-                        android:textColor="#71867B" android:textSize="14sp" />
-                </LinearLayout>
-            </LinearLayout>
-
-            <LinearLayout android:id="@+id/lockedNotice" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:minHeight="94dp"
-                android:layout_marginTop="22dp" android:background="@drawable/destination_locked_bg"
-                android:gravity="center_vertical" android:orientation="horizontal"
-                android:padding="18dp">
-                <ImageView android:layout_width="22dp" android:layout_height="22dp"
-                    android:contentDescription="Phần thưởng khám phá" android:src="@drawable/ic_lock"
-                    app:tint="#849580" />
-                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginStart="14dp" android:lineSpacingExtra="4dp"
-                    android:text="Bạn đang xem trước địa danh.\nHoàn thành hành trình để ghi nhận\nkhám phá và nhận thẻ sưu tập."
-                    android:textColor="#71867B" android:textSize="14sp" />
-            </LinearLayout>
-
-            <TextView android:id="@+id/unlockedDescription" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:layout_marginTop="20dp"
-                android:textColor="@color/forest" android:textSize="15sp" android:visibility="gone" />
-        </LinearLayout>
-
-        <!-- Shown once the place is discovered ("Nội dung địa danh"). -->
-        <LinearLayout android:id="@+id/unlockedContent" android:layout_width="match_parent"
-            android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
-
-            <TextView android:id="@+id/unlockedName" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:accessibilityHeading="true"
-                android:textColor="@color/forest" android:textSize="32sp" android:textStyle="bold" />
-
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:layout_marginTop="14dp" android:gravity="center_vertical"
-                android:orientation="horizontal">
-                <LinearLayout android:layout_width="wrap_content" android:layout_height="40dp"
-                    android:background="@drawable/journey_status_chip_bg" android:gravity="center_vertical"
-                    android:orientation="horizontal" android:paddingStart="14dp" android:paddingEnd="20dp">
-                    <ImageView android:layout_width="18dp" android:layout_height="18dp"
-                        android:contentDescription="@null" android:src="@drawable/ic_lock_open_outline"
-                        app:tint="@color/teal" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:layout_marginStart="10dp" android:text="Đã khám phá"
-                        android:textColor="@color/teal" android:textSize="14sp" android:textStyle="bold" />
-                </LinearLayout>
-                <TextView android:id="@+id/regionText" android:layout_width="0dp"
-                    android:layout_height="wrap_content" android:layout_marginStart="20dp"
-                    android:layout_weight="1" android:drawableStart="@drawable/ic_note_pin"
-                    android:drawablePadding="10dp" android:gravity="center_vertical" android:maxLines="1"
-                    android:ellipsize="end" android:textColor="#6F8579" android:textSize="15sp" />
-            </LinearLayout>
-
-            <FrameLayout android:id="@+id/galleryFrame" android:layout_width="match_parent" android:layout_height="180dp"
-                android:layout_marginTop="18dp" android:background="@drawable/destination_hero_bg"
-                android:clipToOutline="true">
-                <ImageView android:id="@+id/galleryImage" android:layout_width="match_parent"
-                    android:layout_height="match_parent" android:scaleType="centerCrop"
-                    android:background="#E7ECEF" />
-            </FrameLayout>
-
-            <LinearLayout android:id="@+id/galleryCaptionRow" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:layout_marginTop="10dp" android:orientation="horizontal">
-                <TextView android:id="@+id/galleryCaption" android:layout_width="0dp"
-                    android:layout_height="wrap_content" android:layout_weight="1" android:maxLines="1"
-                    android:ellipsize="end" android:textColor="@color/forest" android:textSize="15sp" />
                 <TextView android:id="@+id/galleryCounter" android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" android:textColor="#7C9086" android:textSize="14sp" />
-            </LinearLayout>
+                    android:layout_height="wrap_content" android:layout_gravity="top|end"
+                    android:layout_margin="14dp" android:background="@drawable/place_counter_bg"
+                    android:paddingStart="10dp" android:paddingTop="5dp" android:paddingEnd="10dp"
+                    android:paddingBottom="5dp" android:textColor="@color/white" android:textSize="12sp"
+                    android:textStyle="bold" android:visibility="gone" />
 
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_gravity="bottom" android:orientation="vertical"
+                    android:paddingStart="18dp" android:paddingEnd="18dp" android:paddingBottom="16dp">
+                    <TextView android:id="@+id/placeName" android:layout_width="match_parent"
+                        android:layout_height="wrap_content" android:accessibilityHeading="true"
+                        android:ellipsize="end" android:maxLines="2" android:shadowColor="#66000000"
+                        android:shadowRadius="6" android:textColor="@color/white" android:textSize="26sp"
+                        android:textStyle="bold" />
+                    <TextView android:id="@+id/regionText" android:layout_width="match_parent"
+                        android:layout_height="wrap_content" android:layout_marginTop="4dp"
+                        android:drawableStart="@drawable/ic_note_pin" android:drawablePadding="6dp"
+                        android:drawableTint="#E6FFFFFF" android:gravity="center_vertical"
+                        android:maxLines="1" android:ellipsize="end" android:textColor="#E6FFFFFF"
+                        android:textSize="15sp" />
+                </LinearLayout>
+            </FrameLayout>
 
-            <LinearLayout android:id="@+id/galleryThumbRow" android:layout_width="match_parent"
+            <!-- Other photos of the place (unlocked only). -->
+            <HorizontalScrollView android:id="@+id/galleryThumbRow" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:layout_marginTop="12dp"
-                android:gravity="center_vertical" android:orientation="horizontal" android:visibility="gone">
+                android:scrollbars="none" android:visibility="gone">
                 <LinearLayout android:id="@+id/galleryThumbs" android:layout_width="wrap_content"
                     android:layout_height="wrap_content" android:orientation="horizontal" />
-                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
-                    android:layout_marginStart="10dp" android:layout_weight="1" android:lineSpacingExtra="3dp"
-                    android:text="Chọn ảnh để khám phá những góc nhìn khác." android:textColor="#7C9086"
-                    android:textSize="12sp" />
+            </HorizontalScrollView>
+
+            <!-- At a glance: rating, walk, kind of place. -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="16dp" android:baselineAligned="false"
+                android:orientation="horizontal">
+                <LinearLayout style="@style/PlaceStat" android:layout_marginEnd="8dp">
+                    <TextView android:id="@+id/ratingValue" style="@style/PlaceStatValue" />
+                    <TextView android:id="@+id/ratingLabel" style="@style/PlaceStatLabel" />
+                </LinearLayout>
+                <LinearLayout style="@style/PlaceStat" android:layout_marginEnd="8dp">
+                    <TextView android:id="@+id/distanceText" style="@style/PlaceStatValue" />
+                    <TextView android:id="@+id/stepsText" style="@style/PlaceStatLabel" />
+                </LinearLayout>
+                <LinearLayout style="@style/PlaceStat">
+                    <TextView android:id="@+id/placeTypeText" style="@style/PlaceStatValue"
+                        android:maxLines="2" android:textSize="15sp" />
+                    <TextView style="@style/PlaceStatLabel" android:text="Loại hình" />
+                </LinearLayout>
             </LinearLayout>
 
-            <TextView android:id="@+id/storyTitle" android:layout_width="wrap_content"
-                android:layout_height="wrap_content" android:layout_marginTop="22dp"
-                android:accessibilityHeading="true" android:text="Câu chuyện địa danh"
-                android:textColor="@color/forest" android:textSize="20sp" android:textStyle="bold" />
-
-            <TextView android:id="@+id/storyText" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:layout_marginTop="8dp"
-                android:lineSpacingExtra="5dp" android:textColor="#6F8579" android:textSize="16sp" />
+            <!-- Locked: what walking here unlocks. -->
+            <LinearLayout android:id="@+id/unlockCard" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="16dp"
+                android:background="@drawable/place_unlock_bg" android:orientation="vertical"
+                android:padding="16dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Đi bộ đến đây để mở khóa" android:textColor="#6B4A10"
+                    android:textSize="17sp" android:textStyle="bold" />
+                <TextView android:id="@+id/unlockHint" android:layout_width="match_parent"
+                    android:layout_height="wrap_content" android:layout_marginTop="2dp"
+                    android:textColor="#8F7440" android:textSize="13sp" />
+                <TextView style="@style/PlaceUnlockRow" android:drawableStart="@drawable/ic_visibility"
+                    android:text="Bộ ảnh đầy đủ và ảnh đóng góp" />
+                <TextView style="@style/PlaceUnlockRow" android:drawableStart="@drawable/ic_nav_collection"
+                    android:text="Thẻ sưu tập của địa danh" />
+                <TextView style="@style/PlaceUnlockRow" android:drawableStart="@drawable/ic_quiz"
+                    android:text="Điểm khám phá và trạm câu hỏi" />
+            </LinearLayout>
 
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:layout_marginTop="22dp" android:accessibilityHeading="true"
-                android:text="Điểm nổi bật" android:textColor="@color/forest" android:textSize="20sp"
+                android:layout_marginTop="24dp" android:accessibilityHeading="true"
+                android:text="Giới thiệu" android:textColor="@color/forest" android:textSize="20sp"
                 android:textStyle="bold" />
+            <TextView android:id="@+id/storyText" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="8dp"
+                android:lineSpacingExtra="5dp" android:textColor="#4F6559" android:textSize="15sp" />
 
             <LinearLayout android:id="@+id/factCard" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:layout_marginTop="12dp"
-                android:background="@drawable/place_highlight_warm_bg" android:orientation="vertical"
+                android:layout_height="wrap_content" android:layout_marginTop="20dp"
+                android:background="@drawable/place_highlight_warm_bg" android:orientation="horizontal"
                 android:padding="16dp">
-                <ImageView android:layout_width="24dp" android:layout_height="24dp"
-                    android:contentDescription="@null" android:src="@drawable/ic_account_balance_outline"
-                    app:tint="#A36A2A" />
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp" android:text="Bạn có biết?"
-                    android:textColor="@color/forest" android:textSize="16sp" android:textStyle="bold" />
-                <TextView android:id="@+id/factText" android:layout_width="match_parent"
-                    android:layout_height="wrap_content" android:layout_marginTop="4dp"
-                    android:lineSpacingExtra="3dp" android:textColor="#6F8579" android:textSize="14sp" />
+                    android:text="💡" android:textSize="20sp" />
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp" android:layout_weight="1" android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="Bạn có biết?" android:textColor="@color/forest" android:textSize="15sp"
+                        android:textStyle="bold" />
+                    <TextView android:id="@+id/factText" android:layout_width="match_parent"
+                        android:layout_height="wrap_content" android:layout_marginTop="4dp"
+                        android:lineSpacingExtra="3dp" android:textColor="#5F7468" android:textSize="15sp" />
+                </LinearLayout>
             </LinearLayout>
 
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:layout_marginTop="10dp" android:background="@drawable/place_highlight_cool_bg"
-                android:orientation="vertical" android:padding="16dp">
-                <ImageView android:layout_width="24dp" android:layout_height="24dp"
-                    android:contentDescription="@null" android:src="@drawable/ic_category_outline"
-                    app:tint="@color/teal" />
-                <TextView android:id="@+id/placeTypeText" android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" android:layout_marginTop="10dp"
-                    android:textColor="@color/forest" android:textSize="16sp" android:textStyle="bold" />
-                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp" android:text="Nhóm địa danh trong bộ sưu tập của bạn."
-                    android:textColor="#6F8579" android:textSize="14sp" />
-            </LinearLayout>
+            <TextView android:id="@+id/photoCredits" android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="12dp" android:textColor="@color/muted" android:textSize="12sp" />
+<LinearLayout android:id="@+id/approvedCommunity" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="20dp"
+                android:orientation="vertical" android:visibility="gone" />
         </LinearLayout>
-            <TextView android:id="@+id/photoCredits" android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:layout_marginTop="8dp" android:textSize="12sp" android:textColor="@color/muted"
-                android:linksClickable="true" android:visibility="gone" />
-        <LinearLayout android:id="@+id/approvedCommunity" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone" />
         </LinearLayout>
     </ScrollView>
 
     <LinearLayout android:id="@+id/bottomBar" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:visibility="gone"
-        android:orientation="vertical" android:paddingStart="24dp" android:paddingEnd="24dp"
-        android:paddingBottom="26dp">
-        <View android:layout_width="match_parent" android:layout_height="1dp"
-            android:background="#DDE8DA" />
+        android:visibility="gone" android:background="@drawable/place_bottom_bar_bg"
+        android:orientation="horizontal" android:baselineAligned="false" android:gravity="center_vertical"
+        android:paddingStart="20dp" android:paddingTop="12dp"
+        android:paddingEnd="20dp" android:paddingBottom="16dp">
+        <!-- Unlocked: private journal. Locked: pick as destination. Both: real-world GPS check-in. -->
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/communityMediaButton" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="Ảnh cộng đồng · Gửi nội dung" />
-        <Button android:id="@+id/selectButton" android:layout_width="match_parent"
-            android:layout_height="56dp" android:layout_marginTop="26dp"
-            android:background="@drawable/destination_button_bg"
-            android:backgroundTint="@null" android:enabled="false"
-            android:text="Chọn làm điểm đến" android:textAllCaps="false"
-            android:textColor="@color/white" android:textSize="16sp" android:textStyle="bold" />
+            android:id="@+id/checkinButton" android:visibility="gone" style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="0dp" android:layout_height="54dp" android:layout_weight="1"
+            android:layout_marginEnd="10dp" android:text="Check-in" android:textAllCaps="false"
+            android:maxLines="1" android:paddingStart="8dp" android:paddingEnd="8dp" app:iconPadding="4dp"
+            android:textColor="@color/teal" android:textStyle="bold" app:cornerRadius="16dp"
+            app:strokeColor="#CFE0D6" app:icon="@drawable/ic_starting_pin" app:iconTint="@color/teal"
+            app:iconGravity="textStart" />
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/communityMediaButton" style="@style/Widget.Material3.Button"
+            android:layout_width="0dp" android:layout_height="54dp" android:layout_weight="1.4"
+            android:text="Đóng góp ảnh" android:textAllCaps="false" android:textStyle="bold"
+            app:backgroundTint="@color/teal" app:cornerRadius="16dp"
+            app:icon="@drawable/ic_journal_book" app:iconGravity="textStart" />
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/selectButton" style="@style/Widget.Material3.Button"
+            android:layout_width="0dp" android:layout_height="54dp" android:layout_weight="1.4"
+            android:enabled="false" android:text="Chọn làm điểm đến" android:textAllCaps="false"
+            android:textSize="15sp" android:textStyle="bold" app:backgroundTint="@color/place_primary_button"
+            app:cornerRadius="16dp" />
     </LinearLayout>
 </LinearLayout>

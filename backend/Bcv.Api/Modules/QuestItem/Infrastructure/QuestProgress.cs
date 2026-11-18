@@ -10,6 +10,7 @@ namespace Bcv.Api.Modules.QuestItem.Infrastructure;
 /// </summary>
 public static class QuestProgress
 {
+    public const string QuizCorrect = "QUIZ_CORRECT";
     public const string StepCount = "STEP_COUNT";
     public const string DiscoverPlace = "DISCOVER_PLACE";
     public const string CompleteJourney = "COMPLETE_JOURNEY";

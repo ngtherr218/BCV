@@ -34,6 +34,11 @@ class JourneyCompletionActivity:AppCompatActivity(){
   super.onCreate(savedInstanceState)
   binding=ActivityJourneyCompletionBinding.inflate(layoutInflater)
   setUpDetailScreen(binding.root)
+  binding.content.addOnLayoutChangeListener{_,left,_,right,_,_,_,_,_->
+   val width=minOf(right-left,(640*resources.displayMetrics.density).toInt())
+   if(binding.completionBody.layoutParams.width!=width) binding.completionBody.layoutParams=
+    (binding.completionBody.layoutParams as android.widget.FrameLayout.LayoutParams).apply{this.width=width;gravity=android.view.Gravity.CENTER_HORIZONTAL}
+  }
   BottomNav.skipTransition(this,true)
   animated=savedInstanceState?.getBoolean("entrancePlayed")?:false
   binding.topBar.screenTitle.text="Thành quả hành trình"
@@ -59,8 +64,22 @@ class JourneyCompletionActivity:AppCompatActivity(){
   val format=NumberFormat.getIntegerInstance(Locale.forLanguageTag("vi-VN"))
   stepsValue.text=format.format(value.recordedSteps)
   stepsValue.contentDescription="${stepsValue.text} bước hành trình được máy chủ ghi nhận"
-  pointsValue.text="+${format.format(value.rankingPoints)}"
-  pointsValue.contentDescription="${format.format(value.rankingPoints)} điểm khám phá đã nhận"
+  pointsValue.text="+${format.format(value.totalPoints)}"
+  pointsValue.contentDescription="Tổng cộng ${format.format(value.totalPoints)} điểm đã nhận trong hành trình"
+  val rewards=mutableListOf("Khám phá địa danh   +${format.format(value.rankingPoints)} điểm")
+  if(value.quizAnswered>0) rewards.add("Trả lời đúng ${value.quizCorrect}/${value.quizAnswered} câu   +${format.format(value.quizPoints)} điểm")
+  if(value.masteryPoints>0) rewards.add("Thưởng Am hiểu   +${format.format(value.masteryPoints)} điểm")
+  rewardBreakdown.text=rewards.joinToString("\n")
+  val before=value.rankBefore;val after=value.rankAfter
+  rankValue.text=when{after==null->"Chưa có thứ hạng";before==null->"#${format.format(after)}";else->"#${format.format(before)} → #${format.format(after)}"}
+  rankChange.text=when{
+   after==null->"Chưa ghi nhận vị trí trong tuần hoàn thành."
+   before==null->"Bạn đã có tên trên bảng xếp hạng!"
+   after<before->"↑ Tăng ${format.format(before-after)} bậc khi hoàn thành"
+   after>before->"↓ Giảm ${format.format(after-before)} bậc khi hoàn thành"
+   else->"Giữ vững vị trí #${format.format(after)}"
+  }
+  rankChange.setTextColor(getColor(if(after!=null&&before!=null&&after>before) R.color.forest else R.color.teal))
   completedTime.text=runCatching{"Hoàn thành lúc "+LocalDateTime.parse(value.completedAt).format(DateTimeFormatter.ofPattern("HH:mm · dd/MM/yyyy"))}.getOrDefault("")
   completedTime.visibility=if(completedTime.text.isEmpty())View.GONE else View.VISIBLE
   cardSection.visibility=if(value.card==null)View.GONE else View.VISIBLE

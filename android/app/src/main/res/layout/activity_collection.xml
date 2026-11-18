@@ -7,6 +7,41 @@
     android:background="@color/tab_screen_bg"
     android:orientation="vertical">
 
+    <!-- Fixed header shared with Hộ chiếu and Nhật ký, so switching pages never moves it. -->
+    <LinearLayout
+        android:id="@+id/collectionHeader"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="20dp"
+        android:paddingTop="20dp"
+        android:paddingEnd="20dp">
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="BƯỚC CHÂN VIỆT"
+            android:textColor="@color/teal"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:accessibilityHeading="true"
+            android:text="Bộ sưu tập"
+            android:textColor="@color/forest"
+            android:textSize="30sp"
+            android:textStyle="bold" />
+
+        <!-- Thẻ · Hộ chiếu · Nhật ký, filled in code. -->
+        <FrameLayout
+            android:id="@+id/collectionSwitcher"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="8dp" />
+    </LinearLayout>
+
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -18,42 +53,13 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:paddingStart="20dp"
-            android:paddingTop="20dp"
+            android:paddingTop="8dp"
             android:paddingEnd="20dp"
             android:paddingBottom="20dp">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="BƯỚC CHÂN VIỆT"
-                android:textColor="@color/teal"
-                android:textSize="12sp"
-                android:textStyle="bold" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:accessibilityHeading="true"
-                android:text="Bộ sưu tập"
-                android:textColor="@color/forest"
-                android:textSize="32sp"
-                android:textStyle="bold" />
 
             <!-- First load: shaped like the summary card, header and collection cards. -->
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Xem trước các thẻ văn hóa, tìm cảm hứng cho hành trình tiếp theo." android:textColor="@color/muted" android:textSize="14sp" />
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:orientation="horizontal" android:layout_marginTop="16dp">
-                <com.google.android.material.button.MaterialButton android:id="@+id/passportButton"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="0dp" android:layout_height="76dp" android:layout_weight="1"
-                    android:text="Hộ chiếu\nDấu chân theo vùng" android:textAllCaps="false"
-                    android:textSize="14sp" app:cornerRadius="16dp" app:strokeColor="@color/field_line" />
-                <com.google.android.material.button.MaterialButton android:id="@+id/leaderboardButton"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="0dp" android:layout_height="76dp" android:layout_weight="1"
-                    android:layout_marginStart="12dp" android:text="Xếp hạng\nThành tích tuần"
-                    android:textAllCaps="false" android:textSize="14sp" app:cornerRadius="16dp" app:strokeColor="@color/field_line" />
-            </LinearLayout>
             <include android:id="@+id/loadingSkeleton" layout="@layout/skeleton_collection" />
 
             <LinearLayout
@@ -63,6 +69,34 @@
                 android:orientation="vertical"
                 android:visibility="gone">
 
+            <LinearLayout
+                android:id="@+id/newCardsPanel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:padding="16dp"
+                android:background="@drawable/collection_card_new_bg"
+                android:orientation="vertical"
+                android:visibility="gone">
+                <TextView
+                    android:id="@+id/newCardsTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="20sp"
+                    android:textColor="@color/forest"
+                    android:textStyle="bold" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Thẻ vừa nhận từ hành trình. Chạm vào thẻ để xem."
+                    android:textColor="@color/teal"
+                    android:layout_marginTop="6dp" />
+                <LinearLayout
+                    android:id="@+id/newCardList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+            </LinearLayout>
             <!-- Total cards owned -->
             <LinearLayout
                 android:id="@+id/summaryCard"
@@ -122,13 +156,6 @@
                 </FrameLayout>
             </LinearLayout>
 
-            <com.google.android.material.button.MaterialButton android:id="@+id/allCardsButton"
-                android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="16dp"
-                android:text="Album thẻ · Xem tất cả" android:textAllCaps="false" app:cornerRadius="16dp" />
-            <com.google.android.material.button.MaterialButton android:id="@+id/newCardsButton"
-                style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="match_parent"
-                android:layout_height="56dp" android:text="Thẻ mới" android:textAllCaps="false"
-                app:cornerRadius="16dp" app:strokeColor="@color/field_line" />
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -141,9 +168,9 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:accessibilityHeading="true"
-                    android:text="Tất cả bộ sưu tập"
+                    android:text="Bộ sưu tập của bạn"
                     android:textColor="@color/forest"
-                    android:textSize="18sp"
+                    android:textSize="17sp"
                     android:textStyle="bold" />
 
                 <TextView
@@ -179,7 +206,7 @@
                     android:accessibilityLiveRegion="polite"
                     android:gravity="center"
                     android:textColor="#6F8579"
-                    android:textSize="14sp" />
+                    android:textSize="15sp" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/retryButton"

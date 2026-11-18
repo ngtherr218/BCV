@@ -31,7 +31,7 @@
             android:layout_marginStart="14dp"
             android:text="Thẻ địa danh"
             android:textColor="@color/forest"
-            android:textSize="18sp"
+            android:textSize="17sp"
             android:textStyle="bold" />
     </LinearLayout>
 
@@ -128,7 +128,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="16dp"
                         android:textColor="@color/forest"
-                        android:textSize="24sp"
+                        android:textSize="26sp"
                         android:textStyle="bold" />
 
                     <LinearLayout
@@ -178,7 +178,7 @@
                 android:layout_marginTop="18dp"
                 android:lineSpacingExtra="6dp"
                 android:textColor="#6F8579"
-                android:textSize="14sp" />
+                android:textSize="15sp" />
         </LinearLayout>
     </ScrollView>
 
@@ -192,7 +192,7 @@
         android:layout_marginBottom="20dp"
         android:text="Xem nội dung địa danh"
         android:textAllCaps="false"
-        android:textSize="16sp"
+        android:textSize="17sp"
         android:textStyle="bold"
         app:backgroundTint="@color/teal"
         app:cornerRadius="18dp"

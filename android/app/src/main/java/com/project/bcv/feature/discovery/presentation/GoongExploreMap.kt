@@ -29,7 +29,6 @@ import com.project.bcv.core.ui.RemoteImages
 import com.project.bcv.feature.account.auth.data.local.SessionPreferences
 import com.project.bcv.core.map.GoongDirectionsClient
 import com.project.bcv.core.map.RoadRoute
-import com.project.bcv.core.map.MapZoomControls
 import com.project.bcv.feature.discovery.domain.ExploreMapPlace
 import com.project.bcv.feature.discovery.domain.ExploreJourney
 import com.project.bcv.feature.discovery.domain.ExploreSnapshot
@@ -56,6 +55,7 @@ import org.maplibre.android.style.layers.PropertyFactory.iconAllowOverlap
 import org.maplibre.android.style.layers.PropertyFactory.iconAnchor
 import org.maplibre.android.style.layers.PropertyFactory.iconIgnorePlacement
 import org.maplibre.android.style.layers.PropertyFactory.iconImage
+import org.maplibre.android.style.layers.PropertyFactory.symbolSortKey
 import org.maplibre.android.style.layers.PropertyFactory.iconPadding
 import org.maplibre.android.style.layers.PropertyFactory.iconSize
 import org.maplibre.android.style.layers.PropertyFactory.lineCap
@@ -64,6 +64,20 @@ import org.maplibre.android.style.layers.PropertyFactory.lineJoin
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
+import org.maplibre.android.style.layers.PropertyFactory.textAllowOverlap
+import org.maplibre.android.style.layers.PropertyFactory.textAnchor
+import org.maplibre.android.style.layers.PropertyFactory.textColor
+import org.maplibre.android.style.layers.PropertyFactory.textField
+import org.maplibre.android.style.layers.PropertyFactory.textFont
+import org.maplibre.android.style.layers.PropertyFactory.textHaloColor
+import org.maplibre.android.style.layers.PropertyFactory.textHaloWidth
+import org.maplibre.android.style.layers.PropertyFactory.textIgnorePlacement
+import org.maplibre.android.style.layers.PropertyFactory.textMaxWidth
+import org.maplibre.android.style.layers.PropertyFactory.textOffset
+import org.maplibre.android.style.layers.PropertyFactory.textOptional
+import org.maplibre.android.style.layers.PropertyFactory.textSize
+import org.maplibre.android.style.layers.PropertyFactory.visibility
+import org.maplibre.android.style.sources.GeoJsonOptions
 import kotlin.math.hypot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -121,15 +135,15 @@ class GoongExploreMap(
             readyMap.uiSettings.isRotateGesturesEnabled = false
             readyMap.addOnMapClickListener { coordinate ->
                 val point = readyMap.projection.toScreenLocation(coordinate)
-                val radius = 24 * density
+                val radius = 28 * density
+                val zoom = readyMap.cameraPosition.zoom
+                // Pins stand above their tip, so their tap target is centred higher.
+                val lift = if (zoom >= PHOTO_MIN_ZOOM) PlacePhotoMarker.CENTER_LIFT_DP * density * pinScale(zoom) else 0f
                 val nearest = snapshot?.places?.map { place ->
                     val markerPoint = readyMap.projection.toScreenLocation(
                         LatLng(place.coordinates.latitude, place.coordinates.longitude))
-                    // Explored badges stand above their dot, so their tap target is centred higher.
-                    val zoom = readyMap.cameraPosition.zoom
-                    val lift = if (photoUrls[place.id] == null && place.isDiscovered && zoom >= EXPLORED_BADGE_MIN_ZOOM)
-                        26 * density * badgeScale(zoom) else 0f
-                    place.id to hypot(markerPoint.x - point.x, markerPoint.y - lift - point.y)
+                    val up = if (photoUrls[place.id] != null) lift else 0f
+                    place.id to hypot(markerPoint.x - point.x, markerPoint.y - up - point.y)
                 }?.minByOrNull { it.second }
                 if (nearest != null && nearest.second <= radius) { onPlaceTap(nearest.first); true }
                 else { onMapTap(); false }
@@ -140,16 +154,66 @@ class GoongExploreMap(
         }
     }
 
+    /** F76 question stop on the route: [fraction] of the way, LOCKED / OPEN / CORRECT / WRONG. */
+    data class QuizStop(val number: Int, val fraction: Double, val state: String)
+
+    private var host: FrameLayout? = null
+    private var quizStops = emptyList<QuizStop>()
+    private val quizMarkers = mutableListOf<TextView>()
+    var onQuizStopTap: (Int) -> Unit = {}
+
+    /** Shows one round marker per question stop along the current journey's road route. */
+    fun showQuizStops(stops: List<QuizStop>) {
+        if (stops == quizStops) return
+        quizStops = stops
+        val parent = host ?: return
+        while (quizMarkers.size > stops.size) parent.removeView(quizMarkers.removeAt(quizMarkers.lastIndex))
+        while (quizMarkers.size < stops.size) {
+            val marker = TextView(parent.context).apply {
+                gravity = Gravity.CENTER
+                textSize = 13f
+                setTypeface(typeface, Typeface.BOLD)
+                elevation = 5 * density
+                visibility = View.INVISIBLE
+            }
+            // Below the walker and destination badges so those stay readable when they overlap.
+            parent.addView(marker, parent.indexOfChild(mapView) + 1,
+                FrameLayout.LayoutParams((QUIZ_SIZE * density).toInt(), (QUIZ_SIZE * density).toInt()))
+            quizMarkers += marker
+        }
+        stops.forEachIndexed { index, stop ->
+            val (text, fill, ring, color) = when (stop.state) {
+                "OPEN" -> listOf("?", 0xFFFFC94D.toInt(), 0xFFFFFFFF.toInt(), 0xFF5A3B00.toInt())
+                "CORRECT" -> listOf("✓", 0xFF07836D.toInt(), 0xFFFFFFFF.toInt(), 0xFFFFFFFF.toInt())
+                "WRONG" -> listOf("✕", 0xFFB8C4BD.toInt(), 0xFFFFFFFF.toInt(), 0xFFFFFFFF.toInt())
+                else -> listOf("${stop.number}", 0xFFFFFFFF.toInt(), 0xFFB8C4BD.toInt(), 0xFF85968F.toInt())
+            }
+            quizMarkers[index].apply {
+                this.text = text as String
+                setTextColor(color as Int)
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL; setColor(fill as Int)
+                    setStroke((2.5f * density).toInt(), ring as Int)
+                }
+                contentDescription = "Trạm câu hỏi ${stop.number}: " + when (stop.state) {
+                    "OPEN" -> "đã mở, chạm để trả lời"; "CORRECT" -> "đã trả lời đúng"
+                    "WRONG" -> "đã trả lời"; else -> "chưa tới"
+                }
+                setOnClickListener { onQuizStopTap(stop.number) }
+            }
+        }
+        positionMarkers()
+    }
+
     fun attach(host: FrameLayout) {
+        this.host = host
         host.addView(mapView, 0, FrameLayout.LayoutParams(-1, -1))
         listOf(destinationMarker, progressMarker, startMarker).forEach { marker ->
             host.addView(marker, FrameLayout.LayoutParams(-2, -2))
             // Markers are anchored by their measured size, which is only known after layout.
             marker.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> positionMarkers() }
         }
-        MapZoomControls.attach(host, topDp = 74,
-            zoomIn = { map?.animateCamera(CameraUpdateFactory.zoomIn()) },
-            zoomOut = { map?.animateCamera(CameraUpdateFactory.zoomOut()) })
+        // No +/− buttons: pinch-to-zoom is enough and the buttons crowded the map.
     }
 
     fun show(value: ExploreSnapshot) {
@@ -168,7 +232,9 @@ class GoongExploreMap(
         } else {
             val bounds = LatLngBounds.Builder()
             places.forEach { bounds.include(LatLng(it.coordinates.latitude, it.coordinates.longitude)) }
-            map?.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds.build(), (48 * density).toInt()))
+            // Keep results clear of the location card (top) and the collapsed journey sheet (bottom).
+            map?.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds.build(),
+                (40 * density).toInt(), (120 * density).toInt(), (40 * density).toInt(), (190 * density).toInt()))
         }
     }
 
@@ -253,7 +319,8 @@ class GoongExploreMap(
             return
         }
         progressAnimator?.cancel()
-        if (!sameJourney || from == null) {
+        if (!sameJourney || !ValueAnimator.areAnimatorsEnabled()) {
+            // Keep the v2 reduced-motion fix: confirmed step progress must still move the walker.
             drawProgress(route, target)
             return
         }
@@ -337,7 +404,14 @@ class GoongExploreMap(
         val location = value.location ?: return
         val start = LatLng(location.coordinates.latitude, location.coordinates.longitude)
         placeMarker(startMarker, active.projection.toScreenLocation(start), anchorY = startMarker.height.toFloat())
-        val journey = value.journey?.takeIf { it.status == "IN_PROGRESS" } ?: return
+        val journey = value.journey?.takeIf { it.status == "IN_PROGRESS" }
+        val stopRoute = roadRoute
+        quizMarkers.forEachIndexed { index, marker ->
+            val stop = quizStops.getOrNull(index)
+            if (journey == null || stopRoute == null || stop == null) { marker.visibility = View.INVISIBLE; return@forEachIndexed }
+            placeMarker(marker, active.projection.toScreenLocation(stopRoute.pointAt(stop.fraction)), QUIZ_SIZE * density / 2)
+        }
+        journey ?: return
         val destination = LatLng(journey.destination.latitude, journey.destination.longitude)
         val badgeCenter = BADGE_SIZE * density / 2
         placeMarker(destinationMarker, active.projection.toScreenLocation(destination), badgeCenter)
@@ -411,113 +485,89 @@ class GoongExploreMap(
                     placeSource?.setGeoJson(placesGeoJson(snapshot?.places.orEmpty()))
                 } finally {
                     photoLoading.remove(place.id)
-                    if (snapshot?.places?.firstOrNull { it.id == place.id }?.isDiscovered != place.isDiscovered) loadPlacePhotos()
+                    // Keep going: only 30 load per pass, the rest of the visible places follow
+                    // without waiting for the next camera move. Loaded and failed ones are skipped.
+                    loadPlacePhotos()
                 }
             }
         }
     }
 
+    /**
+     * Places on the map, by zoom:
+     *  - places without a photo are a small dot (teal discovered, grey not yet); from
+     *    [PHOTO_MIN_ZOOM] places with a photo are a pin, the name underneath from [LABEL_MIN_ZOOM];
+     *  - zoomed out (below [THIN_UNTIL_ZOOM]) overlapping dots and pins thin out, discovered first,
+     *    so the map never turns into a carpet; from a city view up every place shows.
+     * The base map's own shop / restaurant / station icons are hidden so the places stand out.
+     */
     private fun installPlaceLayers(style: Style) {
+        style.layers.filter { it.id.startsWith("poi-") && it.id !in KEPT_BASE_POI }
+            .forEach { it.setProperties(visibility(Property.NONE)) }
         placeSource = GeoJsonSource(PLACE_SOURCE, EMPTY_COLLECTION)
         style.addSource(placeSource!!)
-        style.addLayer(CircleLayer("place-overview-dots", PLACE_SOURCE)
-            .withFilter(Expression.eq(Expression.get("isDiscovered"), Expression.literal(false)))
-            .withProperties(circleColor(0xFFC8463D.toInt()), circleRadius(4f), circleStrokeColor(0xFFFFFFFF.toInt()), circleStrokeWidth(1f))
+
+        val noPin = Expression.eq(Expression.get("hasPhoto"), Expression.literal(false))
+        // Dots are symbols, not circles, so zoomed out they thin themselves out instead of carpeting
+        // the map; from THIN_UNTIL_ZOOM (a city on screen) every place shows. Discovered ones win.
+        style.addImage(DOT_DISCOVERED, dot(0xFF07836D.toInt()))
+        style.addImage(DOT_LOCKED, dot(0xFF9AA59F.toInt()))
+        fun dots(id: String, filter: Expression) = SymbolLayer(id, PLACE_SOURCE)
+            .withFilter(filter)
+            .withProperties(
+                iconImage(Expression.switchCase(Expression.get("isDiscovered"), Expression.literal(DOT_DISCOVERED), Expression.literal(DOT_LOCKED))),
+                iconSize(zoomScale(5f to 0.75f, 12f to 1f)),
+                iconAllowOverlap(Expression.step(Expression.zoom(), Expression.literal(false), Expression.stop(THIN_UNTIL_ZOOM, true))),
+                iconPadding(6f),
+                symbolSortKey(Expression.switchCase(Expression.get("isDiscovered"), Expression.literal(0f), Expression.literal(1f))))
+        // Places with a photo are a pin from PHOTO_MIN_ZOOM; further out they are a dot like the rest.
+        style.addLayer(dots("place-far-photo-dots", Expression.eq(Expression.get("hasPhoto"), Expression.literal(true)))
             .apply { maxZoom = PHOTO_MIN_ZOOM })
-        style.addLayer(CircleLayer(EXPLORED_DOT_LAYER, PLACE_SOURCE)
-            .withFilter(Expression.eq(Expression.get("isDiscovered"), Expression.literal(true)))
-            .withProperties(circleColor(0xFFEE8F3A.toInt()), circleRadius(4f), circleStrokeColor(0xFFFFFFFF.toInt()), circleStrokeWidth(1f))
-            .apply { maxZoom = PHOTO_MIN_ZOOM })
-        style.addLayer(SymbolLayer("place-photo-layer", PLACE_SOURCE)
+        style.addLayer(dots(EXPLORED_DOT_LAYER, noPin))
+
+        // Only places with a photo get a pin; the rest stay a tidy dot instead of an empty frame.
+        style.addLayer(SymbolLayer(PIN_LAYER, PLACE_SOURCE)
             .withFilter(Expression.eq(Expression.get("hasPhoto"), Expression.literal(true)))
-            .withProperties(iconImage(Expression.get("thumbnail")), iconAllowOverlap(false),
-                iconSize(zoomScale(11f to .6f, 12f to .65f, 15f to 1f)), iconPadding(4f))
-            .apply { minZoom = PHOTO_MIN_ZOOM })
-        // Marker sizes follow the zoom: full size at street level, small dots when zoomed out,
-        // so places stop swelling over the map and each other.
-        style.addImage(LOCKED_IMAGE, lockedDot())
-        style.addLayer(SymbolLayer(LOCKED_LAYER, PLACE_SOURCE)
-            .withFilter(Expression.all(Expression.eq(Expression.get("isDiscovered"), Expression.literal(false)), Expression.eq(Expression.get("hasPhoto"), Expression.literal(false))))
-            .withProperties(iconImage(LOCKED_IMAGE),
-                iconSize(zoomScale(9f to 0.3f, 12f to 0.6f, 15f to 1f)),
-                // Zoomed out, overlapping locked dots thin themselves out; up close every one shows.
-                iconAllowOverlap(Expression.step(Expression.zoom(), Expression.literal(false),
-                    Expression.stop(13, true))),
-                iconPadding(1f))
-            .apply { minZoom = PHOTO_MIN_ZOOM })
-        style.addImage(EXPLORED_IMAGE, exploredBadge())
-        // Explored badges draw above locked dots and never hide; the badge's bottom is the orange
-        // dot, which sits exactly on the place at every scale.
-        style.addLayer(SymbolLayer(EXPLORED_ICON_LAYER, PLACE_SOURCE)
-            .withFilter(Expression.all(Expression.eq(Expression.get("isDiscovered"), Expression.literal(true)), Expression.eq(Expression.get("hasPhoto"), Expression.literal(false))))
-            .withProperties(iconImage(EXPLORED_IMAGE), iconAllowOverlap(true), iconIgnorePlacement(true),
+            .withProperties(
+                iconImage(Expression.get("thumbnail")),
                 iconAnchor(Property.ICON_ANCHOR_BOTTOM),
-                iconSize(zoomScale(11f to BADGE_SCALE_MIN, 13f to 0.75f, 15f to 1f)))
-            .apply { minZoom = EXPLORED_BADGE_MIN_ZOOM })
+                iconSize(zoomScale(PHOTO_MIN_ZOOM to PIN_SCALE_MIN, 9f to 0.6f, 11f to 0.72f, 14f to 1f)),
+                // Zoomed out, overlapping pins thin out (discovered first); from a city view up all show.
+                iconAllowOverlap(Expression.step(Expression.zoom(), Expression.literal(false), Expression.stop(THIN_UNTIL_ZOOM, true))),
+                iconPadding(2f),
+                textField(Expression.step(Expression.zoom(), Expression.literal(""),
+                    Expression.stop(LABEL_MIN_ZOOM, Expression.get("name")))),
+                textFont(arrayOf("Roboto Medium")), textSize(12f), textMaxWidth(9f),
+                textColor(0xFF19473B.toInt()), textHaloColor(0xFFFFFFFF.toInt()), textHaloWidth(1.6f),
+                textAnchor(Property.TEXT_ANCHOR_TOP), textOffset(arrayOf(0f, 0.25f)), textOptional(true),
+                // Discovered places win when pins would overlap.
+                symbolSortKey(Expression.switchCase(Expression.get("isDiscovered"), Expression.literal(0f), Expression.literal(1f))))
+            .apply { minZoom = PHOTO_MIN_ZOOM })
+    }
+
+    /** Small round marker: [color] fill with a white ring (5dp + 1.5dp). */
+    private fun dot(color: Int): Bitmap {
+        val radius = 5 * density; val ring = 1.5f * density
+        val size = ((radius + ring) * 2).toInt() + 2
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap); val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        paint.color = 0xFFFFFFFF.toInt(); canvas.drawCircle(size / 2f, size / 2f, radius + ring, paint)
+        paint.color = color; canvas.drawCircle(size / 2f, size / 2f, radius, paint)
+        return bitmap
     }
 
     private fun zoomScale(vararg stops: Pair<Float, Float>): Expression = Expression.interpolate(
         Expression.linear(), Expression.zoom(),
         *stops.map { (zoom, scale) -> Expression.stop(zoom, scale) }.toTypedArray())
 
-    /** Badge scale at [zoom], matching the explored icon layer, for tap targets. */
-    private fun badgeScale(zoom: Double): Float = when {
-        zoom <= 11 -> BADGE_SCALE_MIN
-        zoom <= 13 -> BADGE_SCALE_MIN + (0.75f - BADGE_SCALE_MIN) * ((zoom - 11) / 2).toFloat()
-        zoom <= 15 -> 0.75f + 0.25f * ((zoom - 13) / 2).toFloat()
-        else -> 1f
-    }
-
-    /** Red dot with a white ring (10dp + 3dp at full size) for a place not discovered yet. */
-    private fun lockedDot(): Bitmap {
-        val radius = 10 * density
-        val ring = 3 * density
-        val size = ((radius + ring) * 2).toInt() + 1
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        paint.color = 0xFFFFFFFF.toInt()
-        canvas.drawCircle(size / 2f, size / 2f, radius + ring, paint)
-        paint.color = 0xFFDB594C.toInt()
-        canvas.drawCircle(size / 2f, size / 2f, radius, paint)
-        return bitmap
-    }
-
-    /** Cream circle with the house icon, and an orange dot below it marking the place. */
-    private fun exploredBadge(): Bitmap {
-        fun px(dp: Float) = dp * density
-        val badgeRadius = px(20f)
-        val badgeStroke = px(1.5f)
-        val dotRadius = px(5f)
-        val dotStroke = px(2f)
-        val gap = px(3f)
-        val width = (badgeRadius + badgeStroke) * 2
-        val height = width + gap + (dotRadius + dotStroke) * 2
-        val bitmap = Bitmap.createBitmap(width.toInt() + 1, height.toInt() + 1, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        val cx = width / 2
-        val cy = badgeRadius + badgeStroke
-        paint.style = Paint.Style.FILL
-        paint.color = 0xFFFBF6EE.toInt()
-        canvas.drawCircle(cx, cy, badgeRadius, paint)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = badgeStroke
-        paint.color = 0xFFE6D6BE.toInt()
-        canvas.drawCircle(cx, cy, badgeRadius, paint)
-        ContextCompat.getDrawable(mapView.context, R.drawable.ic_place_explored_house)?.let { icon ->
-            val half = px(11f).toInt()
-            icon.setBounds((cx - half).toInt(), (cy - half).toInt(), (cx + half).toInt(), (cy + half).toInt())
-            icon.draw(canvas)
+    /** Pin scale at [zoom], matching the pin layer, for tap targets. */
+    private fun pinScale(zoom: Double): Float =
+        when {
+            zoom >= 14 -> 1f
+            zoom >= 11 -> 0.72f + 0.28f * ((zoom - 11) / 3).toFloat()
+            zoom >= 9 -> 0.6f + 0.12f * ((zoom - 9) / 2).toFloat()
+            else -> PIN_SCALE_MIN + (0.6f - PIN_SCALE_MIN) * ((zoom - PHOTO_MIN_ZOOM) / (9 - PHOTO_MIN_ZOOM)).toFloat().coerceIn(0f, 1f)
         }
-        val dotY = height - dotRadius - dotStroke
-        paint.style = Paint.Style.FILL
-        paint.color = 0xFFFFFFFF.toInt()
-        canvas.drawCircle(cx, dotY, dotRadius + dotStroke, paint)
-        paint.color = 0xFFEE8F3A.toInt()
-        canvas.drawCircle(cx, dotY, dotRadius, paint)
-        return bitmap
-    }
 
     private fun placesGeoJson(places: List<ExploreMapPlace>): String {
         val features = JSONArray()
@@ -527,6 +577,7 @@ class GoongExploreMap(
                     .put("coordinates", JSONArray().put(place.coordinates.longitude)
                         .put(place.coordinates.latitude)))
                 .put("properties", JSONObject().put("placeId", place.id)
+                    .put("name", place.name)
                     .put("hasPhoto", photoUrls[place.id] == place.imageUrl && photoDiscovered[place.id] == place.isDiscovered && place.imageUrl != null)
                     .put("thumbnail", "place-photo-${place.id}")
                     .put("isDiscovered", place.isDiscovered)))
@@ -619,19 +670,23 @@ class GoongExploreMap(
 
     private companion object {
         const val BADGE_SIZE = 44f
+        const val QUIZ_SIZE = 30f
         const val EMPTY_COLLECTION = """{"type":"FeatureCollection","features":[]}"""
         const val PLACE_SOURCE = "bcv-places"
-        const val LOCKED_LAYER = "bcv-locked-places"
         const val DEFAULT_ZOOM = 13.7
         const val PROGRESS_ANIMATION_MS = 1_000L
-        const val LOCKED_IMAGE = "bcv-locked-dot"
         const val EXPLORED_DOT_LAYER = "bcv-explored-dots"
-        /** Below this zoom an explored place is a small orange dot instead of the house badge. */
-        const val PHOTO_MIN_ZOOM = 11f
-        const val EXPLORED_BADGE_MIN_ZOOM = 11f
-        const val BADGE_SCALE_MIN = 0.55f
-        const val EXPLORED_ICON_LAYER = "bcv-explored-icons"
-        const val EXPLORED_IMAGE = "bcv-explored-badge"
+        /** From this zoom (most of the country on screen) places are photo pins; names join from [LABEL_MIN_ZOOM]. */
+        const val PHOTO_MIN_ZOOM = 6f
+        /** Below this zoom overlapping dots and pins thin out; from here on every place shows. */
+        const val THIN_UNTIL_ZOOM = 11
+        const val DOT_DISCOVERED = "bcv-dot-discovered"
+        const val DOT_LOCKED = "bcv-dot-locked"
+        const val LABEL_MIN_ZOOM = 12f
+        const val PIN_SCALE_MIN = 0.45f
+        const val PIN_LAYER = "bcv-place-pins"
+        /** Base-map POIs kept: landmarks that help orientation. Shops, food, stations etc. are hidden. */
+        val KEPT_BASE_POI = setOf("poi-mountain", "poi-airport")
         const val ROUTE_SOURCE = "bcv-route"
         const val ROUTE_CASING_LAYER = "bcv-route-casing"
         const val ROUTE_DONE_LAYER = "bcv-route-done"

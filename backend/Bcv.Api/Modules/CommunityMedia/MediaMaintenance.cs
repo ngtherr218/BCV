@@ -21,6 +21,17 @@ public sealed class MediaMaintenance(NpgsqlDataSource db,ILogger<MediaMaintenanc
         do {
             try{await SweepAsync(db,stoppingToken);}
             catch(OperationCanceledException) when(stoppingToken.IsCancellationRequested){return;}
+            catch(PostgresException error) when(error.SqlState is PostgresErrorCodes.UndefinedColumn or PostgresErrorCodes.UndefinedTable)
+            {
+                // SweepAsync rolls back its transaction before this handler runs.
+                // Never repair schema or delete files against an incompatible database.
+                log.LogWarning("Media cleanup stopped because the database schema is incompatible ({SqlState}: {DatabaseError}). " +
+                    "Review sql/README.md and the photo lifecycle migration sql/migrations/030_photo_lifecycle.sql, " +
+                    "apply the approved upgrade, then restart the API. For local development, use backend/run-dev-v2.ps1 " +
+                    "or set Media__MaintenanceEnabled=false. No schema changes were applied by this worker.",
+                    error.SqlState,error.MessageText);
+                return;
+            }
             catch(Exception error){log.LogError(error,"Failed to clean expired media files");}
         } while(await timer.WaitForNextTickAsync(stoppingToken));
     }

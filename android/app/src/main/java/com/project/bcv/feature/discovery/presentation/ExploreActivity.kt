@@ -164,6 +164,7 @@ class ExploreActivity : AppCompatActivity() {
                     .putExtra(PlaceDetailActivity.EXTRA_DISCOVERED, mapPlace?.isDiscovered == true))
             })
         goongMap.attach(binding.mapHost)
+        goongMap.onQuizStopTap = { openCultureQuiz(it) }
         scheduleMapTimeout()
 
         model = TabViewModels.provider(applicationContext, ExploreViewModelFactory(
@@ -186,21 +187,37 @@ class ExploreActivity : AppCompatActivity() {
         binding.recenterButton.setOnClickListener { goongMap.recenter() }
         binding.primaryButton.setOnClickListener { primaryAction() }
         binding.secondaryButton.setOnClickListener { secondaryAction() }
-        binding.demoStepsButton.setOnClickListener { StepTestDialog.show(this, model) }
-        // Icon only now: long-press shows what it does.
-        TooltipCompat.setTooltipText(binding.demoStepsButton, "Test bước chân")
         binding.tertiaryButton.setOnClickListener { openRecommendations() }
         binding.notificationsButton.setOnClickListener { startActivity(Intent(this, NotificationsActivity::class.java)) }
         binding.profileButton.setOnClickListener { startActivity(Intent(this, ProfileActivity::class.java)) }
         BottomNav.select(binding.bottomNavigation, NavTab.EXPLORE)
         binding.bottomNavigation.tabExplore.setOnClickListener { model.refreshIfNeeded() }
-        binding.bottomNavigation.tabJourney.setOnClickListener { openJourney() }
+        binding.bottomNavigation.tabRanking.setOnClickListener {
+            startActivity(BottomNav.intent(this, com.project.bcv.feature.engagement.AchievementsActivity::class.java, NavTab.EXPLORE))
+            BottomNav.skipTransition(this, opening = true)
+            returningFromTab = true
+        }
+        binding.searchButton.setOnClickListener { openRecommendations() }
+        binding.quizMapButton.setOnClickListener { openCultureQuiz() }
+        TooltipCompat.setTooltipText(binding.quizMapButton, "Trạm câu hỏi văn hóa")
+        binding.addStepsMapButton.setOnClickListener {
+            if (!com.project.bcv.BuildConfig.STEP_TEST_ENABLED) return@setOnClickListener
+            val amounts = intArrayOf(500, 1000, 5000)
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                .setTitle("Cộng bước chân (thử nghiệm)")
+                .setItems(arrayOf("+500 bước", "+1.000 bước", "+5.000 bước", "Tùy chỉnh / mô phỏng đi bộ…")) { _, which ->
+                    if (which < amounts.size) model.sendTestSteps(amounts[which])
+                    else StepTestDialog.show(this, model)
+                }
+                .setNegativeButton("Đóng", null)
+                .show()
+        }
         binding.bottomNavigation.tabCollection.setOnClickListener {
             startActivity(BottomNav.intent(this, CollectionActivity::class.java, NavTab.EXPLORE))
             BottomNav.skipTransition(this, opening = true)
             returningFromTab = true
         }
-        binding.bottomNavigation.tabQuest.setOnClickListener {
+        binding.bottomNavigation.tabChallenge.setOnClickListener {
             startActivity(BottomNav.intent(this, QuestActivity::class.java, NavTab.EXPLORE))
             BottomNav.skipTransition(this, opening = true)
             returningFromTab = true
@@ -329,6 +346,49 @@ class ExploreActivity : AppCompatActivity() {
         scheduleMapTimeout()
     }
 
+    private fun layoutMapTools() {
+        ExploreMapToolLayout.apply(binding, mapLoaded && !mapFailed, sheetCollapsed, advancedMapIds != null)
+    }
+
+    private var quizMapRequest: kotlinx.coroutines.Job? = null
+    private var lastQuizMapKey: Pair<Long, Int>? = null
+    private fun openCultureQuiz(stop: Int? = null) {
+        com.project.bcv.feature.engagement.CultureQuizSheet(this, stop) {
+            lastQuizMapKey = null
+            model.state.value?.let(::syncQuizMap)
+            model.refreshIfNeeded()
+        }.show()
+    }
+
+    private fun syncQuizMap(state: ExploreUiState) {
+        val journey = state.snapshot?.journey
+        if (journey == null || journey.status != "IN_PROGRESS") {
+            quizMapRequest?.cancel(); lastQuizMapKey = null
+            goongMap.showQuizStops(emptyList())
+            binding.quizMapButton.backgroundTintList = null
+            return
+        }
+        val key = journey.id to journey.recordedSteps
+        if (lastQuizMapKey == key) return
+        lastQuizMapKey = key; quizMapRequest?.cancel()
+        quizMapRequest = lifecycleScope.launch {
+            try {
+                val data = com.project.bcv.feature.engagement.EngagementApi(this@ExploreActivity).quiz()
+                if (lastQuizMapKey != key || isFinishing || isDestroyed) return@launch
+                val array = data.optJSONArray("stops")
+                val stops = if (array == null) emptyList() else (0 until array.length()).map { index ->
+                    val stop = array.getJSONObject(index)
+                    GoongExploreMap.QuizStop(stop.getInt("number"), stop.getDouble("fraction"), stop.getString("state"))
+                }
+                goongMap.showQuizStops(stops)
+                val open = stops.count { it.state == "OPEN" }
+                binding.quizMapButton.backgroundTintList = if (open > 0) ColorStateList.valueOf(0xFFFFE7A8.toInt()) else null
+                binding.quizMapButton.contentDescription = if (open > 0) "Trạm câu hỏi: $open câu đang mở" else "Trạm câu hỏi văn hóa"
+            } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+            catch (_: Exception) { lastQuizMapKey = null }
+        }
+    }
+
     private fun toggleSheet() {
         setSheetCollapsed(!sheetCollapsed)
     }
@@ -340,6 +400,7 @@ class ExploreActivity : AppCompatActivity() {
 
     /** Tells the map how much of it the sheet hides, so the journey route is framed in the visible part. */
     private fun updateMapCoverage() {
+        layoutMapTools()
         // Mid-drag the camera stays put; it reframes once the sheet settles open or collapsed.
         if (!::goongMap.isInitialized || sheetDragging) return
         val sheet = binding.bottomSheet
@@ -455,6 +516,12 @@ class ExploreActivity : AppCompatActivity() {
         mapFailure.visibility = if (mapFailed) View.VISIBLE else View.GONE
         locationCard.visibility = if (mapFailed || !mapLoaded) View.GONE else View.VISIBLE
         recenterButton.visibility = locationCard.visibility
+        quizMapButton.visibility = if (locationCard.visibility == View.VISIBLE &&
+            state.snapshot?.journey?.status == "IN_PROGRESS") View.VISIBLE else View.GONE
+        addStepsMapButton.visibility = if (com.project.bcv.BuildConfig.STEP_TEST_ENABLED &&
+            quizMapButton.visibility == View.VISIBLE) View.VISIBLE else View.GONE
+        syncQuizMap(state)
+        layoutMapTools()
 
         val copy = if (mapFailed) mapErrorCopy else copyFor(state)
         statusTitle.text = copy.noticeTitle
@@ -495,9 +562,6 @@ class ExploreActivity : AppCompatActivity() {
         tertiaryButton.visibility = if (showProgress && journey?.status == "IN_PROGRESS" &&
             state.stage != ExploreStage.PERMISSION_REQUIRED) View.VISIBLE else View.GONE
         tertiaryButton.isEnabled = state.stage != ExploreStage.SYNCING
-        demoStepsButton.visibility = if (com.project.bcv.BuildConfig.STEP_TEST_ENABLED) View.VISIBLE else View.GONE
-        demoStepsButton.isEnabled = true
-        demoStepsButton.alpha = 1f
         if (renderedStage != state.stage) {
             if (renderedStage != null) {
                 ScreenMotion.reveal(statusCard)

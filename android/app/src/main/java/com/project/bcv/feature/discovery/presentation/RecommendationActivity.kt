@@ -13,7 +13,6 @@ import android.view.View
 import android.text.Editable
 import android.text.TextWatcher
 import android.widget.Button
-import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -56,8 +55,7 @@ class RecommendationActivity : AppCompatActivity() {
     private lateinit var searchModel: ExplorerToolsViewModel
     private lateinit var searchInput: EditText
     private lateinit var distanceInput: EditText
-    private lateinit var daysInput: EditText
-    private lateinit var preferInterests: CheckBox
+    private lateinit var stepsInput: EditText
     private lateinit var typeChips: ChipGroup
     private lateinit var previousPage: Button
     private lateinit var nextPage: Button
@@ -74,6 +72,8 @@ class RecommendationActivity : AppCompatActivity() {
     private var filterPage = 1
     private var suppressChanges = false
     private var debounce: Job? = null
+    private var filterDraft: Bundle? = null
+    private var applyDraft = false
     private val detailLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             setResult(Activity.RESULT_OK)
@@ -86,6 +86,16 @@ class RecommendationActivity : AppCompatActivity() {
         binding = ActivityRecommendationBinding.inflate(layoutInflater)
         // Like the other screens: content padded clear of the status and navigation bars.
         setUpDetailScreen(binding.root)
+        binding.content.addOnLayoutChangeListener { _, left, _, right, _, _, _, _, _ ->
+            val column = binding.content.getChildAt(0)
+            val width = minOf(right - left, dp(640))
+            if (column.layoutParams.width != width) {
+                column.layoutParams = (column.layoutParams as android.widget.FrameLayout.LayoutParams).apply {
+                    this.width = width
+                    gravity = android.view.Gravity.CENTER_HORIZONTAL
+                }
+            }
+        }
         model = ViewModelProvider(this, viewModelFactory {
             RecommendationViewModel(ExploreModule.repository(this), ExploreModule.addressLookup(),
                 intent.getStringExtra(EXTRA_ADDRESS))
@@ -96,9 +106,13 @@ class RecommendationActivity : AppCompatActivity() {
             suppressChanges = true
             val defaults = options.getJSONArray("selectedPlaceTypeIds")
             profileTypes.clear()
-            for (i in 0 until defaults.length()) profileTypes.add(defaults.getLong(i))
+            for (i in 0 until minOf(defaults.length(), 3)) profileTypes.add(defaults.getLong(i))
             val initialize = !preferencesInitialized
-            if (initialize) { selectedTypes.addAll(profileTypes); preferencesInitialized = true }
+            if (initialize) {
+                selectedTypes.clear()
+                selectedTypes.addAll(profileTypes)
+                preferencesInitialized = true
+            }
             typeChips.removeAllViews()
             val types = options.getJSONArray("interests")
             for (index in 0 until types.length()) {
@@ -116,7 +130,16 @@ class RecommendationActivity : AppCompatActivity() {
                     chipMinHeight = dp(44).toFloat(); textSize = 13f
                     setOnCheckedChangeListener { _, checked ->
                         if (suppressChanges) return@setOnCheckedChangeListener
+                        if (checked && id !in selectedTypes && selectedTypes.size >= 3) {
+                            suppressChanges = true
+                            isChecked = false
+                            suppressChanges = false
+                            android.widget.Toast.makeText(this@RecommendationActivity,
+                                "Chỉ được chọn tối đa 3 loại địa danh.", android.widget.Toast.LENGTH_SHORT).show()
+                            return@setOnCheckedChangeListener
+                        }
                         if (checked) selectedTypes.add(id) else selectedTypes.remove(id)
+                        updateFilterSummary()
                         scheduleFilter()
                     }
                 })
@@ -144,15 +167,15 @@ class RecommendationActivity : AppCompatActivity() {
     private fun buildFilters(saved: Bundle?) {
         usingSearch = saved?.getBoolean("filtered") ?: false
         filterPage = saved?.getInt("filterPage", 1) ?: 1
-        selectedTypes.addAll(saved?.getLongArray("selectedTypes")?.toList().orEmpty())
+        selectedTypes.addAll(saved?.getLongArray("selectedTypes")?.toList().orEmpty().take(3))
         preferencesInitialized = saved?.getBoolean("preferencesInitialized") ?: false
         val sheet = com.project.bcv.databinding.SheetDestinationFiltersBinding.inflate(layoutInflater)
         filterSheet = sheet
         typeChips = sheet.destinationTypes
         distanceInput = sheet.maxDistance
-        daysInput = sheet.maxDays
+        stepsInput = sheet.maxSteps
         distanceInput.setText(saved?.getString("distance").orEmpty())
-        daysInput.setText(saved?.getString("days").orEmpty())
+        stepsInput.setText(saved?.getString("steps").orEmpty())
         val queryField = com.google.android.material.textfield.TextInputLayout(this).apply {
             hint = "Tìm tên địa danh…"
             boxBackgroundMode = com.google.android.material.textfield.TextInputLayout.BOX_BACKGROUND_OUTLINE
@@ -168,53 +191,84 @@ class RecommendationActivity : AppCompatActivity() {
         }
         queryField.addView(searchInput)
         binding.discoveryFilters.addView(queryField)
-        preferInterests = com.google.android.material.checkbox.MaterialCheckBox(this).apply {
-            id = R.id.destinationPreference
-            text = "Ưu tiên sở thích của tôi"; setTextColor(getColor(R.color.forest))
-            buttonTintList = ColorStateList.valueOf(getColor(R.color.teal))
-            isChecked = saved?.getBoolean("preferInterests", true) ?: true
-            setOnCheckedChangeListener { _, _ -> scheduleFilter() }
-        }
-        binding.discoveryFilters.addView(preferInterests)
         filterDialog = BottomSheetDialog(this).apply {
             setContentView(sheet.root)
             setOnShowListener {
+                debounce?.cancel()
+                applyDraft = false
+                filterDraft = Bundle().apply {
+                    putLongArray("types", selectedTypes.toLongArray())
+                    putString("distance", distanceInput.text.toString())
+                    putString("steps", stepsInput.text.toString())
+                }
                 val container = findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)!!
                 container.backgroundTintList = ColorStateList.valueOf(getColor(R.color.white))
                 container.layoutParams.height = (resources.displayMetrics.heightPixels * 0.9).toInt()
                 com.google.android.material.bottomsheet.BottomSheetBehavior.from(container).apply {
+                    maxWidth = dp(640)
                     state = com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED
                     skipCollapsed = true
                 }
+                window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+            }
+            setOnDismissListener {
+                if (!applyDraft) filterDraft?.let { draft ->
+                    suppressChanges = true
+                    selectedTypes.clear(); selectedTypes.addAll(draft.getLongArray("types")!!.toList())
+                    distanceInput.setText(draft.getString("distance"))
+                    stepsInput.setText(draft.getString("steps"))
+                    syncTypeChecks()
+                    suppressChanges = false
+                }
+                filterDraft = null
+                updateFilterSummary()
             }
         }
         filterToggle = com.google.android.material.button.MaterialButton(this, null,
             com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
             id = R.id.destinationFilterToggle; isAllCaps = false
             text = "Chọn loại địa danh và bộ lọc"
+            cornerRadius = dp(14)
+            minHeight = dp(48)
+            strokeColor = ColorStateList.valueOf(getColor(R.color.field_line))
             setOnClickListener { filterDialog.show() }
         }
         binding.discoveryFilters.addView(filterToggle)
         sheet.closeFilters.setOnClickListener { filterDialog.dismiss() }
         sheet.clearTypes.setOnClickListener {
-            suppressChanges = true; selectedTypes.clear(); syncTypeChecks(); suppressChanges = false
-            refreshFilters(1)
+            suppressChanges = true
+            selectedTypes.clear()
+            syncTypeChecks(); suppressChanges = false
+            debounce?.cancel()
+            updateFilterSummary()
         }
         sheet.resetFilters.setOnClickListener {
             suppressChanges = true
-            searchInput.text.clear(); distanceInput.text.clear(); daysInput.text.clear()
+            searchInput.text.clear(); distanceInput.text.clear(); stepsInput.text.clear()
             selectedTypes.clear(); selectedTypes.addAll(profileTypes); syncTypeChecks()
-            preferInterests.isChecked = true
-            suppressChanges = false; debounce?.cancel(); refreshFilters(1)
+            suppressChanges = false; updateFilterSummary()
         }
         sheet.showFilterResults.setOnClickListener {
-            debounce?.cancel(); refreshFilters(1); filterDialog.dismiss()
+            if (selectedTypes.isEmpty()) {
+                filterSheet.typeSelectionError.visibility = View.VISIBLE
+                filterSheet.filterScroll.smoothScrollTo(0, 0)
+                return@setOnClickListener
+            }
+            if (!validateLimits()) return@setOnClickListener
+            applyDraft = true
+            debounce?.cancel(); refreshFilters(1)
+            (getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager)
+                .hideSoftInputFromWindow(stepsInput.windowToken, 0)
+            filterDialog.dismiss()
         }
-        listOf(searchInput, distanceInput, daysInput).forEach { input ->
+        listOf(searchInput, distanceInput, stepsInput).forEach { input ->
             input.addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-                override fun afterTextChanged(s: Editable?) { scheduleFilter() }
+                override fun afterTextChanged(s: Editable?) {
+                    (input.parent.parent as? com.google.android.material.textfield.TextInputLayout)?.error = null
+                    scheduleFilter()
+                }
             })
         }
         val paging = LinearLayout(this)
@@ -239,6 +293,7 @@ class RecommendationActivity : AppCompatActivity() {
 
     private fun scheduleFilter() {
         if (suppressChanges) return
+        if (filterDialog.isShowing) { updateFilterSummary(); return }
         debounce?.cancel()
         debounce = lifecycleScope.launch { delay(300); refreshFilters(1) }
     }
@@ -253,24 +308,47 @@ class RecommendationActivity : AppCompatActivity() {
     }
 
     private fun updateFilterSummary() {
-        filterSheet.typeSelectionSummary.text = "Loại địa danh · Đã chọn ${selectedTypes.size}/12"
-        val count = selectedTypes.size + (if (distanceInput.text.isNotBlank()) 1 else 0) + (if (daysInput.text.isNotBlank()) 1 else 0)
-        filterToggle.text = if (count == 0) "Bộ lọc · Tất cả địa danh" else "Bộ lọc · $count lựa chọn"
+        filterSheet.typeSelectionError.visibility = View.GONE
+        filterSheet.typeSelectionSummary.text = "Loại địa danh · Đã chọn ${selectedTypes.size}/3"
+        val details = mutableListOf(if (selectedTypes.isEmpty()) "Chưa chọn loại" else "${selectedTypes.size}/3 loại")
+        distanceInput.text.toString().takeIf { it.isNotBlank() }?.let { details.add("≤ $it km") }
+        stepsInput.text.toString().takeIf { it.isNotBlank() }?.let { details.add("≤ $it bước") }
+        filterSheet.showFilterResults.text = "Áp dụng bộ lọc"
+        if (!filterDialog.isShowing) filterToggle.text = "Bộ lọc · ${details.joinToString(" · ")}"
+    }
+
+    private fun validateLimits(): Boolean {
+        val distance = distanceInput.text.toString().trim().replace(',', '.')
+        val steps = stepsInput.text.toString().trim()
+        val validDistance = distance.isEmpty() || distance.toDoubleOrNull()?.let { it.isFinite() && it > 0 } == true
+        val validSteps = steps.isEmpty() || steps.toIntOrNull()?.let { it > 0 } == true
+        (distanceInput.parent.parent as? com.google.android.material.textfield.TextInputLayout)?.error =
+            if (validDistance) null else "Nhập khoảng cách lớn hơn 0."
+        (stepsInput.parent.parent as? com.google.android.material.textfield.TextInputLayout)?.error =
+            if (validSteps) null else "Nhập số bước nguyên lớn hơn 0."
+        if (!validSteps || !validDistance) filterSheet.filterScroll.post {
+            if (!validSteps) filterSheet.filterScroll.fullScroll(View.FOCUS_DOWN)
+            else {
+                val field = distanceInput.parent.parent as View
+                field.requestRectangleOnScreen(android.graphics.Rect(0, 0, field.width, field.height), true)
+            }
+        }
+        return validDistance && validSteps
     }
 
     private fun refreshFilters(page: Int) {
         updateFilterSummary()
         filterPage = page.coerceAtLeast(1)
-        usingSearch = preferencesInitialized || searchInput.text.isNotBlank() || distanceInput.text.isNotBlank() || daysInput.text.isNotBlank() || selectedTypes.isNotEmpty() || !preferInterests.isChecked || filterPage > 1
+        usingSearch = preferencesInitialized
         retrySearch.visibility = View.GONE
         if (!usingSearch) {
             previousPage.visibility = View.GONE; nextPage.visibility = View.GONE
             model.recommendations.value?.let(::render) ?: model.load()
             return
         }
-        val query = mutableListOf("pageSize=20", "page=$filterPage", "onlyUndiscovered=true", "sort=${if (preferInterests.isChecked) "interests" else "distance"}")
+        val query = mutableListOf("pageSize=20", "page=$filterPage", "onlyUndiscovered=true", "sort=distance")
         fun add(key: String, value: String) { if (value.isNotBlank()) query.add("$key=${URLEncoder.encode(value.trim(), "UTF-8")}") }
-        add("q", searchInput.text.toString()); add("maxDistanceKm", distanceInput.text.toString()); add("maxEstimatedDays", daysInput.text.toString())
+        add("q", searchInput.text.toString()); add("maxDistanceKm", distanceInput.text.toString().replace(',', '.')); add("maxRequiredSteps", stepsInput.text.toString())
         if (selectedTypes.isNotEmpty()) add("interestGroupIds", selectedTypes.sorted().joinToString(","))
         searchModel.load("api/explore/places?${query.joinToString("&")}")
     }
@@ -287,23 +365,40 @@ class RecommendationActivity : AppCompatActivity() {
             return
         }
         val json = state.result ?: return
+        val requestUri = searchModel.lastPath?.let { android.net.Uri.parse("http://local/$it") }
+        val distanceLimit = requestUri?.getQueryParameter("maxDistanceKm")?.toDoubleOrNull()
+        val stepLimit = searchModel.lastPath?.let {
+            android.net.Uri.parse("http://local/$it").getQueryParameter("maxRequiredSteps")?.toIntOrNull()
+        }
+        if ((stepLimit != null && json.optInt("maxRequiredSteps", -1) != stepLimit) ||
+            (distanceLimit != null && json.optDouble("maxDistanceKm", -1.0) != distanceLimit)) {
+            binding.cards.removeAllViews(); cards.clear(); showMap.isEnabled = false
+            previousPage.visibility = View.GONE; nextPage.visibility = View.GONE
+            retrySearch.visibility = View.VISIBLE
+            binding.subtitle.text = "Chưa thể áp dụng giới hạn hành trình. Vui lòng thử lại sau."
+            return
+        }
         val total = json.getLong("total"); val array = json.getJSONArray("places")
-        previousPage.visibility = View.VISIBLE; nextPage.visibility = View.VISIBLE
+        previousPage.visibility = if (total > 20) View.VISIBLE else View.GONE
+        nextPage.visibility = if (total > 20) View.VISIBLE else View.GONE
         nextPage.isEnabled = filterPage * 20 < total
-        binding.subtitle.text = if (total == 0L) "Không có địa danh phù hợp. Hãy đổi từ khóa hoặc bộ lọc." else "$total địa danh · Trang $filterPage${if (preferInterests.isChecked) " · Ưu tiên sở thích" else " · Gần nhất"}"
+        binding.subtitle.text = if (total == 0L) "Không có địa danh phù hợp. Hãy đổi từ khóa hoặc bộ lọc." else "$total địa danh · Trang $filterPage · Gần nhất"
         showCards((0 until array.length()).map { index ->
             val row = array.getJSONObject(index)
             RecommendedPlace(index + 1, row.getLong("placeId"), row.getString("name"), row.getString("regionName"),
                 row.optString("imageUrl").takeUnless { it.isBlank() || it == "null" }, row.getBoolean("isDiscovered"),
                 row.getDouble("distanceKm"), row.getInt("requiredSteps"), emptyList(),
-                listOfNotNull(if (row.getBoolean("matchesInterests")) "Phù hợp sở thích của bạn" else null, "Ước tính ${row.getInt("estimatedDays")} ngày"))
+                listOfNotNull(if (row.getBoolean("matchesInterests")) "Phù hợp sở thích của bạn" else null))
         })
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
+        val applied = filterDraft
         outState.putBoolean("preferencesInitialized", preferencesInitialized)
-        outState.putString("query", searchInput.text.toString()); outState.putString("distance", distanceInput.text.toString()); outState.putString("days", daysInput.text.toString())
-        outState.putBoolean("preferInterests", preferInterests.isChecked); outState.putLongArray("selectedTypes", selectedTypes.toLongArray())
+        outState.putString("query", searchInput.text.toString())
+        outState.putString("distance", applied?.getString("distance") ?: distanceInput.text.toString())
+        outState.putString("steps", applied?.getString("steps") ?: stepsInput.text.toString())
+        outState.putLongArray("selectedTypes", applied?.getLongArray("types") ?: selectedTypes.toLongArray())
         outState.putBoolean("filtered", usingSearch); outState.putInt("filterPage", filterPage)
         outState.putBoolean("expanded", filterDialog.isShowing)
         super.onSaveInstanceState(outState)
@@ -397,9 +492,6 @@ class RecommendationActivity : AppCompatActivity() {
                         .putExtra(PlaceDetailActivity.EXTRA_DISCOVERED, place.isDiscovered))
                 }
             }
-            if (Build.VERSION.SDK_INT >= 31 && !place.isDiscovered) {
-                item.image.setRenderEffect(RenderEffect.createBlurEffect(4f, 4f, Shader.TileMode.CLAMP))
-            }
             place.imageUrl?.let { url -> loadImage(item, url, place.isDiscovered) }
         }
         renderSaving(model.savingPlaceId.value)
@@ -412,6 +504,9 @@ class RecommendationActivity : AppCompatActivity() {
             item.image.setContentPadding(0,0,0,0)
             item.image.imageTintList=null
             item.image.scaleType=android.widget.ImageView.ScaleType.CENTER_CROP
+            if (Build.VERSION.SDK_INT >= 31 && !discovered) {
+                item.image.setRenderEffect(RenderEffect.createBlurEffect(4f, 4f, Shader.TileMode.CLAMP))
+            }
             item.image.setImageBitmap(if (Build.VERSION.SDK_INT < 31 && !discovered) blurFallback(bitmap) else bitmap)
         }
     }

@@ -70,7 +70,7 @@
                         android:layout_marginTop="6dp"
                         android:text="Một vé. Một vùng mới."
                         android:textColor="@color/forest"
-                        android:textSize="21sp"
+                        android:textSize="20sp"
                         android:textStyle="bold" />
 
                     <TextView

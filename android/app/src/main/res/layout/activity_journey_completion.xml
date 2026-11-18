@@ -6,6 +6,26 @@
    <ImageView android:id="@+id/successIcon" android:layout_width="64dp" android:layout_height="64dp" android:layout_gravity="center_horizontal" android:src="@drawable/ic_check_circle" android:contentDescription="Hành trình đã được xác nhận hoàn thành" app:tint="@color/teal"/>
    <TextView android:id="@+id/successTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Chinh phục thành công!" android:gravity="center" android:textColor="@color/forest" android:textSize="28sp" android:textStyle="bold" android:accessibilityHeading="true"/>
    <TextView android:id="@+id/successMessage" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:gravity="center" android:textColor="#526A5E" android:textSize="15sp" android:lineSpacingExtra="4dp"/>
+   <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:orientation="horizontal" android:baselineAligned="false">
+    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:padding="16dp" android:background="@drawable/journey_card_bg">
+     <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/ic_directions_walk" android:contentDescription="@null" app:tint="@color/teal"/>
+     <TextView android:id="@+id/stepsValue" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:textSize="30sp" android:textStyle="bold" android:textColor="@color/forest"/>
+     <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Bước hành trình" android:textSize="13sp" android:textColor="#62786D"/>
+    </LinearLayout>
+    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="12dp" android:orientation="vertical" android:padding="16dp" android:background="@drawable/journey_card_bg">
+     <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/ic_task_alt" android:contentDescription="@null" app:tint="@color/teal"/>
+     <TextView android:id="@+id/pointsValue" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:textSize="30sp" android:textStyle="bold" android:textColor="@color/teal"/>
+     <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Tổng điểm hành trình" android:textSize="13sp" android:textColor="#62786D"/>
+    </LinearLayout>
+   </LinearLayout>
+   <com.google.android.material.card.MaterialCardView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" app:cardCornerRadius="18dp" app:cardElevation="0dp" app:strokeWidth="1dp" app:strokeColor="@color/field_line" app:cardBackgroundColor="@color/white">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="20dp" android:orientation="vertical">
+     <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="BXH TOÀN QUỐC · TUẦN HOÀN THÀNH" android:textSize="11sp" android:letterSpacing="0.04" android:textColor="#62786D" android:textStyle="bold"/>
+     <TextView android:id="@+id/rankValue" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:textSize="28sp" android:textStyle="bold" android:textColor="@color/forest"/>
+     <TextView android:id="@+id/rankChange" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:textSize="14sp" android:textColor="@color/teal" android:accessibilityLiveRegion="polite"/>
+    </LinearLayout>
+   </com.google.android.material.card.MaterialCardView>
+   <TextView android:id="@+id/rewardBreakdown" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:padding="16dp" android:background="@drawable/journey_card_bg" android:textSize="14sp" android:textColor="@color/forest" android:lineSpacingExtra="8dp"/>
    <com.google.android.material.card.MaterialCardView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" app:cardCornerRadius="18dp" app:cardElevation="0dp" app:strokeWidth="1dp" app:strokeColor="@color/field_line" app:cardBackgroundColor="@color/white">
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
      <ImageView android:id="@+id/placeImage" android:layout_width="match_parent" android:layout_height="156dp" android:scaleType="centerInside" android:background="@color/field_bg" android:src="@drawable/ic_place_outline" android:padding="48dp" android:contentDescription="Ảnh địa danh" app:tint="#A7BBB0"/>
@@ -25,19 +45,7 @@
      </LinearLayout>
     </LinearLayout>
    </com.google.android.material.card.MaterialCardView>
-   <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:orientation="horizontal" android:baselineAligned="false">
-    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:padding="16dp" android:background="@drawable/journey_card_bg">
-     <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/ic_directions_walk" android:contentDescription="@null" app:tint="@color/teal"/>
-     <TextView android:id="@+id/stepsValue" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:textSize="24sp" android:textStyle="bold" android:textColor="@color/forest"/>
-     <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Bước hành trình" android:textSize="13sp" android:textColor="#62786D"/>
-    </LinearLayout>
-    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="12dp" android:orientation="vertical" android:padding="16dp" android:background="@drawable/journey_card_bg">
-     <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/ic_task_alt" android:contentDescription="@null" app:tint="@color/teal"/>
-     <TextView android:id="@+id/pointsValue" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:textSize="24sp" android:textStyle="bold" android:textColor="@color/teal"/>
-     <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Điểm nhận được" android:textSize="13sp" android:textColor="#62786D"/>
-    </LinearLayout>
-   </LinearLayout>
-   <TextView android:id="@+id/receiptNote" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="Điểm khám phá đã ghi nhận. Điểm nhiệm vụ được hiển thị riêng tại mục Nhiệm vụ." android:textSize="12sp" android:textColor="#62786D" android:lineSpacingExtra="3dp"/>
+   <TextView android:id="@+id/receiptNote" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="Các khoản trên đã được ghi nhận trong hành trình. Điểm nhiệm vụ được xem riêng tại mục Nhiệm vụ." android:textSize="12sp" android:textColor="#62786D" android:lineSpacingExtra="3dp"/>
    <TextView android:id="@+id/completedTime" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textSize="12sp" android:textColor="#62786D"/>
    <com.google.android.material.button.MaterialButton android:id="@+id/viewPlaceButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:minHeight="52dp" android:text="Xem địa danh" android:textAllCaps="false" android:textSize="15sp" android:insetTop="0dp" android:insetBottom="0dp" app:cornerRadius="14dp"/>
    <com.google.android.material.button.MaterialButton android:id="@+id/continueButton" style="@style/Widget.MaterialComponents.Button.OutlinedButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:minHeight="52dp" android:text="Tiếp tục khám phá" android:textAllCaps="false" android:textSize="15sp" app:cornerRadius="14dp"/>

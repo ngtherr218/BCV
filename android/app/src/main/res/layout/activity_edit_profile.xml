@@ -50,7 +50,7 @@
                     android:gravity="center"
                     android:importantForAccessibility="no"
                     android:textColor="@color/teal"
-                    android:textSize="28sp"
+                    android:textSize="26sp"
                     android:textStyle="bold" />
 
                 <com.google.android.material.imageview.ShapeableImageView
@@ -85,7 +85,7 @@
                 android:labelFor="@id/nameInput"
                 android:text="Họ và tên"
                 android:textColor="@color/forest"
-                android:textSize="14sp"
+                android:textSize="15sp"
                 android:textStyle="bold" />
 
             <com.google.android.material.textfield.TextInputLayout
@@ -111,7 +111,7 @@
                     android:maxLength="100"
                     android:minHeight="56dp"
                     android:textColor="@color/forest"
-                    android:textSize="16sp" />
+                    android:textSize="15sp" />
             </com.google.android.material.textfield.TextInputLayout>
 
             <TextView
@@ -120,7 +120,7 @@
                 android:layout_marginTop="20dp"
                 android:text="Email đăng nhập"
                 android:textColor="@color/forest"
-                android:textSize="14sp"
+                android:textSize="15sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -134,7 +134,7 @@
                 android:paddingStart="16dp"
                 android:paddingEnd="16dp"
                 android:textColor="@color/forest"
-                android:textSize="16sp" />
+                android:textSize="15sp" />
 
             <TextView
                 android:layout_width="match_parent"
@@ -168,7 +168,7 @@
                     android:drawablePadding="10dp"
                     android:gravity="center_vertical"
                     android:textColor="@color/forest"
-                    android:textSize="14sp"
+                    android:textSize="15sp"
                     android:textStyle="bold" />
 
                 <TextView

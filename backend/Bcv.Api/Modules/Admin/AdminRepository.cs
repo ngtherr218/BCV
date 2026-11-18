@@ -119,7 +119,7 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
         }
     }
 
-    public async Task<object> List(string key, string? q, string? status, long? regionId, long? typeId, int page, int pageSize, CancellationToken ct, string? cycle = null)
+    public async Task<object> List(string key, string? q, string? status, long? regionId, long? typeId, int page, int pageSize, CancellationToken ct, string? cycle = null, long? placeId = null, int? difficulty = null, string? sort = null)
     {
         var r = Resource(key);
         page = Math.Clamp(page, 1, 100000); pageSize = Math.Clamp(pageSize, 1, 100);
@@ -130,20 +130,32 @@ public sealed class AdminRepository(NpgsqlDataSource db, ISessionStore sessions)
         where += key == "places" ? " AND ($3=0 OR t.region_id=$3) AND ($4=0 OR t.place_type_id=$4)" : " AND $3=0 AND $4=0";
         if(cycle is not (null or "" or "DAILY" or "WEEKLY")) throw new AdminValidation("Chu kỳ không hợp lệ.");
         where += key == "quests" ? " AND ($7='' OR t.cycle_type=$7)" : " AND $7=''";
+        var orderBy = $"t.{r.Id} {direction}";
+        if (key == "questions")
+        {
+            if (placeId < 0 || difficulty is < 0 or > 3) throw new AdminValidation("Bộ lọc câu hỏi không hợp lệ.");
+            if (sort is not (null or "" or "newest" or "oldest" or "difficulty" or "place")) throw new AdminValidation("Thứ tự câu hỏi không hợp lệ.");
+            static string Fold(string sql) => $"regexp_replace(replace(lower(normalize({sql}, NFD)), 'đ', 'd'), '[̀-ͯ]', '', 'g')";
+            var haystack = Fold("concat_ws(' ',t.question,t.explanation,t.option_a,t.option_b,t.option_c,t.option_d,(SELECT name FROM place WHERE place_id=t.place_id))");
+            where = $"WHERE NOT EXISTS (SELECT 1 FROM regexp_split_to_table({Fold("$1::text")}, '[[:space:]]+') term WHERE term<>'' AND strpos({haystack},term)=0) AND ($2='' OR t.status=$2) AND ($3=0 OR EXISTS(SELECT 1 FROM place p WHERE p.place_id=t.place_id AND p.region_id=$3)) AND $4=0 AND $7='' AND ($8=0 OR t.place_id=$8) AND ($9=0 OR t.difficulty=$9)";
+            orderBy = sort switch { "oldest" => "t.question_id ASC", "difficulty" => "t.difficulty ASC,t.question_id DESC", "place" => "(SELECT name FROM place WHERE place_id=t.place_id) ASC,t.question_id DESC", _ => "t.question_id DESC" };
+        }
         var json = "to_jsonb(t)";
         if (key == "users") json = "to_jsonb(t)-'password_hash'";
         if (key == "places") json += " || jsonb_build_object('region_name',(SELECT name FROM region WHERE region_id=t.region_id),'type_name',(SELECT name FROM place_type WHERE place_type_id=t.place_type_id),'image_count',(SELECT count(*) FROM place_image WHERE place_id=t.place_id),'image_key',(SELECT image_key FROM place_image WHERE place_id=t.place_id ORDER BY place_image_id LIMIT 1))";
         if (key == "cards") json += " || jsonb_build_object('place_name',(SELECT name FROM place WHERE place_id=t.place_id),'collected_count',(SELECT count(*) FROM (SELECT user_id FROM public.user_card WHERE card_id=t.card_id UNION SELECT user_id FROM public.user_discovered_place WHERE place_id=t.place_id) owners))";
         if (key == "collections") json += " || jsonb_build_object('card_count',(SELECT count(*) FROM collection_card WHERE collection_id=t.collection_id))";
         if (key == "quests") json += " || jsonb_build_object('reward_name',(SELECT name FROM item WHERE item_id=t.reward_item_id),'completed_count',(SELECT count(*) FROM quest_progress WHERE quest_id=t.quest_id AND completion_status))";
+        if (key == "questions") json += " || jsonb_build_object('place_name',(SELECT name FROM place WHERE place_id=t.place_id),'answer_label',chr(65+t.answer_index))";
         if (key == "regions") json += " || jsonb_build_object('place_count',(SELECT count(*) FROM place WHERE region_id=t.region_id))";
         await using var cmd = db.CreateCommand($"""
             SELECT jsonb_build_object('total',(SELECT count(*) FROM {r.Table} t {where}),
-            'items',COALESCE((SELECT jsonb_agg(data) FROM (SELECT {json} AS data FROM {r.Table} t {where} ORDER BY t.{r.Id} {direction} LIMIT $5 OFFSET $6) s),'[]'::jsonb))::text
+            'items',COALESCE((SELECT jsonb_agg(data) FROM (SELECT {json} AS data FROM {r.Table} t {where} ORDER BY {orderBy} LIMIT $5 OFFSET $6) s),'[]'::jsonb))::text
             """);
         cmd.Parameters.AddWithValue((q ?? "").Trim()[..Math.Min((q ?? "").Trim().Length, 200)]);
         cmd.Parameters.AddWithValue(status ?? ""); cmd.Parameters.AddWithValue(regionId ?? 0); cmd.Parameters.AddWithValue(typeId ?? 0);
         cmd.Parameters.AddWithValue(pageSize); cmd.Parameters.AddWithValue((page - 1) * pageSize);cmd.Parameters.AddWithValue(cycle ?? "");
+        if (key == "questions") { cmd.Parameters.AddWithValue(placeId ?? 0); cmd.Parameters.AddWithValue(difficulty ?? 0); }
         return Json((string)(await cmd.ExecuteScalarAsync(ct))!);
     }
 

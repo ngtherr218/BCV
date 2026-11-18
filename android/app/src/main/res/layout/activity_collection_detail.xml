@@ -65,7 +65,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:textColor="#6F8579"
-                android:textSize="14sp" />
+                android:textSize="15sp" />
 
             <LinearLayout
                 android:id="@+id/content"
@@ -104,7 +104,7 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:textColor="@color/forest"
-                            android:textSize="28sp"
+                            android:textSize="26sp"
                             android:textStyle="bold" />
 
                         <TextView
@@ -189,7 +189,7 @@
                     android:gravity="center"
                     android:text="Đang tải thẻ…"
                     android:textColor="#6F8579"
-                    android:textSize="14sp" />
+                    android:textSize="15sp" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/retryButton"

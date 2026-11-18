@@ -23,7 +23,7 @@
         android:lineSpacingExtra="5dp"
         android:text="Bước Chân Việt xin quyền đọc số bước và thời gian ghi nhận từ Health Connect để cập nhật tiến độ hành trình khi bạn sử dụng tính năng bước chân. Ứng dụng không xin quyền ghi dữ liệu sức khỏe."
         android:textColor="@color/forest"
-        android:textSize="16sp" />
+        android:textSize="15sp" />
 
     <TextView
         android:layout_width="match_parent"

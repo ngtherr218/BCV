@@ -13,8 +13,11 @@ import com.project.bcv.core.presentation.loadInto
 
 data class CompletionCard(val id:Long,val name:String,val imageUrl:String?,val newlyAwarded:Boolean)
 data class JourneyCompletion(val journeyId:Long,val placeId:Long,val placeName:String,val regionName:String?,val imageUrl:String?,
- val recordedSteps:Int,val requiredSteps:Int,val rankingPoints:Int,val completedAt:String,val card:CompletionCard?,val status:String="COMPLETED") {
- fun validFor(id:Long)=id>0 && journeyId==id && placeId>0 && status=="COMPLETED" && requiredSteps>0 && recordedSteps>=requiredSteps && rankingPoints>=0 && completedAt.isNotBlank()
+ val recordedSteps:Int,val requiredSteps:Int,val rankingPoints:Int,val completedAt:String,val card:CompletionCard?,val status:String="COMPLETED",
+ val quizAnswered:Int=0,val quizCorrect:Int=0,val quizPoints:Int=0,val masteryPoints:Int=0,
+ val rankBefore:Long?=null,val rankAfter:Long?=null) {
+ val totalPoints get()=rankingPoints.toLong()+quizPoints+masteryPoints
+ fun validFor(id:Long)=id>0 && journeyId==id && placeId>0 && status=="COMPLETED" && requiredSteps>0 && recordedSteps>=requiredSteps && rankingPoints>=0 && completedAt.isNotBlank() && quizAnswered>=0 && quizCorrect in 0..quizAnswered && quizPoints>=0 && masteryPoints>=0 && (rankBefore==null||rankBefore>0) && (rankAfter==null||rankAfter>0)
 }
 fun interface JourneyCompletionRepository { fun load(id:Long):JourneyCompletion }
 class RemoteJourneyCompletionRepository(context:Context):JourneyCompletionRepository {
@@ -26,7 +29,9 @@ class RemoteJourneyCompletionRepository(context:Context):JourneyCompletionReposi
   fun org.json.JSONObject.text(key:String)=optString(key).takeIf{it.isNotBlank()&&it!="null"}
   val c=j.optJSONObject("card")?.let{CompletionCard(it.getLong("cardId"),it.getString("name"),it.text("imageUrl"),it.optBoolean("newlyAwarded"))}
   return JourneyCompletion(j.getLong("journeyId"),j.getLong("placeId"),j.getString("placeName"),j.text("regionName"),j.text("imageUrl"),
-   j.getInt("recordedSteps"),j.getInt("requiredSteps"),j.getInt("rankingPoints"),j.optString("completedAt"),c,j.getString("status"))
+   j.getInt("recordedSteps"),j.getInt("requiredSteps"),j.getInt("rankingPoints"),j.optString("completedAt"),c,j.getString("status"),
+   j.optInt("quizAnswered"),j.optInt("quizCorrect"),j.optInt("quizPoints"),j.optInt("masteryPoints"),
+   if(j.isNull("rankBefore"))null else j.optLong("rankBefore"),if(j.isNull("rankAfter"))null else j.optLong("rankAfter"))
  }
 }
 /** Same lightweight DI style as the other modules; overrides are internal to instrumentation. */

@@ -14,7 +14,8 @@ import androidx.core.content.ContextCompat
 import com.project.bcv.R
 import com.project.bcv.databinding.ViewBottomNavBinding
 
-enum class NavTab { EXPLORE, JOURNEY, COLLECTION, QUEST }
+/** Order matters: it decides which side a tab slides in from. */
+enum class NavTab { EXPLORE, COLLECTION, CHALLENGE, RANKING, JOURNEY }
 
 /** Styling and switching for the shared bottom navigation (layout/view_bottom_nav.xml). */
 object BottomNav {
@@ -25,9 +26,9 @@ object BottomNav {
         val teal = ContextCompat.getColor(nav.root.context, R.color.teal)
         listOf(
             Triple(NavTab.EXPLORE, nav.tabExploreIcon, nav.tabExploreLabel) to "Khám phá",
-            Triple(NavTab.JOURNEY, nav.tabJourneyIcon, nav.tabJourneyLabel) to "Hành trình",
             Triple(NavTab.COLLECTION, nav.tabCollectionIcon, nav.tabCollectionLabel) to "Bộ sưu tập",
-            Triple(NavTab.QUEST, nav.tabQuestIcon, nav.tabQuestLabel) to "Nhiệm vụ"
+            Triple(NavTab.CHALLENGE, nav.tabChallengeIcon, nav.tabChallengeLabel) to "Thử thách",
+            Triple(NavTab.RANKING, nav.tabRankingIcon, nav.tabRankingLabel) to "Xếp hạng"
         ).forEach { (views, name) ->
             val (tab, icon, label) = views
             val active = tab == selected
@@ -37,6 +38,58 @@ object BottomNav {
             label.setTypeface(null, if (active) Typeface.BOLD else Typeface.NORMAL)
             (if (tab == NavTab.COLLECTION) nav.tabCollection else icon.parent as android.view.View).contentDescription = if (active) "$name, đang chọn" else name
         }
+    }
+
+    private fun target(tab: NavTab): Class<out Activity> = when (tab) {
+        NavTab.EXPLORE -> com.project.bcv.feature.discovery.presentation.ExploreActivity::class.java
+        NavTab.COLLECTION -> com.project.bcv.feature.collection.presentation.CollectionActivity::class.java
+        NavTab.CHALLENGE -> com.project.bcv.feature.questitem.quest.presentation.QuestActivity::class.java
+        NavTab.JOURNEY -> com.project.bcv.feature.journey.presentation.JourneyActivity::class.java
+        NavTab.RANKING -> com.project.bcv.feature.engagement.AchievementsActivity::class.java
+    }
+
+    /**
+     * Wires every tab of [nav] for the screen showing [current]. Khám phá is the root screen: other
+     * tabs open above it and replace each other in place; tapping Khám phá closes the open tab.
+     * [onReselect] runs when the current tab is tapped again (e.g. to refresh).
+     */
+    fun wire(activity: Activity, nav: ViewBottomNavBinding, current: NavTab, root: ViewGroup, onReselect: () -> Unit = {}) {
+        select(nav, current)
+        val views = mapOf(NavTab.EXPLORE to nav.tabExplore, NavTab.COLLECTION to nav.tabCollection,
+            NavTab.CHALLENGE to nav.tabChallenge, NavTab.RANKING to nav.tabRanking)
+        views.forEach { (tab, view) ->
+            view.setOnClickListener { if (tab == current) onReselect() else go(activity, nav, current, tab, root) }
+        }
+    }
+
+    /** Leaves [current] for [tab] with the same slide as the existing tabs. */
+    fun go(activity: Activity, nav: ViewBottomNavBinding, current: NavTab, tab: NavTab, root: ViewGroup) {
+        if (current == NavTab.EXPLORE) {
+            activity.startActivity(intent(activity, target(tab), current))
+            skipTransition(activity, opening = true)
+            return
+        }
+        if (root.getTag(R.id.tabExplore) == true) return   // already leaving
+        root.setTag(R.id.tabExplore, true)
+        exit(contentOf(root, nav), toRight = tab.ordinal < current.ordinal) {
+            if (tab != NavTab.EXPLORE) {
+                activity.startActivity(intent(activity, target(tab), current))
+                skipTransition(activity, opening = true)
+            }
+            activity.finish()
+            skipTransition(activity, opening = false)
+        }
+    }
+
+    /** Intent extra: switching between sub-pages of one tab (Thẻ / Hộ chiếu / Nhật ký) — no slide. */
+    const val EXTRA_SAME_TAB = "same_tab"
+
+    /** Replaces the current sub-page of a tab with [target] in place, keeping the bar still. */
+    fun switchWithinTab(activity: Activity, tab: NavTab, target: Class<out Activity>) {
+        activity.startActivity(intent(activity, target, tab).putExtra(EXTRA_SAME_TAB, true))
+        skipTransition(activity, opening = true)
+        activity.finish()
+        skipTransition(activity, opening = false)
     }
 
     /** Gives the bar its height plus the gesture-area inset, so its surface reaches the screen edge. */

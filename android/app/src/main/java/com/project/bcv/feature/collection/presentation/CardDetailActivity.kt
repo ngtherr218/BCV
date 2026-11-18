@@ -79,6 +79,20 @@ class CardDetailActivity : AppCompatActivity() {
                 }
             }
         }
+        lifecycleScope.launch {
+            runCatching { com.project.bcv.feature.engagement.EngagementApi(this@CardDetailActivity).masteredPlaces() }
+                .onSuccess { places ->
+                    if (placeId in places) {
+                        binding.headline.text = "Am hiểu văn hóa địa danh"
+                        binding.ownedChip.text = if (owned) "AM HIỂU · Đã sở hữu" else "AM HIỂU · Chờ khám phá"
+                        binding.ownedChip.setTextColor(0xFF8A5A00.toInt())
+                        binding.ownedChip.background = android.graphics.drawable.GradientDrawable().apply {
+                            setColor(0xFFFBF3E2.toInt()); cornerRadius = 20 * resources.displayMetrics.density
+                            setStroke((2 * resources.displayMetrics.density).toInt(), 0xFFC9962B.toInt())
+                        }
+                    }
+                }
+        }
         binding.placeButton.setOnClickListener {
             if (!placeAvailable) return@setOnClickListener
             placeDetail.launch(Intent(this, PlaceDetailActivity::class.java)

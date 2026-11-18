@@ -2,6 +2,8 @@ package com.project.bcv.feature.discovery.presentation
 
 import android.app.Activity
 import android.graphics.Bitmap
+import android.graphics.RenderEffect
+import android.graphics.Shader
 import android.graphics.drawable.GradientDrawable
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -11,6 +13,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.View
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -32,6 +35,7 @@ import com.project.bcv.feature.discovery.domain.ExplorePlaceDetail
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
+import kotlin.math.max
 
 class PlaceDetailActivity : AppCompatActivity() {
     private lateinit var binding: ActivityPlaceDetailBinding
@@ -40,12 +44,12 @@ class PlaceDetailActivity : AppCompatActivity() {
     private var replaceDialogShown = false
     private var shownError: String? = null
     private var renderedPlaceId: Long? = null
-    private lateinit var approvedMedia: ApprovedPlaceMediaView
-    private var communityPlaceId: Long? = null
     private val bitmaps = mutableMapOf<String, Bitmap>()
     private var galleryUrls = emptyList<String>()
     private var galleryIndex = 0
     private var preparingPlaceId: Long? = null
+    private lateinit var approvedMedia: ApprovedPlaceMediaView
+    private var communityPlaceId: Long? = null
     override fun onResume() {
         super.onResume()
         if (::model.isInitialized && ::approvedMedia.isInitialized) model.state.value?.place?.let {
@@ -65,17 +69,17 @@ class PlaceDetailActivity : AppCompatActivity() {
         }
         binding = ActivityPlaceDetailBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        approvedMedia = ApprovedPlaceMediaView(this)
-        binding.approvedCommunity.addView(approvedMedia)
         binding.communityMediaButton.visibility = View.GONE
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
+        approvedMedia = ApprovedPlaceMediaView(this)
+        binding.approvedCommunity.addView(approvedMedia)
         binding.communityMediaButton.setOnClickListener {
-            startActivity(android.content.Intent(this, CommunityMediaActivity::class.java)
-                .putExtra("place_id", intent.getLongExtra(EXTRA_PLACE_ID, 0L)))
+            startActivity(android.content.Intent(this,CommunityMediaActivity::class.java)
+                .putExtra("place_id",intent.getLongExtra(EXTRA_PLACE_ID,0L)))
         }
         binding.backButton.setOnClickListener { finish() }
         binding.selectButton.setOnClickListener { model.select() }
@@ -118,7 +122,7 @@ class PlaceDetailActivity : AppCompatActivity() {
         // What the map already knows is shown at once, so the header is right before the API answers.
         val discoveredHint = intent.getBooleanExtra(EXTRA_DISCOVERED, false)
         showSkeletonFor(intent.getStringExtra(EXTRA_PLACE_NAME).orEmpty(), discoveredHint)
-        binding.topTitle.text = if (discoveredHint) "Nội dung địa danh" else "Chọn điểm đến"
+        binding.topTitle.text = if (discoveredHint) "Địa danh đã khám phá" else "Xem trước địa danh"
         binding.retryButton.setOnClickListener {
             if (model.state.value?.unavailable == true) finish() else model.load(placeId)
         }
@@ -136,13 +140,8 @@ class PlaceDetailActivity : AppCompatActivity() {
     }
 
     private fun showLoading(error: String?, unavailable: Boolean = false) = with(binding) {
-        approvedCommunity.visibility = View.GONE
-        communityMediaButton.visibility = View.GONE
-        approvedMedia.clear()
-        communityPlaceId = null
         loadingContent.visibility = View.VISIBLE
-        lockedContent.visibility = View.GONE
-        unlockedContent.visibility = View.GONE
+        placeContent.visibility = View.GONE
         if (error != null) {
             Skeleton.hide(loadingSkeleton)
             bottomBar.visibility = View.GONE
@@ -155,8 +154,7 @@ class PlaceDetailActivity : AppCompatActivity() {
         } else {
             loadingContent.contentDescription = "Đang tải nội dung địa danh"
             Skeleton.show(loadingSkeleton, loadingError)
-            // The destination picker keeps its (still disabled) button in place while loading.
-            bottomBar.visibility = if (skeletonDiscovered) View.GONE else View.VISIBLE
+            bottomBar.visibility = View.GONE
         }
     }
 
@@ -166,103 +164,81 @@ class PlaceDetailActivity : AppCompatActivity() {
         preparingPlaceId = place.id
         showSkeletonFor(place.name, place.isDiscovered)
         showLoading(null)
-        val firstUrl = (if (place.isDiscovered) place.imageUrls.firstOrNull() else null) ?: place.imageUrl
+        val firstUrl = photosOf(place).firstOrNull()
         lifecycleScope.launch {
             firstUrl?.let { loadBitmap(it, sample = 2) }
             renderedPlaceId = place.id
             Skeleton.hide(binding.loadingSkeleton)
             binding.loadingContent.visibility = View.GONE
             model.state.value?.place?.let(::showPlace)
-            ScreenMotion.reveal(if (place.isDiscovered) binding.unlockedContent else binding.lockedContent)
+            ScreenMotion.reveal(binding.placeContent)
         }
     }
 
+    /** Photos the user may see: the full gallery once discovered, the cover photo as a preview before. */
+    private fun photosOf(place: ExplorePlaceDetail) =
+        (if (place.isDiscovered) place.imageUrls.ifEmpty { listOfNotNull(place.imageUrl) } else listOfNotNull(place.imageUrl))
+            .filter { RemoteImages.supports(it) || MediaUrlPolicy.authenticatedUrl(BuildConfig.API_BASE_URL, it) != null }
+
+    /**
+     * One page for both states. Locked = preview (cover, story, fun fact) plus what the walk unlocks;
+     * discovered = the same page with the gallery, videos and journal.
+     */
     private fun showPlace(place: ExplorePlaceDetail) = with(binding) {
         photoCredits.visibility=if((place.imageUrl!=null || place.imageUrls.isNotEmpty()) && place.imageCredits.isNotEmpty()) View.VISIBLE else View.GONE
         photoCredits.text=android.text.Html.fromHtml(place.imageCredits.distinct().joinToString("<br>") { credit ->
             "Ảnh: ${android.text.TextUtils.htmlEncode(credit.author)} · <a href=\"${android.text.TextUtils.htmlEncode(credit.licenseUrl)}\">${android.text.TextUtils.htmlEncode(credit.license)}</a> · <a href=\"${android.text.TextUtils.htmlEncode(credit.sourceUrl)}\">Nguồn</a> (ảnh thu nhỏ)"
         },android.text.Html.FROM_HTML_MODE_LEGACY)
         photoCredits.movementMethod=android.text.method.LinkMovementMethod.getInstance()
-        // A discovered place opens its content page; a locked one stays the destination picker.
-        lockedContent.visibility = if (place.isDiscovered) View.GONE else View.VISIBLE
-        unlockedContent.visibility = if (place.isDiscovered) View.VISIBLE else View.GONE
-        approvedCommunity.visibility = if (place.isDiscovered) View.VISIBLE else View.GONE
-        if (place.isDiscovered && communityPlaceId != place.id) {
-            communityPlaceId = place.id
-            approvedMedia.load(place.id)
-        } else if (!place.isDiscovered) {
-            communityPlaceId = null
-            approvedMedia.clear()
-        }
-        bottomBar.visibility = View.VISIBLE
-        communityMediaButton.visibility = if (place.isDiscovered) View.VISIBLE else View.GONE
-        selectButton.visibility = lockedContent.visibility
-        topTitle.text = if (place.isDiscovered) "Nội dung địa danh" else "Chọn điểm đến"
-        if (place.isDiscovered) {
-            showUnlocked(place)
-            return@with
-        }
-        placeName.text = place.name
-        distanceText.text = if (place.distanceKm < 1) {
-            "${(place.distanceKm * 1000).toInt()} m"
-        } else String.format(Locale.forLanguageTag("vi-VN"), "%.1f km", place.distanceKm)
+        val discovered = place.isDiscovered
         val number = NumberFormat.getIntegerInstance(Locale.forLanguageTag("vi-VN"))
-        stepsText.text = if (place.distanceKm <= 0.001) "Trùng với vị trí ảo hiện tại"
-            else "Khoảng ${number.format(place.requiredSteps)} bước từ vị trí ảo"
-        lockedHeroContent.visibility = if (place.isDiscovered) View.GONE else View.VISIBLE
-        heroShade.visibility = if (place.isDiscovered) View.GONE else View.VISIBLE
-        lockedNotice.visibility = if (place.isDiscovered) View.GONE else View.VISIBLE
-        unlockedDescription.visibility = View.VISIBLE
-        unlockedDescription.text = listOfNotNull(
-            ratingText(place),
-            place.regionName?.takeIf(String::isNotBlank)?.let { "Khu vực: $it" },
-            place.placeType.takeIf(String::isNotBlank)?.let { "Loại địa danh: $it" },
-            place.estimatedDays?.let { "Ước tính: $it ngày · ${place.dailyStepTarget ?: 0} bước/ngày" },
-            place.relativeDifficulty?.let { "Độ khó: ${when(it) { "EASY" -> "Nhẹ nhàng"; "MODERATE" -> "Vừa sức"; else -> "Thử thách" }}" },
-            if(place.latitude != null && place.longitude != null) "Vị trí: ${place.latitude}, ${place.longitude}" else null,
-            "Giới thiệu\n${place.introduction ?: "Chưa có dữ liệu giới thiệu."}",
-            place.highlights?.takeIf(String::isNotBlank)?.let { "Điểm nổi bật\n$it" })
-            .filter(String::isNotBlank).joinToString("\n\n")
-        if (Build.VERSION.SDK_INT >= 31) {
-            placeImage.setRenderEffect(null)
-        }
-        if (place.imageUrl != shownImageUrl) {
-            shownImageUrl = place.imageUrl
-            placeImage.setImageDrawable(null)
-            place.imageUrl?.let(::loadImage)
-        }
-    }
+        placeContent.visibility = View.VISIBLE
+        bottomBar.visibility = View.VISIBLE
+        topTitle.text = if (discovered) "Địa danh đã khám phá" else "Xem trước địa danh"
 
-    private fun showUnlocked(place: ExplorePlaceDetail) = with(binding) {
-        unlockedName.text = place.name
+        // Hero: photo, state tag, name and region.
+        placeName.text = place.name
         regionText.text = place.regionName
         regionText.visibility = if (place.regionName.isNullOrBlank()) View.GONE else View.VISIBLE
-        storyText.text = "${ratingText(place)}\n\n${place.introduction ?: "Nội dung về địa danh này đang được cập nhật."}"
+        statusIcon.setImageResource(if (discovered) R.drawable.ic_lock_open_outline else R.drawable.ic_lock)
+        statusIcon.imageTintList = android.content.res.ColorStateList.valueOf(
+            ContextCompat.getColor(this@PlaceDetailActivity, if (discovered) R.color.teal else R.color.forest))
+        statusText.text = if (discovered) "Đã khám phá" else "Xem trước · chưa mở khóa"
+        statusText.setTextColor(ContextCompat.getColor(this@PlaceDetailActivity, if (discovered) R.color.teal else R.color.forest))
+
+        // At a glance.
+        ratingValue.text = place.rating?.takeIf { (place.ratingCount ?: 0) > 0 }?.let { "★ " + String.format(Locale.forLanguageTag("vi-VN"), "%.1f", it) } ?: "★ —"
+        ratingLabel.text = place.ratingCount?.takeIf { it > 0 }?.let { "${number.format(it)} đánh giá" } ?: "Chưa có đánh giá"
+        distanceText.text = if (place.distanceKm < 1) "${(place.distanceKm * 1000).toInt()} m"
+            else String.format(Locale.forLanguageTag("vi-VN"), "%.1f km", place.distanceKm)
+        stepsText.text = if (place.distanceKm <= 0.001) "Vị trí ảo ở đây" else "Từ vị trí ảo · ~${number.format(place.requiredSteps)} bước"
+        placeTypeText.text = place.placeType.ifBlank { "—" }
+
+        // Locked: what the walk unlocks.
+        unlockCard.visibility = if (discovered) View.GONE else View.VISIBLE
+        unlockHint.text = if (place.distanceKm <= 0.001) "Vị trí ảo của bạn đang ở địa danh này."
+            else "Khoảng ${number.format(place.requiredSteps)} bước từ vị trí của bạn để hoàn thành hành trình khám phá."
+
+        storyText.text = place.introduction ?: "Nội dung về địa danh này đang được cập nhật."
         val fact = place.highlights?.removePrefix("Bạn có biết?")?.trim()
+            // Seed data sometimes repeats the introduction; only show a fact that adds something.
+            ?.takeUnless { f -> place.introduction?.let { intro -> intro.trim().contains(f.trimEnd('.')) || f.contains(intro.trim().trimEnd('.')) } == true }
         factCard.visibility = if (fact.isNullOrEmpty()) View.GONE else View.VISIBLE
         factText.text = fact
-        placeTypeText.text = place.placeType
 
-        val urls = place.imageUrls.ifEmpty { listOfNotNull(place.imageUrl) }.filter {
-            RemoteImages.supports(it) || MediaUrlPolicy.authenticatedUrl(BuildConfig.API_BASE_URL, it) != null
-        }
-        // Without a PLACE_IMAGE row there is no photo of this place; never stand in the app's hero art.
-        galleryFrame.visibility = if (urls.isEmpty()) View.GONE else View.VISIBLE
-        galleryCaptionRow.visibility = galleryFrame.visibility
-        storyTitle.updateLayoutParams<LinearLayout.LayoutParams> {
-            topMargin = ((if (urls.isEmpty()) 18 else 22) * resources.displayMetrics.density).toInt()
-        }
+        approvedCommunity.visibility = if (discovered) View.VISIBLE else View.GONE
+        communityMediaButton.visibility = if (discovered) View.VISIBLE else View.GONE
+        if (discovered && communityPlaceId != place.id) { communityPlaceId=place.id;approvedMedia.load(place.id) }
+        else if (!discovered) { communityPlaceId=null;approvedMedia.clear() }
+        selectButton.visibility = if (discovered) View.GONE else View.VISIBLE
+
+        val urls = photosOf(place)
+        heroPlaceholder.visibility = if (urls.isEmpty()) View.VISIBLE else View.GONE
         if (urls != galleryUrls) {
             galleryUrls = urls
             buildThumbnails()
             selectImage(0)
         }
-    }
-
-    private fun ratingText(place: ExplorePlaceDetail): String {
-        val score = place.rating?.let { String.format(Locale.forLanguageTag("vi-VN"), "%.1f/5", it) } ?: "Chưa có dữ liệu"
-        val count = place.ratingCount?.let { NumberFormat.getIntegerInstance(Locale.forLanguageTag("vi-VN")).format(it) } ?: "Chưa có dữ liệu"
-        return "Điểm đánh giá: $score\nSố lượt đánh giá: $count"
     }
 
     private fun buildThumbnails() = with(binding) {
@@ -274,45 +250,43 @@ class PlaceDetailActivity : AppCompatActivity() {
             val thumb = ImageView(this@PlaceDetailActivity).apply {
                 scaleType = ImageView.ScaleType.CENTER_CROP
                 clipToOutline = true
-                val inset = (3 * density).toInt()
+                val inset = (2 * density).toInt()
                 setPadding(inset, inset, inset, inset)
                 contentDescription = "Ảnh ${index + 1} trên ${galleryUrls.size}"
                 setOnClickListener { selectImage(index) }
             }
-            galleryThumbs.addView(thumb, LinearLayout.LayoutParams((72 * density).toInt(), (56 * density).toInt())
+            galleryThumbs.addView(thumb, LinearLayout.LayoutParams((76 * density).toInt(), (58 * density).toInt())
                 .apply { if (index > 0) marginStart = (8 * density).toInt() })
             lifecycleScope.launch { loadBitmap(url, sample = 4)?.let(thumb::setImageBitmap) }
         }
     }
 
+    /** Shows photo [index] in the hero; thumbnails mark the one on screen. */
     private fun selectImage(index: Int) = with(binding) {
         galleryIndex = index
         val url = galleryUrls.getOrNull(index)
-        // PLACE_IMAGE has no per-photo caption, so the place name labels every photo.
-        galleryCaption.text = unlockedName.text
-        galleryCounter.text = if (galleryUrls.size > 1)
-            String.format(Locale.ROOT, "%02d / %02d", index + 1, galleryUrls.size) else ""
-        galleryImage.contentDescription = "Ảnh ${unlockedName.text}"
+        galleryCounter.text = String.format(Locale.ROOT, "%d / %d", index + 1, galleryUrls.size)
+        galleryCounter.visibility = if (galleryUrls.size > 1) View.VISIBLE else View.GONE
+        placeImage.contentDescription = "Ảnh ${placeName.text}"
         val density = resources.displayMetrics.density
         for (position in 0 until galleryThumbs.childCount) {
             galleryThumbs.getChildAt(position).background = GradientDrawable().apply {
                 cornerRadius = 14 * density
                 setColor(0xFFFFFFFF.toInt())
-                if (position == index) setStroke((2 * density).toInt(), ContextCompat.getColor(
+                if (position == index) setStroke((2.5f * density).toInt(), ContextCompat.getColor(
                     this@PlaceDetailActivity, R.color.teal))
-                else setStroke((1.5f * density).toInt(), 0xFFE2E8DF.toInt())
+                else setStroke((1 * density).toInt(), 0xFFE2E8DF.toInt())
             }
         }
         if (url == null) {
-            galleryImage.setImageDrawable(null)
+            placeImage.setImageDrawable(null)
             return@with
         }
         // Cached photos (the first is preloaded before the page shows) are set without a frame of gap.
-        bitmaps["2|$url"]?.let { galleryImage.setImageBitmap(it); return@with }
-        galleryImage.setImageDrawable(null)
+        bitmaps["2|$url"]?.let { placeImage.setImageBitmap(it); return@with }
         lifecycleScope.launch {
             val bitmap = loadBitmap(url, sample = 2)
-            if (galleryIndex == index && bitmap != null) galleryImage.setImageBitmap(bitmap)
+            if (galleryIndex == index && bitmap != null) placeImage.setImageBitmap(bitmap)
         }
     }
 
@@ -326,19 +300,6 @@ class PlaceDetailActivity : AppCompatActivity() {
         } else RemoteImages.load(url, sample)
         if (bitmap != null) bitmaps[key] = bitmap
         return bitmap
-    }
-
-    private fun loadImage(url: String) {
-        if (!RemoteImages.supports(url) && MediaUrlPolicy.authenticatedUrl(BuildConfig.API_BASE_URL, url) == null) return
-        bitmaps["2|$url"]?.let { showHeroBitmap(it); return }
-        lifecycleScope.launch {
-            val bitmap = loadBitmap(url, sample = 2)
-            if (shownImageUrl == url && bitmap != null) showHeroBitmap(bitmap)
-        }
-    }
-
-    private fun showHeroBitmap(bitmap: Bitmap) {
-        binding.placeImage.setImageBitmap(bitmap)
     }
 
     companion object {

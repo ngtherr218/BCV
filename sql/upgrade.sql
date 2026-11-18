@@ -26,5 +26,8 @@ END $$;
 \ir migrations/028_unified_discovery_quest_points.sql
 \ir migrations/029_twelve_interests.sql
 \ir migrations/030_photo_lifecycle.sql
+\ir migrations/031_culture_quiz.sql
+\ir seed/004_place_questions.sql
+\ir migrations/032_collection_challenges.sql
 \ir verify.sql
 COMMIT;

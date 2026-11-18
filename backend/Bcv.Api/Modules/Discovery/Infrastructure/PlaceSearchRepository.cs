@@ -9,13 +9,16 @@ namespace Bcv.Api.Modules.Discovery.Infrastructure;
 
 public sealed record PlaceSearchQuery(string? Q = null, decimal? MinDistanceKm = null, decimal? MaxDistanceKm = null,
     int? MaxEstimatedDays = null, long? PlaceTypeId = null, long? InterestGroupId = null,
-    int Page = 1, int PageSize = 20, string Sort = "distance", string? InterestGroupIds = null, bool OnlyUndiscovered = false)
+    int Page = 1, int PageSize = 20, string Sort = "distance", string? InterestGroupIds = null, bool OnlyUndiscovered = false,
+    int? MaxRequiredSteps = null)
 {
     public long[] SelectedInterests()
     {
         if (string.IsNullOrWhiteSpace(InterestGroupIds)) return [];
         var parts = InterestGroupIds.Split(',');
-        if (parts.Length > 12 || parts.Any(value => !long.TryParse(value, out var id) || id < 101 || id > 112))
+        if (parts.Length > 3)
+            throw new ExploreException("INVALID_FILTER", "Chỉ được chọn tối đa 3 loại địa danh.");
+        if (parts.Any(value => !long.TryParse(value, out var id) || id < 101 || id > 112))
             throw new ExploreException("INVALID_FILTER", "Loại địa danh không hợp lệ.");
         return parts.Select(long.Parse).Distinct().ToArray();
     }
@@ -23,14 +26,15 @@ public sealed record PlaceSearchQuery(string? Q = null, decimal? MinDistanceKm =
     {
         _ = SelectedInterests();
         if (Q?.Length > 120 || MinDistanceKm < 0 || MaxDistanceKm < 0 || MaxDistanceKm < MinDistanceKm
-            || MaxEstimatedDays <= 0 || PlaceTypeId <= 0 || InterestGroupId <= 0
+            || MaxEstimatedDays <= 0 || MaxRequiredSteps <= 0 || PlaceTypeId <= 0 || InterestGroupId <= 0
             || Page < 1 || Page > 100000 || PageSize < 1 || PageSize > 50
             || Sort is not ("distance" or "name" or "estimatedDays" or "interests"))
-            throw new ExploreException("INVALID_FILTER", "Bộ lọc không hợp lệ. Kiểm tra khoảng cách, số ngày và phân trang.");
+            throw new ExploreException("INVALID_FILTER", "Bộ lọc không hợp lệ. Kiểm tra khoảng cách, số bước, số ngày và phân trang.");
     }
 }
 
-public sealed record PlaceSearchResult(int Page, int PageSize, long Total, IReadOnlyList<PlaceSearchItem> Places);
+public sealed record PlaceSearchResult(int Page, int PageSize, long Total, IReadOnlyList<PlaceSearchItem> Places,
+    int? MaxRequiredSteps = null, decimal? MaxDistanceKm = null);
 public sealed record PlaceSearchItem(long PlaceId, string Name, string PlaceType, string RegionName,
     decimal Latitude, decimal Longitude, string? ImageUrl, bool IsDiscovered,
     decimal DistanceKm, int RequiredSteps, int DailyStepTarget, int EstimatedDays, string RelativeDifficulty, bool MatchesInterests);
@@ -115,13 +119,7 @@ public sealed class PlaceSearchRepository(NpgsqlDataSource db)
                   JOIN place_feature_value fv ON fv.place_feature_id=pf.place_feature_id AND fv.feature_value=1
                   JOIN recommendation_criterion rc ON rc.criterion_id=fv.criterion_id
                   WHERE cfg.status='ACTIVE' AND rc.code IN (SELECT jsonb_array_elements_text(COALESCE($13::jsonb->$4::text,cfg.settings->'interestFeatures'->$4::text)))))
-                AND (cardinality($14::bigint[])=0 OR EXISTS (
-                  SELECT 1 FROM recommendation_config cfg
-                  JOIN place_feature pf ON pf.recommendation_config_id=cfg.recommendation_config_id AND pf.place_id=p.place_id
-                  JOIN place_feature_value fv ON fv.place_feature_id=pf.place_feature_id AND fv.feature_value=1
-                  JOIN recommendation_criterion rc ON rc.criterion_id=fv.criterion_id
-                  WHERE cfg.status='ACTIVE' AND rc.code IN (
-                    SELECT jsonb_array_elements_text($13::jsonb->chosen.id::text) FROM unnest($14::bigint[]) chosen(id))))
+                AND (cardinality($14::bigint[])=0 OR p.place_type_id=ANY($14::bigint[]))
             ), effort AS (
               SELECT *, CASE WHEN distance_km<=0 THEN 0 ELSE LEAST(2147483647,GREATEST(1,ceil(distance_km*1000*$5/$6)))::int END AS required_steps FROM candidates
             ), filtered AS (
@@ -129,6 +127,7 @@ public sealed class PlaceSearchRepository(NpgsqlDataSource db)
               WHERE ($8::numeric IS NULL OR distance_km >= $8) AND ($9::numeric IS NULL OR distance_km <= $9)
                 AND ($10::int IS NULL OR ceil(required_steps::numeric/$7) <= $10)
                 AND (NOT $15 OR (NOT discovered AND required_steps>0))
+                AND ($16::int IS NULL OR required_steps <= $16)
             ), page AS (SELECT * FROM filtered ORDER BY {order} LIMIT $11 OFFSET $12)
             SELECT (SELECT count(*) FROM filtered), page.* FROM (SELECT 1) anchor LEFT JOIN page ON true ORDER BY {order}
             """;
@@ -148,6 +147,7 @@ public sealed class PlaceSearchRepository(NpgsqlDataSource db)
         command.Parameters.AddWithValue(Bcv.Api.Modules.Account.Application.InterestCatalog.FeaturesJson);
         command.Parameters.AddWithValue(query.SelectedInterests());
         command.Parameters.AddWithValue(query.OnlyUndiscovered);
+        command.Parameters.Add(new() { NpgsqlDbType=NpgsqlDbType.Integer, Value=(object?)query.MaxRequiredSteps ?? DBNull.Value });
         var items = new List<PlaceSearchItem>();
         long total = 0;
         await using (var reader = await command.ExecuteReaderAsync(ct))
@@ -163,6 +163,6 @@ public sealed class PlaceSearchRepository(NpgsqlDataSource db)
             }
         }
         await transaction.CommitAsync(ct);
-        return new(query.Page, query.PageSize, total, items);
+        return new(query.Page, query.PageSize, total, items, query.MaxRequiredSteps, query.MaxDistanceKm);
     }
 }

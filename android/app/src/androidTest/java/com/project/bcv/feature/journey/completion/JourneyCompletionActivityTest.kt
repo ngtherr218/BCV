@@ -59,6 +59,18 @@ class JourneyCompletionActivityTest{
   inst.runOnMainSync{assertEquals("+375",a.findViewById<TextView>(R.id.pointsValue).text.toString());assertEquals("12.345",a.findViewById<TextView>(R.id.stepsValue).text.toString());assertEquals(View.VISIBLE,a.findViewById<View>(R.id.cardSection).visibility);assertNotNull(a.findViewById<android.widget.ImageView>(R.id.placeImage).drawable)}
   capture("journey-completion-fixture-full")
  }
+ @Test fun completionShowsQuizBreakdownAndRankGain(){
+  value=value.copy(quizAnswered=3,quizCorrect=2,quizPoints=100,masteryPoints=50,rankBefore=32,rankAfter=25)
+  val a=open();waitFor(a,"Chinh phục thành công!")
+  inst.runOnMainSync{
+   assertEquals("+525",a.findViewById<TextView>(R.id.pointsValue).text.toString())
+   assertTrue(a.findViewById<TextView>(R.id.rewardBreakdown).text.contains("2/3 câu   +100 điểm"))
+   assertTrue(a.findViewById<TextView>(R.id.rewardBreakdown).text.contains("Am hiểu   +50 điểm"))
+   assertEquals("#32 → #25",a.findViewById<TextView>(R.id.rankValue).text.toString())
+   assertTrue(a.findViewById<TextView>(R.id.rankChange).text.contains("Tăng 7 bậc"))
+  }
+  capture("journey-completion-rewards-rank")
+ }
  @Test fun jc04_06_noCardAndZeroPoints(){value=value.copy(card=null,rankingPoints=0);val a=open();waitFor(a,"Chinh phục thành công!");inst.runOnMainSync{assertEquals(View.GONE,a.findViewById<View>(R.id.cardSection).visibility);assertEquals("+0",a.findViewById<TextView>(R.id.pointsValue).text.toString())};capture("journey-completion-zero")}
  @Test fun jc02_unconfirmedNeverShowsSuccess(){value=value.copy(status="IN_PROGRESS");val a=open();waitFor(a,"Chưa xác minh");inst.runOnMainSync{assertEquals(View.GONE,a.findViewById<View>(R.id.content).visibility)}}
  @Test fun jc16_networkErrorCanRetry(){fail=true;val a=open();waitFor(a,"Không kết nối");inst.runOnMainSync{assertEquals(View.GONE,a.findViewById<View>(R.id.content).visibility)};capture("journey-completion-error");fail=false;onView(withId(R.id.stateRetry)).perform(click());waitFor(a,"Chinh phục thành công!");assertEquals(2,calls.get())}

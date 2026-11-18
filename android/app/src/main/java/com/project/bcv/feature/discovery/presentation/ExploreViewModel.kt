@@ -21,6 +21,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
 
 enum class ExploreStage {
@@ -59,6 +60,8 @@ class ExploreViewModel(
     val stepTest: LiveData<StepTestUiState> = mutableStepTest
     private var simulationJob: Job? = null
     private var simulationRequested = false
+    private var testSubmissionQueued = false
+    private fun testOwnsSync() = simulationRequested || testSubmissionQueued || mutableStepTest.value?.busy == true
     private fun isTestJourney(id: Long) = BuildConfig.STEP_TEST_ENABLED && stepTests.isTestJourney(id)
 
     private companion object { const val TAG = "ExploreViewModel" }
@@ -67,7 +70,7 @@ class ExploreViewModel(
 
     fun load(force: Boolean = true) {
         val current = mutableState.value ?: ExploreUiState()
-        if (loading || current.stage == ExploreStage.SYNCING || autoSyncing) {
+        if (loading || current.stage == ExploreStage.SYNCING || autoSyncing || testOwnsSync()) {
             if (force) { pendingRefresh = true; freshness.invalidate() }
             return
         }
@@ -109,7 +112,9 @@ class ExploreViewModel(
         val journey = snapshot.journey?.takeIf { it.status == "IN_PROGRESS" }
         if (journey != null && isTestJourney(journey.id)) return
         viewModelScope.launch { runCatching {
-            steps.capture(journey?.id ?: 0, journey?.startedAtEpochSeconds ?: 0, journey?.destinationName.orEmpty())
+            // A capture queued before switching sources must not restart the sensor afterwards.
+            if (journey == null || !isTestJourney(journey.id))
+                steps.capture(journey?.id ?: 0, journey?.startedAtEpochSeconds ?: 0, journey?.destinationName.orEmpty())
         } }
     }
 
@@ -132,7 +137,8 @@ class ExploreViewModel(
         viewModelScope.launch {
             val granted = runCatching { steps.hasPermission() }.getOrDefault(false)
             val latest = mutableState.value ?: return@launch
-            if (latest.snapshot?.journey?.id != current.snapshot.journey?.id) return@launch
+            if (latest.snapshot?.journey?.id != current.snapshot.journey?.id || testOwnsSync() ||
+                isTestJourney(current.snapshot.journey.id)) return@launch
             if (!granted) mutableState.value = latest.copy(stage = ExploreStage.PERMISSION_REQUIRED)
             else if (latest.stage == ExploreStage.PERMISSION_REQUIRED) {
                 mutableState.value = latest.copy(stage = ExploreStage.ACTIVE)
@@ -144,7 +150,7 @@ class ExploreViewModel(
         val current = mutableState.value ?: return
         val journey = current.snapshot?.journey ?: return
         if (isTestJourney(journey.id)) { load(); return }
-        if (loading || autoSyncing || journey.status != "IN_PROGRESS" || current.stage == ExploreStage.SYNCING) return
+        if (loading || autoSyncing || testOwnsSync() || journey.status != "IN_PROGRESS" || current.stage == ExploreStage.SYNCING) return
         mutableState.value = current.copy(stage = ExploreStage.SYNCING, message = null)
         viewModelScope.launch {
             try {
@@ -183,7 +189,7 @@ class ExploreViewModel(
     fun autoSyncSteps() {
         val current = mutableState.value ?: return
         val journey = current.snapshot?.journey ?: return
-        if (loading || isTestJourney(journey.id) || autoSyncing || journey.status != "IN_PROGRESS" || current.stage !in
+        if (loading || testOwnsSync() || isTestJourney(journey.id) || autoSyncing || journey.status != "IN_PROGRESS" || current.stage !in
             setOf(ExploreStage.ACTIVE, ExploreStage.NO_NEW_STEPS, ExploreStage.SYNC_FAILED)) return
         autoSyncing = true
         viewModelScope.launch {
@@ -221,12 +227,16 @@ class ExploreViewModel(
     }
 
     fun sendTestSteps(amount: Int) {
-        if (!BuildConfig.STEP_TEST_ENABLED || mutableStepTest.value?.busy == true || simulationRequested) return
-        viewModelScope.launch { submitTestSteps(amount) }
+        if (!BuildConfig.STEP_TEST_ENABLED || testOwnsSync()) return
+        testSubmissionQueued = true
+        viewModelScope.launch {
+            try { submitTestSteps(amount) }
+            finally { testSubmissionQueued = false; drainRefresh() }
+        }
     }
 
     fun startStepSimulation(amount: Int, intervalSeconds: Int) {
-        if (!BuildConfig.STEP_TEST_ENABLED || simulationJob?.isActive == true || mutableStepTest.value?.busy == true) return
+        if (!BuildConfig.STEP_TEST_ENABLED || simulationJob?.isActive == true || testOwnsSync()) return
         if (amount !in 1..100_000 || intervalSeconds !in 2..3600) {
             mutableStepTest.value = StepTestUiState(message = "Nhập 1–100.000 bước và chu kỳ 2–3.600 giây.")
             return
@@ -237,12 +247,13 @@ class ExploreViewModel(
         simulationJob = viewModelScope.launch {
             try {
                 while (simulationRequested && mutableState.value?.snapshot?.journey?.id == journeyId) {
-                    if (!submitTestSteps(amount) || !simulationRequested) break
+                    if (!submitTestSteps(amount) { simulationRequested } || !simulationRequested) break
                     delay(intervalSeconds * 1000L)
                 }
             } finally {
                 simulationRequested = false
                 mutableStepTest.value = (mutableStepTest.value ?: StepTestUiState()).copy(running = false)
+                drainRefresh()
             }
         }
     }
@@ -254,18 +265,36 @@ class ExploreViewModel(
         mutableStepTest.value = (mutableStepTest.value ?: StepTestUiState()).copy(running = false)
     }
 
-    private suspend fun submitTestSteps(amount: Int): Boolean {
-        val current = mutableState.value ?: return false
-        val journey = current.snapshot?.journey
-        if (loading || amount !in 1..100_000 || journey?.status != "IN_PROGRESS" || autoSyncing ||
-            current.stage in setOf(ExploreStage.SYNCING, ExploreStage.RESTORING)) {
-            mutableStepTest.value = (mutableStepTest.value ?: StepTestUiState()).copy(
-                message = "Cần hành trình đang đi và không có yêu cầu đồng bộ khác; nhập 1–100.000 bước.")
-            return false
-        }
-        mutableState.value = current.copy(stage = ExploreStage.SYNCING, message = null)
-        mutableStepTest.value = (mutableStepTest.value ?: StepTestUiState()).copy(busy = true)
+    private suspend fun submitTestSteps(amount: Int, stillRequested: () -> Boolean = { true }): Boolean {
+        var restoreState: ExploreUiState? = null
+        mutableStepTest.value = (mutableStepTest.value ?: StepTestUiState()).copy(busy = true,
+            message = "Đang chuẩn bị bước thử; chờ lần đồng bộ thiết bị hiện tại kết thúc…")
         try {
+            // Physical phones may already be reading Health Connect or syncing sensor steps.
+            // Reserve test mode first, let that request finish, then read its acknowledged source total.
+            val ready = withTimeoutOrNull(30_000L) {
+                while (loading || autoSyncing || mutableState.value?.stage in
+                    setOf(ExploreStage.SYNCING, ExploreStage.RESTORING)) {
+                    if (!stillRequested()) return@withTimeoutOrNull false
+                    delay(50)
+                }
+                stillRequested()
+            } == true
+            if (!ready) {
+                mutableStepTest.value = (mutableStepTest.value ?: StepTestUiState()).copy(message =
+                    if (stillRequested()) "Đồng bộ thiết bị chưa kết thúc. Chờ một chút rồi gửi bước thử lại."
+                    else "Đã dừng mô phỏng trước khi gửi bước thử.")
+                return false
+            }
+            val current = mutableState.value ?: return false
+            val journey = current.snapshot?.journey
+            if (amount !in 1..100_000 || journey?.status != "IN_PROGRESS") {
+                mutableStepTest.value = (mutableStepTest.value ?: StepTestUiState()).copy(
+                    message = "Cần hành trình đang đi; nhập 1–100.000 bước.")
+                return false
+            }
+            restoreState = current
+            mutableState.value = current.copy(stage = ExploreStage.SYNCING, message = null)
             val fresh = withContext(Dispatchers.IO) { repository.load() }
             val active = fresh.journey?.takeIf { it.id == journey.id }
                 ?: throw IllegalStateException("Hành trình đã kết thúc hoặc thay đổi. Hãy tải lại.")
@@ -290,20 +319,27 @@ class ExploreViewModel(
             stepTests.useTestSteps(journey.id)
             val confirmed = withContext(Dispatchers.IO) { repository.syncSteps(journey.id, target) }
             require((confirmed.journey?.sourceSteps ?: -1L) >= target) { "Máy chủ chưa xác nhận đủ bước; có thể gửi lại cùng yêu cầu." }
-            stepTests.acknowledge(journey.id)
-            mutableState.value = ExploreUiState(confirmed.stage(), confirmed)
-            lookupAddress(confirmed)
             val status = confirmed.journey!!
+            require(status.id == journey.id) { "Hành trình trả về đã thay đổi. Hãy tải lại trước khi tiếp tục test." }
+            stepTests.acknowledge(journey.id)
+            val confirmedState = ExploreUiState(confirmed.stage(), confirmed)
+            restoreState = confirmedState // Even a mismatched backend must not restore an older acknowledged total.
+            mutableState.value = confirmedState
+            lookupAddress(confirmed)
+            val addedProgress = status.recordedSteps - active.recordedSteps
+            require(addedProgress > 0 || status.status == "COMPLETED") {
+                "Máy chủ đã nhận bước gốc nhưng tiến độ không tăng. Dừng mô phỏng; kiểm tra phiên bản backend đang kết nối."
+            }
             val prior = mutableStepTest.value ?: StepTestUiState()
             mutableStepTest.value = prior.copy(batches = prior.batches + 1,
-                message = "Đã xác nhận #${prior.batches + 1}: bước gốc ${status.sourceSteps}; tiến độ ${status.recordedSteps}/${status.requiredSteps} (${status.progressPercent}%)." +
+                message = "Đã xác nhận #${prior.batches + 1}: +$addedProgress bước tiến độ; bước gốc ${status.sourceSteps}; tiến độ ${status.recordedSteps}/${status.requiredSteps} (${status.progressPercent}%)." +
                     if (status.status == "COMPLETED") " Hành trình hoàn thành; đã dừng mô phỏng." else "")
             return status.status == "IN_PROGRESS"
         } catch (error: CancellationException) {
-            mutableState.value = current.copy(stage = current.snapshot?.stage() ?: ExploreStage.EMPTY)
+            restoreState?.let { mutableState.value = it.copy(stage = it.snapshot?.stage() ?: ExploreStage.EMPTY) }
             throw error
         } catch (error: Exception) {
-            mutableState.value = current.copy(stage = ExploreStage.SYNC_FAILED, message = error.message)
+            restoreState?.let { mutableState.value = it.copy(stage = ExploreStage.SYNC_FAILED, message = error.message) }
             mutableStepTest.value = (mutableStepTest.value ?: StepTestUiState()).copy(
                 message = error.message ?: "Gửi bước thử chưa thành công; mô phỏng đã dừng.")
             if (error is ApiFailure && error.code == "UNAUTHORIZED") sessionExpired()
@@ -315,7 +351,7 @@ class ExploreViewModel(
     }
 
     private fun drainRefresh() {
-        if (!pendingRefresh || loading || autoSyncing || mutableState.value?.stage == ExploreStage.SYNCING) return
+        if (!pendingRefresh || loading || autoSyncing || testOwnsSync() || mutableState.value?.stage == ExploreStage.SYNCING) return
         pendingRefresh = false
         load()
     }

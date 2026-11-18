@@ -1,6 +1,6 @@
 # Triển khai PostgreSQL cho BCV v2
 
-Bộ SQL ngày 16/11/2026 dành cho nhánh `bcv_v2`, PostgreSQL 18 và PostGIS. Có **33 bảng nghiệp vụ**, không tính `spatial_ref_sys` của PostGIS. Các file trong thư mục này là đường triển khai hiện tại; `db/` lưu lịch sử các bước phát triển.
+Bộ SQL ngày 16/11/2026 dành cho nhánh `bcv_v2`, PostgreSQL 18 và PostGIS. Có **40 bảng nghiệp vụ**, không tính `spatial_ref_sys` của PostGIS. Các file trong thư mục này là đường triển khai hiện tại; `db/` lưu lịch sử các bước phát triển.
 
 ## Chọn đúng đường triển khai
 
@@ -26,7 +26,8 @@ psql -X -h localhost -U postgres -d bcv_v2 -v ON_ERROR_STOP=1 -f sql/install.sql
 2. `seed/002_reference.sql`: vùng, loại địa danh, địa danh, URL ảnh công khai, thẻ, bộ sưu tập, vật phẩm, mô hình gợi ý và sở thích.
 3. `seed/003_rewards_quests.sql`: nhiệm vụ danh mục (loại bản ghi QA), điểm khám phá mặc định 150.
 4. `migrations/030_photo_lifecycle.sql`: trạng thái duyệt ảnh, lưu metadata khi dọn file và ràng buộc chỉ nhận ảnh.
-5. `verify.sql`: kiểm tra các bảng/cột, PostGIS, sở thích, mô hình và quy tắc điểm.
+5. `migrations/031_culture_quiz.sql` và `seed/004_place_questions.sql`: trạm câu hỏi, danh hiệu Am hiểu và bộ câu hỏi văn hóa.
+6. `verify.sql`: kiểm tra các bảng/cột, PostGIS, sở thích, mô hình và quy tắc điểm.
 
 Không có tài khoản, password hash, phiên đăng nhập, lịch sử hành trình, điểm cá nhân, ảnh cộng đồng hay tiến độ nhiệm vụ trong dữ liệu seed. Không có tài khoản quản trị mặc định. Tạo quản trị bằng CLI sau khi cấu hình backend, xem [README](../README.md).
 
@@ -43,7 +44,7 @@ psql -X -h localhost -U postgres -d bcv -v ON_ERROR_STOP=1 -f sql/upgrade.sql
 
 Đổi đường dẫn backup theo máy. Nếu chuyển server, restore backup vào database đích trước rồi chạy `upgrade.sql` trên đích. Không chạy `install.sql` sau restore.
 
-Thứ tự migration: **018 → 019 → 020 → 021 → 022 → 023 → 024 → 026 → 027 → 028 → 029 → 030**. Các file trong `migrations/` là thành phần của `upgrade.sql`; không chạy bộ migration video 025/026 cũ trong `db/`.
+Thứ tự migration: **018 → 019 → 020 → 021 → 022 → 023 → 024 → 026 → 027 → 028 → 029 → 030 → 031**. Các file trong `migrations/` là thành phần của `upgrade.sql`; không chạy bộ migration video 025/026 cũ trong `db/`.
 
 - 018–020 thêm dấu thời gian đăng nhập, xem thẻ, ẩn thông báo.
 - 021 thêm nhóm sở thích, metadata mô hình, snapshot đánh giá; giữ các lựa chọn cũ.
@@ -71,3 +72,7 @@ psql -X -h localhost -U postgres -d bcv_v2 -v ON_ERROR_STOP=1 -f sql/verify.sql
 ```
 
 Kiểm tra thêm API `/health`, đăng nhập, gợi ý, hành trình, nhiệm vụ, thông báo và bảng xếp hạng. URL ảnh seed cần Internet; không kèm file ảnh nhị phân trong SQL.
+
+## Câu hỏi văn hóa từ BCV-ther
+
+Chỉ nâng cấp database v2, không sửa database `bcv`. Với v2 đã có schema hiện hành, chạy `backend/invoke-dev-v2-sql.ps1 -SqlFile sql/upgrade-culture-quiz.sql`. Migration 031 và seed 004 cũng có trong luồng cài mới/nâng cấp đầy đủ. Xem `docs/technical/BCV_THER_INTEGRATION.md`.

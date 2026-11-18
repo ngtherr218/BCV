@@ -70,9 +70,10 @@ class JourneyActivity : AppCompatActivity() {
         }
         binding = ActivityJourneyBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        binding.backButton.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.setPadding(bars.left, bars.top, bars.right, 0)
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             // Same as Explore: the cream nav surface continues behind the system gesture area.
             BottomNav.applyBottomInset(binding.bottomNavigation, bars.bottom)
             insets
@@ -84,15 +85,11 @@ class JourneyActivity : AppCompatActivity() {
             StepTestPreferences(this)))[
             JourneyViewModel::class.java]
         model.state.observe(this, ::render)
+        binding.cultureQuizButton.setOnClickListener {
+            com.project.bcv.feature.engagement.CultureQuizSheet(this) { refreshQuizStops(); model.refreshIfNeeded() }.show()
+        }
 
-        BottomNav.select(binding.bottomNavigation, NavTab.JOURNEY)
-        // A tab, not a pushed screen: open and close in place so the bar never moves.
-        BottomNav.skipTransition(this, opening = true)
-        BottomNav.skipTransition(this, opening = false)
-        // Khám phá is the tab to the left: content came in from the right and leaves the same way.
-        BottomNav.enter(BottomNav.contentOf(binding.root, binding.bottomNavigation),
-            fromRight = BottomNav.enteredFromRight(this, NavTab.JOURNEY))
-        binding.bottomNavigation.tabExplore.setOnClickListener { closeTab() }
+        binding.bottomNavigation.root.visibility = View.GONE
         // The full, interactive map of this journey lives on Khám phá.
         binding.mapTapTarget.setOnClickListener {
             setResult(RESULT_OK, Intent().putExtra(EXTRA_FOCUS_MAP, true))
@@ -101,9 +98,9 @@ class JourneyActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = closeTab()
         })
-        binding.bottomNavigation.tabJourney.setOnClickListener { model.refreshIfNeeded() }
+        binding.bottomNavigation.tabRanking.setOnClickListener { model.refreshIfNeeded() }
         binding.bottomNavigation.tabCollection.setOnClickListener { openTabToRight(CollectionActivity::class.java) }
-        binding.bottomNavigation.tabQuest.setOnClickListener { openTabToRight(QuestActivity::class.java) }
+        binding.bottomNavigation.tabChallenge.setOnClickListener { openTabToRight(QuestActivity::class.java) }
     }
 
     private fun showMilestoneCover(journey: ExploreJourney) {
@@ -175,6 +172,24 @@ class JourneyActivity : AppCompatActivity() {
     }
     override fun onDestroy() { refreshHandler.removeCallbacksAndMessages(null); routeMap.onDestroy(); super.onDestroy() }
 
+    private var quizRefresh: Job? = null
+    private fun refreshQuizStops() {
+        if (quizRefresh?.isActive == true) return
+        quizRefresh = lifecycleScope.launch {
+            runCatching { com.project.bcv.feature.engagement.EngagementApi(this@JourneyActivity).quiz() }
+                .onSuccess { quiz ->
+                    if (quiz.optBoolean("available")) {
+                        val open = quiz.optInt("openCount")
+                        val answered = quiz.optInt("answeredCount")
+                        val total = quiz.optInt("totalQuestions")
+                        binding.cultureQuizButton.text = if (open > 0)
+                            "Trạm câu hỏi · $open câu đang mở"
+                        else "Trạm câu hỏi · $answered/$total đã trả lời"
+                    } else binding.cultureQuizButton.text = "Trạm câu hỏi · Khám phá văn hóa"
+                }
+        }
+    }
+
     private fun render(state: JourneyUiState) = with(binding) {
         activeItemBanner.show((state as? JourneyUiState.Loaded)?.snapshot?.journey)
         when (state) {
@@ -226,6 +241,8 @@ class JourneyActivity : AppCompatActivity() {
         messageState.visibility = View.GONE
         journeyContent.visibility = View.VISIBLE
         val completed = journey.status == "COMPLETED"
+        cultureQuizButton.visibility = if (completed) View.GONE else View.VISIBLE
+        refreshQuizStops()
 
         statusChip.visibility = View.VISIBLE
         styleChip(loading = false)

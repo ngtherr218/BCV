@@ -66,7 +66,7 @@ class JourneyStepService : Service() {
         val saved = getSharedPreferences(PREFERENCES, MODE_PRIVATE)
         val journeyId = intent?.getLongExtra("journey", 0) ?: saved.getLong("journey", 0)
         destination = intent?.getStringExtra("destination") ?: saved.getString("destination", "").orEmpty()
-        if (journeyId <= 0 || !sensor.isUsable || SessionPreferences(this).token == null) {
+        if (journeyId <= 0 || isSimulated(this, journeyId) || !sensor.isUsable || SessionPreferences(this).token == null) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -118,7 +118,12 @@ class JourneyStepService : Service() {
             private set
 
         /** Call while the app is visible. A denied background start can be retried on the next resume. */
+        private fun isSimulated(context: Context, journeyId: Long) =
+            BuildConfig.STEP_TEST_ENABLED && StepTestPreferences(context).isTestJourney(journeyId)
+
         fun start(context: Context, journeyId: Long, destination: String = ""): Boolean {
+            // Also guard delayed/sticky starts from a screen that captured the old sensor state.
+            if (isSimulated(context, journeyId)) return false
             if (!DeviceStepCounter.get(context).isUsable || SessionPreferences(context).token == null) return false
             if (runningJourney == journeyId) return true
             return try {

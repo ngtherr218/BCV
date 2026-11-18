@@ -97,8 +97,6 @@ else
 if (builder.Configuration.GetValue("Media:MaintenanceEnabled", true))
     builder.Services.AddHostedService<Bcv.Api.Modules.CommunityMedia.MediaMaintenance>();
 var app = builder.Build();
-app.UseDefaultFiles();
-app.UseStaticFiles();
 // Explicit CLI operation; the public registration endpoint never grants ADMIN permissions.
 if (Array.IndexOf(args, "--create-admin") is var adminIndex && adminIndex >= 0)
 {
@@ -158,6 +156,7 @@ app.MapInventoryEndpoints();
 app.MapItemUseEndpoints();
 app.MapStatsNotifyEndpoints();
 app.MapAdminEndpoints();
+Bcv.Api.Modules.Engagement.EngagementEndpoints.MapEngagementEndpoints(app);
 Bcv.Api.Modules.CommunityMedia.CommunityMediaEndpoints.MapCommunityMedia(app);
 if (builder.Configuration.GetValue("Database:ApplyStartupMigrations", true))
 {

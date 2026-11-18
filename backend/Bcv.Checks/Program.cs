@@ -7,6 +7,18 @@ using Microsoft.Extensions.Configuration;
 using Npgsql;
 using Bcv.Api.Modules.Account.Application;
 
+if (args.Contains("--completion-integration"))
+{
+    await CompletionReceiptChecks.Run();
+    return;
+}
+
+if (args.Contains("--place-filter-integration"))
+{
+    await PlaceFilterChecks.Run();
+    return;
+}
+
 if (args.Contains("--ranking-integration"))
 {
     await RankingIntegrationChecks.Run();
