@@ -29,6 +29,7 @@ public static class DbMigrations
         new("035", "035_account_status_blocked.sql"),
         new("036", "036_leaderboard_rewards.sql"),
         new("037", "037_leaderboard_prizes.sql"),
+        new("038", "038_drop_unused_quiz_bonus_and_media_quests.sql"),
     ];
 
     private const long LockKey = 7246321;

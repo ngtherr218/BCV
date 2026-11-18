@@ -13,8 +13,6 @@ public static class QuestProgress
     public const string StepCount = "STEP_COUNT";
     public const string DiscoverPlace = "DISCOVER_PLACE";
     public const string CompleteJourney = "COMPLETE_JOURNEY";
-    public const string MediaApproved = "MEDIA_APPROVED";
-    public const string PhotoApproved = "PHOTO_APPROVED";
     /// <summary>F76: one per correct culture-question answer.</summary>
     public const string QuizCorrect = "QUIZ_CORRECT";
 

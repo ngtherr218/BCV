@@ -117,6 +117,9 @@ Muốn đổi schema: thêm file số mới rồi khai báo trong `DbMigrations.
 | `033_drop_rating_snapshot.sql` | Bỏ `recommendation_rating_snapshot` (rating đọc thẳng từ `place`) |
 | `034_preferences_place_types.sql` | Sở thích = loại địa danh yêu thích; chuyển lựa chọn cũ rồi bỏ `interest_group` |
 | `035_account_status_blocked.sql` | Gộp trạng thái tài khoản "Tạm ngưng" vào "Đã khóa" |
+| `036_leaderboard_rewards.sql` | Trao giải tuần: tuần đã chốt, ai đạt hạng mấy và nhận gì; điều kiện huy hiệu "số lần vào top 3 tuần" |
+| `037_leaderboard_prizes.sql` | Quà cho hạng 1–3 (chỉnh trên web: Giải thưởng tuần), mặc định 5 · 3 · 2 vé máy bay |
+| `038_drop_unused_quiz_bonus_and_media_quests.sql` | Bỏ cột `bonus_steps` (câu hỏi văn hóa không còn cộng bước) và hai điều kiện nhiệm vụ MEDIA_APPROVED / PHOTO_APPROVED |
 
 Số thứ tự bị nhảy (`005`–`008`, `011`) vì các migration sửa dữ liệu cũ đã được gộp vào `004` và `010` rồi xóa.
 

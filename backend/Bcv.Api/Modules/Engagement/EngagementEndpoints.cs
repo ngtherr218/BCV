@@ -306,10 +306,10 @@ public static partial class EngagementEndpoints
             var today = EngagementCore.Today();
             await using var connection = await db.OpenConnectionAsync(ct);
             await using var transaction = await connection.BeginTransactionAsync(ct);
-            int required, recorded, bonusSoFar;
+            int required, recorded;
             bool answered;
             await using (var command = new NpgsqlCommand("""
-                SELECT required_steps, recorded_steps, bonus_steps,
+                SELECT required_steps, recorded_steps,
                   EXISTS(SELECT 1 FROM journey_quiz_answer a WHERE a.journey_id=j.journey_id AND a.question_key=$2)
                 FROM journey j WHERE journey_id=$1 AND status='IN_PROGRESS' FOR UPDATE
                 """, connection, transaction))
@@ -317,8 +317,8 @@ public static partial class EngagementEndpoints
                 command.Parameters.AddWithValue(journey.JourneyId); command.Parameters.AddWithValue(body.Key);
                 await using var reader = await command.ExecuteReaderAsync(ct);
                 if (!await reader.ReadAsync(ct)) return Results.BadRequest(new { message = "Hành trình đã kết thúc." });
-                required = reader.GetInt32(0); recorded = reader.GetInt32(1); bonusSoFar = reader.GetInt32(2);
-                answered = reader.GetBoolean(3);
+                required = reader.GetInt32(0); recorded = reader.GetInt32(1);
+                answered = reader.GetBoolean(2);
             }
             if (answered) return Results.Conflict(new { message = "Bạn đã trả lời câu này rồi." });
             var unlockSteps = CultureQuiz.UnlockSteps(required, stopIndex, questions.Count);
@@ -326,8 +326,8 @@ public static partial class EngagementEndpoints
                 return Results.Conflict(new { message = $"Trạm này mở khi bạn đi tới {CultureQuiz.UnlockPercent(stopIndex, questions.Count)}% hành trình (còn {unlockSteps - recorded:N0} bước)." });
             var correct = string.Equals(body.Answer.Trim(), question.Answer, StringComparison.Ordinal);
             await using (var insert = new NpgsqlCommand("""
-                INSERT INTO journey_quiz_answer(journey_id, question_key, answered_on, is_correct, bonus_steps, chosen_answer)
-                VALUES ($1,$2,$3,$4,0,$5)
+                INSERT INTO journey_quiz_answer(journey_id, question_key, answered_on, is_correct, chosen_answer)
+                VALUES ($1,$2,$3,$4,$5)
                 """, connection, transaction))
             {
                 insert.Parameters.AddWithValue(journey.JourneyId); insert.Parameters.AddWithValue(body.Key);
@@ -526,16 +526,16 @@ public static partial class EngagementEndpoints
         if (questions.Count == 0)
             return new { available = false, placeName = journey.PlaceName,
                 message = $"{journey.PlaceName} chưa có câu hỏi văn hóa. Bộ câu hỏi đang được bổ sung." };
-        var answers = new Dictionary<string, (bool Correct, string? Chosen, int Bonus)>();
+        var answers = new Dictionary<string, (bool Correct, string? Chosen)>();
         int required = 0, recorded = 0;
         await using (var command = db.CreateCommand("""
-            SELECT question_key, is_correct, chosen_answer, bonus_steps FROM journey_quiz_answer WHERE journey_id=$1
+            SELECT question_key, is_correct, chosen_answer FROM journey_quiz_answer WHERE journey_id=$1
             """))
         {
             command.Parameters.AddWithValue(journey.JourneyId);
             await using var reader = await command.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
-                answers[reader.GetString(0)] = (reader.GetBoolean(1), reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetInt32(3));
+                answers[reader.GetString(0)] = (reader.GetBoolean(1), reader.IsDBNull(2) ? null : reader.GetString(2));
         }
         await using (var command = db.CreateCommand("SELECT required_steps, recorded_steps FROM journey WHERE journey_id=$1"))
         {
