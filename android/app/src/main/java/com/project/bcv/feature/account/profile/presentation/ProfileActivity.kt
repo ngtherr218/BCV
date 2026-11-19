@@ -86,6 +86,11 @@ class ProfileActivity : AppCompatActivity() {
             startActivity(Intent(this, NotificationsActivity::class.java))
         }
         binding.logoutButton.setOnClickListener { confirmLogout() }
+        binding.closeAccountButton.setOnClickListener { confirmCloseAccount() }
+        model.signingOut.observe(this) { busy ->
+            binding.logoutButton.isEnabled = !busy
+            binding.closeAccountButton.isEnabled = !busy
+        }
 
         model.profile.observe(this) { state ->
             // Only the account card comes from the server; the links below are shown at once.
@@ -178,6 +183,24 @@ class ProfileActivity : AppCompatActivity() {
             }
             dialog.show()
         }
+    }
+
+    private fun confirmCloseAccount() {
+        val accountEmail = (model.profile.value as? Remote.Ready)?.value?.email
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Đóng tài khoản?")
+            .setMessage(listOfNotNull(accountEmail,
+                "Bạn sẽ được đăng xuất và không thể đăng nhập lại bằng tài khoản này. Dữ liệu hành trình, thẻ và nhật ký vẫn được giữ trong hệ thống; thao tác này không xóa vĩnh viễn dữ liệu.")
+                .joinToString("\n\n"))
+            .setNegativeButton("Hủy", null)
+            .setPositiveButton("Đóng tài khoản") { _, _ -> model.deleteAccount() }
+            .create().apply {
+                setOnShowListener {
+                    getButton(android.app.AlertDialog.BUTTON_POSITIVE)
+                        .setTextColor(0xFFB33C32.toInt())
+                }
+                show()
+            }
     }
 
     private fun openSignInFresh() {

@@ -26,6 +26,8 @@ class ProfileViewModel(
     private val mutableMessage = MutableLiveData<Event<String>>()
     val message: LiveData<Event<String>> = mutableMessage
     private var busy = false
+    private val mutableSigningOut = MutableLiveData(false)
+    val signingOut: LiveData<Boolean> = mutableSigningOut
 
     init { loadProfile() }
 
@@ -44,6 +46,7 @@ class ProfileViewModel(
         if (busy) return
         launchRemote<Unit>({ result ->
             busy = result == Remote.Loading
+            mutableSigningOut.value = busy
             when (result) {
                 is Remote.Ready, Remote.SessionExpired -> mutableSignedOut.value = Event(Unit)
                 is Remote.Failed -> mutableMessage.value = Event(result.message)
