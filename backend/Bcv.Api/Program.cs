@@ -105,10 +105,22 @@ if (new[] { "AccountId", "Bucket", "AccessKeyId", "SecretAccessKey", "PublicBase
     builder.Services.AddSingleton(new R2Settings(r2["AccountId"]!, r2["Bucket"]!, r2["AccessKeyId"]!,
         r2["SecretAccessKey"]!, r2["PublicBaseUrl"]!));
     builder.Services.AddHttpClient<IImageStorage, R2ImageStorage>();
+    builder.Services.AddHttpClient("JournalR2");
+    builder.Services.AddScoped<JournalPhotoStorage>(sp =>
+    {
+        var settings = sp.GetRequiredService<R2Settings>();
+        settings = settings with { Bucket = string.IsNullOrWhiteSpace(r2["JournalBucket"]) ? settings.Bucket : r2["JournalBucket"]! };
+        return new JournalPhotoStorage(new R2ImageStorage(settings,
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient("JournalR2"),
+            sp.GetRequiredService<ILogger<R2ImageStorage>>()),
+            sp.GetRequiredService<ILogger<JournalPhotoStorage>>());
+    });
 }
 else
 {
     builder.Services.AddSingleton<IImageStorage, InlineImageStorage>();
+    builder.Services.AddScoped<JournalPhotoStorage>(sp =>
+        new JournalPhotoStorage(null, sp.GetRequiredService<ILogger<JournalPhotoStorage>>()));
 }
 
 builder.Services.AddHostedService<Bcv.Api.Modules.PlaceMedia.PlaceVideoMaintenance>();

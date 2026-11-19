@@ -454,7 +454,7 @@ public static partial class EngagementEndpoints
                 : Results.NotFound(new { message = "Nhật ký chỉ mở ở địa danh bạn đã check-in ngoài đời thật." });
         });
         group.MapPost("/journal/places/{placeId:long}/photos", async (long placeId, string? caption, HttpRequest request,
-            HttpContext http, NpgsqlDataSource db, CancellationToken ct) =>
+            HttpContext http, NpgsqlDataSource db, JournalPhotoStorage photos, CancellationToken ct) =>
         {
             if ((caption?.Length ?? 0) > 300) return Results.BadRequest(new { message = "Chú thích tối đa 300 ký tự." });
             var mime = request.ContentType?.Split(';')[0].Trim().ToLowerInvariant();
@@ -473,35 +473,69 @@ public static partial class EngagementEndpoints
             var bytes = memory.ToArray();
             if (!PlaceMediaEndpoints.ValidHeader(mime, bytes)) return Results.BadRequest(new { message = "Nội dung tệp không phải ảnh hợp lệ." });
             var userId = Me(http);
-            await using var command = db.CreateCommand("""
+            await using var connection = await db.OpenConnectionAsync(ct);
+            await using var transaction = await connection.BeginTransactionAsync(ct);
+            // Serialize uploads by owner so concurrent requests cannot exceed the photo limit.
+            await using (var gate = new NpgsqlCommand("SELECT user_id FROM app_user WHERE user_id=$1 FOR UPDATE", connection, transaction))
+            {
+                gate.Parameters.AddWithValue(userId);
+                await gate.ExecuteScalarAsync(ct);
+            }
+            await using var command = new NpgsqlCommand("""
                 INSERT INTO journal_photo(user_id, place_id, caption, mime_type, photo_data)
                 SELECT $1, d.place_id, $3, $4, $5 FROM (SELECT DISTINCT user_id, place_id FROM place_checkin) d
                 WHERE d.user_id=$1 AND d.place_id=$2
                   AND (SELECT count(*) FROM journal_photo WHERE user_id=$1 AND place_id=$2) < $6
                 RETURNING photo_id
-                """);
+                """, connection, transaction);
             command.Parameters.AddWithValue(userId); command.Parameters.AddWithValue(placeId);
             command.Parameters.AddWithValue(caption?.Trim() ?? ""); command.Parameters.AddWithValue(mime);
             command.Parameters.AddWithValue(bytes); command.Parameters.AddWithValue(MaxJournalPhotosPerPlace);
             var id = await command.ExecuteScalarAsync(ct);
-            return id is long photoId ? Results.Ok(new { photoId, message = "Đã lưu ảnh vào nhật ký (chỉ bạn xem được)." })
-                : Results.BadRequest(new { message = $"Chỉ lưu ảnh ở địa danh đã check-in thật, tối đa {MaxJournalPhotosPerPlace} ảnh mỗi nơi." });
+            if (id is not long photoId)
+                return Results.BadRequest(new { message = $"Chỉ lưu ảnh ở địa danh đã check-in thật, tối đa {MaxJournalPhotosPerPlace} ảnh mỗi nơi." });
+            string? key = null;
+            try
+            {
+                key = await photos.SaveAsync(userId, bytes, mime, ct);
+                if (key is not null)
+                {
+                    await using var update = new NpgsqlCommand(
+                        "UPDATE journal_photo SET object_key=$1, photo_data=NULL WHERE photo_id=$2", connection, transaction);
+                    update.Parameters.AddWithValue(key); update.Parameters.AddWithValue(photoId);
+                    await update.ExecuteNonQueryAsync(ct);
+                }
+                await transaction.CommitAsync(ct);
+            }
+            catch
+            {
+                await photos.DeleteAsync(key);
+                throw;
+            }
+            return Results.Ok(new { photoId, message = "Đã lưu ảnh vào nhật ký." });
         }).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(10 * 1024 * 1024 + 1024));
-        group.MapGet("/journal/photos/{photoId:long}/content", async (long photoId, HttpContext http, NpgsqlDataSource db, CancellationToken ct) =>
+        group.MapGet("/journal/photos/{photoId:long}/content", async (long photoId, HttpContext http, NpgsqlDataSource db, JournalPhotoStorage photos, CancellationToken ct) =>
         {
-            await using var command = db.CreateCommand("SELECT mime_type, photo_data FROM journal_photo WHERE photo_id=$1 AND user_id=$2");
+            await using var command = db.CreateCommand("SELECT mime_type, photo_data, object_key FROM journal_photo WHERE photo_id=$1 AND user_id=$2");
             command.Parameters.AddWithValue(photoId); command.Parameters.AddWithValue(Me(http));
             await using var reader = await command.ExecuteReaderAsync(ct);
             if (!await reader.ReadAsync(ct)) return Results.NotFound();
             http.Response.Headers.CacheControl = "private, max-age=86400";
             http.Response.Headers["X-Content-Type-Options"] = "nosniff";
-            return Results.File(reader.GetFieldValue<byte[]>(1), reader.GetString(0));
+            var mime = reader.GetString(0);
+            var key = reader.IsDBNull(2) ? null : reader.GetString(2);
+            var bytes = key is null ? reader.GetFieldValue<byte[]>(1) : null;
+            await reader.DisposeAsync();
+            return Results.File(bytes ?? await photos.ReadAsync(key!, ct), mime);
         });
-        group.MapDelete("/journal/photos/{photoId:long}", async (long photoId, HttpContext http, NpgsqlDataSource db, CancellationToken ct) =>
+        group.MapDelete("/journal/photos/{photoId:long}", async (long photoId, HttpContext http, NpgsqlDataSource db, JournalPhotoStorage photos, CancellationToken ct) =>
         {
-            await using var command = db.CreateCommand("DELETE FROM journal_photo WHERE photo_id=$1 AND user_id=$2");
+            await using var command = db.CreateCommand("DELETE FROM journal_photo WHERE photo_id=$1 AND user_id=$2 RETURNING object_key");
             command.Parameters.AddWithValue(photoId); command.Parameters.AddWithValue(Me(http));
-            return await command.ExecuteNonQueryAsync(ct) > 0 ? Results.Ok(new { success = true }) : Results.NotFound();
+            var deleted = await command.ExecuteScalarAsync(ct);
+            if (deleted is null) return Results.NotFound();
+            await photos.DeleteAsync(deleted as string);
+            return Results.Ok(new { success = true });
         });
     }
 

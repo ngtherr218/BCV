@@ -63,16 +63,36 @@ public sealed class R2ImageStorage(R2Settings settings, HttpClient http, ILogger
     {
         // A new key per upload, so phones and browsers never show a cached older picture under the same URL.
         var key = $"{folder.Trim('/')}/{Guid.NewGuid():N}.jpg";
-        using var request = Signed(HttpMethod.Put, key, jpeg);
-        request.Content = new ByteArrayContent(jpeg);
-        request.Content.Headers.ContentType = new("image/jpeg");
+        await PutObjectAsync(key, jpeg, "image/jpeg", ct);
+        return $"{PublicBase}/{key}";
+    }
+
+    public async Task PutObjectAsync(string key, byte[] bytes, string mime, CancellationToken ct)
+    {
+        using var request = Signed(HttpMethod.Put, key, bytes);
+        request.Content = new ByteArrayContent(bytes);
+        request.Content.Headers.ContentType = new(mime);
         using var response = await http.SendAsync(request, ct);
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync(ct);
             throw new InvalidOperationException($"R2 upload failed: {(int)response.StatusCode} {body}");
         }
-        return $"{PublicBase}/{key}";
+    }
+
+    public async Task<byte[]> ReadObjectAsync(string key, CancellationToken ct)
+    {
+        using var request = Signed(HttpMethod.Get, key, null);
+        using var response = await http.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsByteArrayAsync(ct);
+    }
+
+    public async Task DeleteObjectAsync(string key, CancellationToken ct)
+    {
+        using var request = Signed(HttpMethod.Delete, key, null);
+        using var response = await http.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
     }
 
     public async Task DeleteAsync(string? stored, CancellationToken ct)

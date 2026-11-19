@@ -12,6 +12,27 @@ Bộ cấu hình này phục vụ web quản trị và API trên cùng một tê
 
 Tài liệu: [Render Free](https://render.com/docs/free), [PostGIS trên Neon](https://neon.com/docs/extensions/postgis), [Docker trên Render](https://render.com/docs/docker).
 
+## Lưu ảnh trên Cloudflare R2
+
+Trong Render → service backend → Environment, khai báo trực tiếp:
+
+| Biến | Giá trị |
+| --- | --- |
+| `R2__AccountId` | Account ID của Cloudflare |
+| `R2__Bucket` | Bucket ảnh công khai, ví dụ `bcv` |
+| `R2__AccessKeyId` | S3 Access Key ID |
+| `R2__SecretAccessKey` | S3 Secret Access Key |
+| `R2__PublicBaseUrl` | URL công khai của bucket ảnh, không phải endpoint S3 |
+| `R2__JournalBucket` | Bucket riêng tư cho ảnh nhật ký, ví dụ `bcv-journals` |
+
+Tên biến có hai dấu gạch dưới. Các biến `BCV_R2_*` dành cho script local, không tự chuyển thành cấu hình R2 trong Docker. Khóa S3 cần quyền Object Read & Write trên cả bucket ảnh công khai và bucket nhật ký; không lưu khóa trong Git, APK hay biến `VITE_*`.
+
+Tạo `bcv-journals` với Public Development URL và Custom Domain đều tắt. API kiểm tra chủ sở hữu rồi đọc ảnh nhật ký qua S3 có ký; không trả URL R2 cho ứng dụng. Nếu bỏ `R2__JournalBucket`, ảnh dùng chung `R2__Bucket`: khi bucket đó công khai, ai có đường dẫn object vẫn đọc được ảnh. Không đổi bucket sau khi đã tải ảnh nếu chưa chuyển các object sang bucket mới.
+
+Deploy commit mới từ nhánh `ther`; migration `039_journal_r2.sql` tự chạy khi backend khởi động. Ảnh nhật ký mới nằm trong `journals/{userId}/`, giữ định dạng JPEG/PNG/WebP. Database chỉ giữ object key và metadata; ảnh cũ trong database vẫn đọc được, không tự di chuyển. Nếu thiếu cấu hình R2, ảnh mới tiếp tục lưu trong database. Lỗi upload R2 không tự chuyển sang lưu database.
+
+Sau deploy, tải ảnh nhật ký ở địa danh đã check-in thật, kiểm tra object trong bucket nhật ký, mở lại ảnh trên app rồi xóa thử. Xóa qua API cũng dọn object R2; nếu dọn thất bại, backend ghi log để xử lý sau. Chỉ đổi cấu hình hosting, không cần sửa URL API hay build lại Android cho thay đổi này.
+
 ## Email khôi phục mật khẩu trên Render bằng Brevo
 
 Sender đã được xác minh cho dự án: `quanggm7a1@gmail.com` (BuocChanViet).

@@ -86,6 +86,12 @@ Không ghi vào file nào trong kho mã; lưu bằng `set-local-secrets.ps1`. N�
 
 `BCV_R2_PUBLIC_URL` phải là URL công khai của bucket (`https://pub-….r2.dev` hoặc tên miền riêng), không phải endpoint `….r2.cloudflarestorage.com`.
 
+Ảnh nhật ký: khi đủ cấu hình R2, ảnh tải mới được lưu ở `journals/{userId}/{randomId}.{jpg|png|webp}`; database chỉ giữ object key và metadata. API kiểm tra chủ sở hữu rồi đọc ảnh bằng S3 có ký, không trả URL R2. Khi xóa ảnh qua API, backend cũng dọn object R2 (best effort, lỗi được ghi log). Chưa có R2 thì ảnh vẫn lưu trong database; ảnh database cũ tiếp tục xem được, không tự chuyển lên R2.
+
+Trên Render, khai báo trực tiếp `R2__AccountId`, `R2__Bucket`, `R2__AccessKeyId`, `R2__SecretAccessKey`, `R2__PublicBaseUrl`. Migration `039_journal_r2.sql` tự chạy khi khởi động. Không cần đổi Android.
+
+Để ảnh nhật ký riêng tư ở tầng lưu trữ, tạo bucket riêng (ví dụ `bcv-journals`) với Public Development URL và Custom Domain đều tắt; cấp khóa S3 quyền Object Read & Write cho cả hai bucket rồi thêm `R2__JournalBucket=bcv-journals`. Nếu bỏ biến này, ảnh nhật ký dùng chung `R2__Bucket`: khi bucket đó công khai, ai có đường dẫn object vẫn đọc được ảnh trực tiếp. Không thay đổi tên bucket sau khi đã lưu ảnh nếu chưa di chuyển các object tương ứng.
+
 ### Thư mục ảnh trên R2
 
 Ảnh được chia thư mục theo mục đích. Mã nằm ở `Modules/Shared/Infrastructure/ImageStorage.cs`. Mỗi lần tải lên tạo một tên file mới, nên ứng dụng không bao giờ hiển thị ảnh cũ còn trong bộ nhớ đệm.

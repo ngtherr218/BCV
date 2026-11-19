@@ -6,6 +6,7 @@ using Bcv.Api.Modules.Admin;
 using Npgsql;
 
 void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
+await JournalStorageChecks.RunAsync();
 Check(!PlaceMediaEndpoints.ValidHeader("image/jpeg", new byte[16]), "Accepted fake JPEG");
 Check(!PlaceMediaEndpoints.ValidHeader("video/mp4", Array.Empty<byte>()), "Accepted empty video");
 Check(!PlaceMediaEndpoints.ValidHeader("text/html", System.Text.Encoding.UTF8.GetBytes("<html>hello world</html>")), "Accepted active HTML");

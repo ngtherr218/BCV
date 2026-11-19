@@ -46,7 +46,7 @@ App và web **không** kết nối thẳng vào database; mọi dữ liệu đi 
 | --- | --- | --- |
 | Goong Maps | Bản đồ (Maptiles key), tra địa chỉ và chỉ đường (REST API key) | Có, để hiện bản đồ |
 | Health Connect | Đọc số bước trên điện thoại | Có, trên thiết bị |
-| Cloudflare R2 | Lưu ảnh tải lên; không có thì lưu trong database | Không |
+| Cloudflare R2 | Lưu ảnh đại diện, địa danh, thẻ, huy hiệu và nhật ký tải lên; không có thì lưu trong database | Không |
 | Gmail SMTP | Gửi mã đặt lại mật khẩu; không có thì mã in ra log | Không |
 
 Web quản trị dùng bản đồ Goong hiện hành. Trong biểu mẫu địa danh, chọn khu vực rồi bấm ô vĩ độ/kinh độ để mở bản đồ tại vùng các địa danh thuộc khu vực đó; đổi khu vực chỉ chuyển khung nhìn, không tự thay tọa độ. Xem [cách chọn tọa độ và lưu ý khu vực trước sáp nhập](web/README.md#chọn-tọa-độ-và-đặc-trưng-địa-danh).
@@ -165,6 +165,8 @@ Các file và biến sau là **riêng của từng máy**, đã được Git b�
 | `android/dev.properties` | URL backend và hai khóa Goong cho app |
 
 ## Xử lý sự cố
+
+Ảnh nhật ký tải mới dùng R2 khi backend có đủ cấu hình; ảnh cũ trong database vẫn xem được và không tự di chuyển. API kiểm tra chủ sở hữu trước khi đọc ảnh. Trên Render, dùng các biến `R2__AccountId`, `R2__Bucket`, `R2__AccessKeyId`, `R2__SecretAccessKey`, `R2__PublicBaseUrl`; thêm `R2__JournalBucket` trỏ tới bucket riêng tư để ảnh nhật ký không truy cập được qua URL công khai. Nếu bỏ biến này, ảnh nhật ký dùng chung bucket ảnh công khai. Xem [hướng dẫn R2 trên Render](DEPLOY.md#lưu-ảnh-trên-cloudflare-r2).
 
 | Hiện tượng | Cách xử lý |
 | --- | --- |

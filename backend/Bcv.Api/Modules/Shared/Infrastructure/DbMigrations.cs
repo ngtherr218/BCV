@@ -30,6 +30,7 @@ public static class DbMigrations
         new("036", "036_leaderboard_rewards.sql"),
         new("037", "037_leaderboard_prizes.sql"),
         new("038", "038_drop_unused_quiz_bonus_and_media_quests.sql"),
+        new("039", "039_journal_r2.sql"),
     ];
 
     private const long LockKey = 7246321;
